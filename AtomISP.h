@@ -103,7 +103,11 @@ public:
     int continuousBurstNegMinOffset(void) const;
     int continuousBurstNegOffset(int skip, int startIndex) const;
     int getContinuousCaptureNumber() const;
-    status_t prepareOfflineCapture(ContinuousCaptureConfig &config, bool capturePriority);
+    status_t prepareOfflineCapture(ContinuousCaptureConfig &config);
+
+    // APIs for capture with raw buffer lock
+    status_t rawBufferUnlock(int expId);
+    status_t rawBufferCapture(int expId);
 
     void setHALVideoStabilization(bool value) { mHALVideoStabilization = value; }
 
@@ -397,6 +401,7 @@ private:
     status_t stopContinuousVideo();
 
     status_t requestContCapture(int numCaptures, int offset, unsigned int skip);
+    status_t rawBufferLockEnable(bool enable);
 
     void runStartISPActions();
     void runStopISPActions();
@@ -563,7 +568,6 @@ private:
     Config mConfig;
     ContinuousCaptureConfig mContCaptConfig;
     bool mContCaptPrepared;
-    bool mContCaptPriority;
     unsigned int mInitialSkips;
     unsigned int mStatisticSkips;
     unsigned int mDVSFrameSkips;

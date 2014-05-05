@@ -548,7 +548,7 @@ private:
     status_t processParamSetMeteringAreas(const CameraParameters * oldParams,
             CameraParameters * newParams);
     status_t processParamBracket(const CameraParameters *oldParams,
-                CameraParameters *newParams);
+                CameraParameters *newParams, bool &restartNeeded);
     status_t processParamSmartShutter(const CameraParameters *oldParams,
                 CameraParameters *newParams);
     status_t processParamHDR(const CameraParameters *oldParams,
@@ -667,10 +667,10 @@ private:
     bool selectSdvSize(int &width, int &height);
     void encodeVideoSnapshot(AtomBuffer &buff);
 
-    // offline burst capture shutter sound control
-    void triggerShutterSoundControl(int numSounds, int startId);
-    void resetShutterSoundControl();
-    void handleShutterSoundControl(AtomBuffer *buff);
+    // offline capture control by exposure id
+    void triggerOfflineCaptureControl(int numSounds, int startId, bool skip = false);
+    void resetOfflineCaptureControl();
+    void handleOfflineCaptureControl(AtomBuffer *buff);
 
     status_t updateSpotWindow(const int &width, const int &height);
 
@@ -807,11 +807,14 @@ private:
                                          camera sensor orientation and device orientation. */
     bool mFullSizeSdv;              /*!< is full resolution sdv?*/
 
-    // shutter sound control, trigger shutter sound by EOF/preview buffer event
+    // offline burst capture control
     Mutex mOfflineControlLock;
+    bool mRawBufferLockMode;        /*!< is raw buffer lock mode enabled? */
+    bool mSkipPreview;              /*!< if to skip this frame in preview */
     unsigned int mCurrentExpID;     /*!< exposure ID of current preview frame*/
     unsigned int mNextExpID;        /*!< next expected buffer exposure ID */
-    int mNumSounds;                 /*!< shutter sound times */
+    int mNumCaptures;               /*!< control the the number of capture */
+    int mNumSounds;                 /*!< shutter sound times,trigger shutter sound by EOF/preview buffer event*/
 
     /*----------- Debugging helpers --------------------*/
     static const char* sCaptureSubstateStrings[STATE_CAPTURE_LAST];

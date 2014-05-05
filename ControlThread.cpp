@@ -156,8 +156,11 @@ ControlThread::ControlThread(int cameraId) :
     ,mHALVideoStabilization(false)
     ,mCurrentOrientation(0)
     ,mFullSizeSdv(false)
+    ,mRawBufferLockMode(false)
+    ,mSkipPreview(false)
     ,mCurrentExpID(EXP_ID_INVALID)
     ,mNextExpID(EXP_ID_INVALID)
+    ,mNumCaptures(0)
     ,mNumSounds(0)
 {
     // DO NOT PUT ANY ALLOCATION CODE IN THIS METHOD!!!
@@ -1236,12 +1239,23 @@ void ControlThread::continuousConfigApplyLimits(ContinuousCaptureConfig &cfg) co
 status_t ControlThread::configureContinuousRingBuffer()
 {
     LOG2("@%s", __FUNCTION__);
-    bool capturePriority = true;
+    ContinuousCaptureConfig cfg;
+    CLEAR(cfg);
+
+    // capture priority by default
+    cfg.capturePriority = true;
+    // enable raw buffer lock mode if bracketing in offline mode
+    if (mBurstLength > 1 && mBracketManager->getBracketMode() != BRACKET_NONE) {
+        cfg.rawBufferLock = true;
+        // disable capture priority in lock mode
+        cfg.capturePriority = false;
+        mRawBufferLockMode = true;
+    }
+
     if (mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_CONTINUOUS ||
             (mFullSizeSdv && (mState == STATE_PREVIEW_VIDEO || mState == STATE_RECORDING)))
-        capturePriority = false;
+        cfg.capturePriority = false;
 
-    ContinuousCaptureConfig cfg;
     if (mULL->isActive() || mBurstLength > 1)
         cfg.numCaptures = MAX(mUllBurstLength, mBurstLength);
     else
@@ -1256,7 +1270,7 @@ status_t ControlThread::configureContinuousRingBuffer()
                                                 cfg.offset,
                                                 cfg.skip);
 
-    return mISP->prepareOfflineCapture(cfg, capturePriority);
+    return mISP->prepareOfflineCapture(cfg);
 }
 
 /**
@@ -1876,6 +1890,9 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         return INVALID_OPERATION;
     }
 
+    // disable raw buffer lock by default
+    mRawBufferLockMode = false;
+
     PerformanceTraces::SwitchCameras::called(videoMode);
 
     // ISP can be de-initialized during ErrorPreview notification.
@@ -2357,8 +2374,8 @@ status_t ControlThread::startOfflineCapture()
 
     // trigger shutter sound for offline burst
     if (mBurstLength > 1) {
-        // from the next frame. Maybe it's not very accurate, never mind.
-        triggerShutterSoundControl(mBurstLength, NEXT_EID(mCurrentExpID));
+        // control from the next frame. Maybe it's not very accurate, never mind.
+        triggerOfflineCaptureControl(mBurstLength, NEXT_EID(mCurrentExpID));
     }
 
     mISP->startOfflineCapture(cfg);
@@ -3183,7 +3200,7 @@ void ControlThread::stopOfflineCapture()
     if ((mState == STATE_CONTINUOUS_CAPTURE || mState == STATE_RECORDING) &&
             mISP->isOfflineCaptureRunning()) {
         mISP->stopOfflineCapture();
-        resetShutterSoundControl();
+        resetOfflineCaptureControl();
     }
 }
 
@@ -3442,34 +3459,48 @@ int ControlThread::selectPostviewFormat()
     return fourcc;
 }
 
-void ControlThread::resetShutterSoundControl()
+void ControlThread::resetOfflineCaptureControl()
 {
+    mSkipPreview = false;
     mNextExpID   = EXP_ID_INVALID;
     mNumSounds   = 0;
+    mNumCaptures = 0;
 }
 
-void ControlThread::triggerShutterSoundControl(int numSounds, int startId)
+void ControlThread::triggerOfflineCaptureControl(int numSounds, int startId, bool skip)
 {
-    LOG1("@%s num sound:%d start exp id:%d", __FUNCTION__, numSounds, startId);
+    LOG1("@%s num sound:%d start exp id:%d skip:%d", __FUNCTION__, numSounds, startId, skip);
     Mutex::Autolock lock(mOfflineControlLock);
     if (startId < EXP_ID_MIN || startId > EXP_ID_MAX)
         return;
 
+    mSkipPreview = skip;
     mNextExpID   = startId;
     mNumSounds   = numSounds;
+    mNumCaptures = mBurstLength;
 }
 
 /**
- * Controlling shutter sound for offline burst capture
+ * Controlling for offline features such as:
+ * 1. offline burst;
+ * 2. offline bracketing;
+ * 3. offline HDR;
+ * Works:
+ * 1. Unlock or capture locked raw buffer if need
+ * 2. Shutter sound control
+ * 3. Skip buffer display in viewfinder if need
  */
-void ControlThread::handleShutterSoundControl(AtomBuffer *buff)
+void ControlThread::handleOfflineCaptureControl(AtomBuffer *buff)
 {
+    status_t status = NO_ERROR;
+    bool unlockIt = true;
+
     Mutex::Autolock lock(mOfflineControlLock);
     // update current exposure ID
     mCurrentExpID = buff->expId;
 
     LOG2("@%s for id:%d", __FUNCTION__, mCurrentExpID)
-    if (mNumSounds > 0) {
+    if (mNumSounds > 0 || mNumCaptures > 0) {
         LOG1("@%s num sound:%d current ID:%d expected exposure id:%d", __FUNCTION__,
                 mNumSounds, mCurrentExpID, mNextExpID);
 
@@ -3480,16 +3511,40 @@ void ControlThread::handleShutterSoundControl(AtomBuffer *buff)
         }
 
         if (mCurrentExpID == mNextExpID) {
-            // play shutter sound
-            mCallbacksThread->shutterSound();
-            mNumSounds--;
+            // play shutter sound if need
+            if (mNumSounds > 0) {
+                mCallbacksThread->shutterSound();
+                mNumSounds--;
+            }
 
-            // next one
+            if (mNumCaptures > 0) {
+                // trigger locked buffer capture if in lock mode
+                if (mRawBufferLockMode) {
+                    mISP->rawBufferCapture(mCurrentExpID);
+                    unlockIt = false;
+                }
+                mNumCaptures--;
+            }
+
+            // skip to show in viewfinder, currently for hdr only
+            if (mSkipPreview) {
+                buff->status = FRAME_STATUS_SKIPPED;
+            }
+
+            // the next
             if (mFpsAdaptSkip > 0) {
                 mNextExpID = NEXTN_EID(mNextExpID, mFpsAdaptSkip + 1);
             } else {
                 mNextExpID = NEXT_EID(mNextExpID);
             }
+        }
+    }
+
+    if (mRawBufferLockMode && unlockIt) {
+        //unlock the buffer if it will not be used for capture
+        status = mISP->rawBufferUnlock(mCurrentExpID);
+        if (status != NO_ERROR) {
+            LOGE("Error in unlocking raw buffer :%d", mCurrentExpID);
         }
     }
 }
@@ -3669,9 +3724,9 @@ status_t ControlThread::captureStillPic()
         // offline bracketing
         if (mState == STATE_CONTINUOUS_CAPTURE) {
             if (mHdr.enabled) // HDR capture 3 with 1 shutter sound only
-                triggerShutterSoundControl(1, startExpId);
+                triggerOfflineCaptureControl(1, startExpId, true);
             else
-                triggerShutterSoundControl(mBurstLength, startExpId);
+                triggerOfflineCaptureControl(mBurstLength, startExpId);
         }
     }
 
@@ -3745,6 +3800,9 @@ status_t ControlThread::captureStillPic()
                         snapshotBuffer.frameCounter);
         }
     }
+
+    if (mRawBufferLockMode)
+        mISP->rawBufferUnlock(snapshotBuffer.expId);
 
     if (status != NO_ERROR) {
         LOGE("Error in grabbing snapshot!");
@@ -3998,6 +4056,9 @@ status_t ControlThread::captureFixedBurstPic(bool clientRequest = false)
     } else {
         status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer);
     }
+
+    if (mRawBufferLockMode)
+        mISP->rawBufferUnlock(snapshotBuffer.expId);
 
     if (status != NO_ERROR) {
         LOGE("Error in grabbing snapshot!");
@@ -4854,11 +4915,6 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         }
 
         if (status == NO_ERROR) {
-            // Capture bracketing
-            status = processParamBracket(oldParams, newParams);
-        }
-
-        if (status == NO_ERROR) {
             // Smart Shutter Capture
             status = processParamSmartShutter(oldParams, newParams);
         }
@@ -5363,14 +5419,16 @@ status_t ControlThread::processParamEffect(const CameraParameters *oldParams,
 }
 
 status_t ControlThread::processParamBracket(const CameraParameters *oldParams,
-        CameraParameters *newParams)
+        CameraParameters *newParams, bool &restartNeeded)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
+    BracketingMode oldMode;
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
                                               IntelCameraParameters::KEY_CAPTURE_BRACKET);
 
     if (!newVal.isEmpty()) {
+        oldMode = mBracketManager->getBracketMode();
         if(newVal == "exposure") {
             mBracketManager->setBracketMode(BRACKET_EXPOSURE);
         } else if(newVal == "focus") {
@@ -5384,6 +5442,11 @@ status_t ControlThread::processParamBracket(const CameraParameters *oldParams,
         if (status == NO_ERROR) {
             LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_CAPTURE_BRACKET, newVal.string());
         }
+
+        // No need to restart preview only if change between exposure and focus
+        if (status == NO_ERROR && !((oldMode == BRACKET_FOCUS && newVal == "exposure") ||
+                (oldMode == BRACKET_EXPOSURE && newVal == "focus")))
+            restartNeeded = true;
     }
     return status;
 }
@@ -6797,6 +6860,9 @@ status_t ControlThread::processStaticParameters(CameraParameters *oldParams,
         }
     }
 
+    // Capture bracketing
+    status = processParamBracket(oldParams, newParams, restartNeeded);
+
     // Burst mode and HDR
     int oldBurstLength = mBurstLength;
     int oldFpsAdaptSkip = mFpsAdaptSkip;
@@ -8028,7 +8094,7 @@ status_t ControlThread::waitForAndExecuteMessage()
             break;
 
         case MESSAGE_ID_SMART_SHUTTER_PICTURE:
-                status = handleMessageTakeSmartShutterPicture();
+            status = handleMessageTakeSmartShutterPicture();
             break;
 
         case MESSAGE_ID_CANCEL_PICTURE:
@@ -8164,8 +8230,8 @@ bool ControlThread::atomIspNotify(IAtomIspObserver::Message *msg, const Observer
             return false;
         }
 
-        //shutter sound control
-        handleShutterSoundControl(buff);
+        // controlling offline capture by exposure id
+        handleOfflineCaptureControl(buff);
 
         //Check the battery status regularly during recording.
         //If the battery level is too low, turn off the flash, notify the application and update the parameters.

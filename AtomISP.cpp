@@ -105,7 +105,6 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService, Callbacks *callb
     ,mNumCapturegBuffersQueued(0)
     ,mFlashTorchSetting(0)
     ,mContCaptPrepared(false)
-    ,mContCaptPriority(false)
     ,mInitialSkips(0)
     ,mStatisticSkips(0)
     ,mDVSFrameSkips(0)
@@ -1685,7 +1684,7 @@ status_t AtomISP::configureContinuousMode(bool enable)
                               enable, "Continuous mode") < 0)
             return UNKNOWN_ERROR;
 
-    enable = (!mContCaptPriority &&
+    enable = (!mContCaptConfig.capturePriority &&
               PlatformData::snapshotResolutionSupportedByCVF(mCameraId,
                                                              mConfig.snapshot.width,
                                                              mConfig.snapshot.height));
@@ -1713,7 +1712,7 @@ status_t AtomISP::configureContinuousRingBuffer()
     int offset = mContCaptConfig.offset;
     int lookback = abs(offset);
 
-    if (lookback > captures)
+    if (lookback > captures && !mContCaptConfig.rawBufferLock)
         numBuffers += lookback;
     else
         numBuffers += captures;
@@ -1721,7 +1720,7 @@ status_t AtomISP::configureContinuousRingBuffer()
     if (mCssMajorVersion >= 2) {
     // for css2.x, the minimum raw ring buffers number is ATOMISP_MIN_CONTINUOUS_BUF_NUM_CSS2X
         //when offset is -1 , one ring buffer is able to be optimized
-        if (offset == -1)
+        if (offset == -1 && !mContCaptConfig.rawBufferLock)
             numBuffers -= 1;
 
         if (numBuffers < ATOMISP_MIN_CONTINUOUS_BUF_NUM_CSS2X)
@@ -1738,6 +1737,9 @@ status_t AtomISP::configureContinuousRingBuffer()
                                    numBuffers,
                                    "Continuous raw ringbuffer size") < 0)
         return UNKNOWN_ERROR;
+
+    // enable or disable raw buffer lock mode
+    rawBufferLockEnable(mContCaptConfig.rawBufferLock);
 
     return NO_ERROR;
 }
@@ -2514,6 +2516,7 @@ status_t AtomISP::stopContinuousVideo()
 {
     LOG1("@%s", __FUNCTION__);
     int error = 0;
+    CLEAR(mContCaptConfig);
     if (stopCapture() != NO_ERROR)
         ++error;
     // TODO: this call to requestContCapture() can be
@@ -2536,6 +2539,7 @@ status_t AtomISP::stopContinuousPreview()
 {
     LOG1("@%s", __FUNCTION__);
     int error = 0;
+    CLEAR(mContCaptConfig);
     if (stopCapture() != NO_ERROR)
         ++error;
     // TODO: this call to requestContCapture() can be
@@ -2546,6 +2550,8 @@ status_t AtomISP::stopContinuousPreview()
         ++error;
     if (stopPreview() != NO_ERROR)
         ++error;
+    // always disable raw buffer lock mode
+    rawBufferLockEnable(false);
     if (error) {
         LOGE("@%s: errors (%d) in stopping continuous capture",
              __FUNCTION__, error);
@@ -2691,18 +2697,72 @@ status_t AtomISP::stopOfflineCapture()
  * \param config container to configure capture count, skipping
  *               and the start offset (see struct ContinuousCaptureConfig)
  */
-status_t AtomISP::prepareOfflineCapture(ContinuousCaptureConfig &cfg, bool capturePriority)
+status_t AtomISP::prepareOfflineCapture(ContinuousCaptureConfig &cfg)
 {
-    LOG1("@%s, numCaptures = %d", __FUNCTION__, cfg.numCaptures);
-    if (cfg.offset < continuousBurstNegMinOffset()) {
+    LOG1("@%s, numCaptures = %d raw lock mode:%d capture priority:%d",
+            __FUNCTION__, cfg.numCaptures, cfg.rawBufferLock, cfg.capturePriority);
+    if (cfg.offset < continuousBurstNegMinOffset() && !cfg.rawBufferLock) {
         LOGE("@%s: offset %d not supported, minimum %d",
              __FUNCTION__, cfg.offset, continuousBurstNegMinOffset());
         return UNKNOWN_ERROR;
     }
     mContCaptConfig = cfg;
     mContCaptPrepared = true;
-    mContCaptPriority = capturePriority;
     return NO_ERROR;
+}
+
+/**
+ * Enable or disable the CSS raw buffer lock mode
+ *
+ * \param enable, true to enable, false to disable
+ */
+status_t AtomISP::rawBufferLockEnable(bool enable)
+{
+    LOG2("@%s :%s", __FUNCTION__, enable ? "true" : "false");
+    return mMainDevice->setControl(V4L2_CID_ENABLE_RAW_BUFFER_LOCK,
+                        enable, "Continuous raw buffer lock mode");
+}
+
+/**
+ * Unlock the locked raw buffer in css
+ * raw buffers will be locked by default if we enable raw buffer lock mode
+ * So no rawBufferLock method in AtomISP. Just need to unlock in time.
+ *
+ * \param expId: exposure ID of the raw buffer to be unlocked
+ */
+status_t AtomISP::rawBufferUnlock(int expId)
+{
+    LOG2("@%s ID:%d", __FUNCTION__, expId);
+    int ret;
+
+    if (mMode != MODE_CONTINUOUS_CAPTURE || mContCaptConfig.rawBufferLock == false) {
+        LOGW("invalide raw buffer unlock call in mode:%d", mMode);
+        return INVALID_OPERATION;
+    }
+
+    ret = mMainDevice->xioctl(ATOMISP_IOC_EXP_ID_UNLOCK, &expId);
+    LOG2("%s IOCTL ATOMISP_IOC_EXP_ID_UNLOCK ret: %d\n", __FUNCTION__, ret);
+    return ret;
+}
+
+/**
+ * Request to capture the image with specified exposure ID.
+ * The raw buffer must be locked before you call this method
+ *
+ * \param expId: exposure ID of the raw buffer to be processed
+ */
+status_t AtomISP::rawBufferCapture(int expId)
+{
+    LOG2("@%s ID:%d", __FUNCTION__, expId);
+    int ret;
+    if (mMode != MODE_CONTINUOUS_CAPTURE || mContCaptConfig.rawBufferLock == false) {
+        LOGW("invalide raw buffer capture call in mode:%d", mMode);
+        return INVALID_OPERATION;
+    }
+
+    ret = mMainDevice->xioctl(ATOMISP_IOC_EXP_ID_CAPTURE, &expId);
+    LOG2("%s IOCTL ATOMISP_IOC_EXP_ID_CAPTURE ret: %d\n", __FUNCTION__, ret);
+    return ret;
 }
 
 bool AtomISP::isOfflineCaptureRunning() const

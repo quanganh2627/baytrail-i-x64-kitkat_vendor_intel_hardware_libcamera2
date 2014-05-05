@@ -44,6 +44,10 @@ enum ObserverType {
 };
 
 struct ContinuousCaptureConfig {
+    bool rawBufferLock;     /*!< Sign of ISP raw buffer lock mode
+                             * offset and skip are invalid if this is true
+                             */
+    bool capturePriority;    /*!< affects CVF*/
     int numCaptures;        /*!< Number of captures
                              * -1 = capture continuously
                              * 0 = disabled, stop captures
