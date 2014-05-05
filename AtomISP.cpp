@@ -2499,6 +2499,19 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
             }
         }
 
+		const char manUsensorBNameOV2680[] = "ov2680";
+		if (strncmp(mSensorHW.getSensorName(), manUsensorBNameOV2680, sizeof(manUsensorBNameOV2680) - 1) == 0) {
+			if (((previewWidth == 1280)&& (previewHeight == 720)) || ((previewWidth == 1600)&& (previewHeight == 900))) {
+				LOGD("720p recording change preview size to 1600 and 900 video size to 1280x720");
+				params->setPreviewSize(1600,900);
+			}
+
+			if(((previewWidth == 720)&& (previewHeight == 480)) || ((previewWidth == 1272)&& (previewHeight == 848))) {
+				LOGD("480p recording change preview size to 1272x848 and video size to 720x480");
+				params->setPreviewSize(1272,848);
+			}
+		}
+
         //Workaround 2, detail refer to the function description
         params->getPreviewSize(&previewWidth, &previewHeight);
         params->getVideoSize(&videoWidth, &videoHeight);
