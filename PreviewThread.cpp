@@ -1146,9 +1146,14 @@ status_t PreviewThread::handlePreviewCallback(AtomBuffer &srcBuff)
             break;
 
         case V4L2_PIX_FMT_NV21: // you need to do this for the first time
-            convertBuftoNV21(mPreviewFourcc, mPreviewBuf.width,
-                             mPreviewBuf.height, src_bpl,
-                             mPreviewBuf.bpl, src, mPreviewBuf.dataPtr);
+            if (mPreviewBuf.width  == RESOLUTION_6MP_WIDTH &&
+                mPreviewBuf.height == RESOLUTION_6MP_HEIGHT) {
+                // for ext isp 6MP preview, allow NV12 for panorama resolution.
+                memcpy(mPreviewBuf.dataPtr, srcBuff.dataPtr, srcBuff.size);
+            } else
+                convertBuftoNV21(mPreviewFourcc, mPreviewBuf.width,
+                                 mPreviewBuf.height, src_bpl,
+                                 mPreviewBuf.bpl, src, mPreviewBuf.dataPtr);
             break;
         case V4L2_PIX_FMT_RGB565:
             if (mPreviewFourcc == V4L2_PIX_FMT_NV12)

@@ -19,6 +19,7 @@
 #include "ValidateParameters.h"
 #include "AtomCommon.h"
 #include "LogHelper.h"
+#include "PlatformData.h"
 
 #include <stdlib.h>
 
@@ -176,7 +177,7 @@ static bool validateReadOnlyParameters(const CameraParameters *oldParams, const 
     return true;
 }
 
-status_t validateParameters(const CameraParameters *oldParams, const CameraParameters *params)
+status_t validateParameters(const CameraParameters *oldParams, const CameraParameters *params, int cameraId)
 {
     LOG1("@%s: oldparams= %p, params = %p", __FUNCTION__, oldParams, params);
 
@@ -276,6 +277,13 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
     int width, height;
     Vector<Size> supportedSizes;
     params->getSupportedPreviewSizes(supportedSizes);
+    if (PlatformData::supportsContinuousJpegCapture(cameraId)) {
+        // for ext-isp, we add the 6MP resolution so that application can set
+        // that for panorama. It is not a public supported resolution for any
+        // other use case (capable of only 15fps).
+        Size size6mp(RESOLUTION_6MP_WIDTH, RESOLUTION_6MP_HEIGHT);
+        supportedSizes.add(size6mp);
+    }
     params->getPreviewSize(&width, &height);
     if (!validateSize(width, height, supportedSizes)) {
         LOGE("bad preview size");

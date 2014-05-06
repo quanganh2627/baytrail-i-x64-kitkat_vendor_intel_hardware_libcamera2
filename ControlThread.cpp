@@ -7213,7 +7213,7 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
         LOG2("----------- END NEW PARAMS -------- ");
     }
 
-    status = validateParameters(&oldParams, &newParams);
+    status = validateParameters(&oldParams, &newParams, mCameraId);
     if (status != NO_ERROR)
         goto exit;
 

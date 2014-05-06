@@ -2872,10 +2872,15 @@ status_t AtomISP::setPreviewFrameFormat(int width, int height, int bpl, int four
 
     if(fourcc == 0)
          fourcc = mConfig.preview.fourcc;
-    if (width > mConfig.previewLimits.maxWidth || width <= 0)
-        width = mConfig.previewLimits.maxWidth;
-    if (height > mConfig.previewLimits.maxHeight || height <= 0)
-        height = mConfig.previewLimits.maxHeight;
+    // for ext isp, we allow in a special 6MP preview resolution for panorama.
+    // Otherwise, we cap the resolution to maxWidth/maxHeight
+    if (!(PlatformData::supportsContinuousJpegCapture(mCameraId) &&
+        width == RESOLUTION_6MP_WIDTH && height == RESOLUTION_6MP_HEIGHT)) {
+        if (width > mConfig.previewLimits.maxWidth || width <= 0)
+            width = mConfig.previewLimits.maxWidth;
+        if (height > mConfig.previewLimits.maxHeight || height <= 0)
+            height = mConfig.previewLimits.maxHeight;
+    }
 
     // add the envelope size for the hal videostabilization, if it is enabled
     if (mHALVideoStabilization) {
