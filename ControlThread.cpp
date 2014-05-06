@@ -1026,6 +1026,22 @@ void ControlThread::panoramaCaptureTrigger()
 }
 
 // -- ICallbackPicture implementations
+void ControlThread::atPostviewPresent() {
+    LOG2("@%s", __FUNCTION__);
+    status_t status(NO_ERROR);
+
+    // we do this without msg to make sure preview is hidden right a way.
+
+    // standard Google API request stop preview on take picture
+    if (mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD) {
+        LOG1("@%s: Hide preview on continuous JPEG capture", __FUNCTION__);
+        status = mPreviewThread->setPreviewState(PreviewThread::STATE_ENABLED_HIDDEN);
+        if(status != NO_ERROR) {
+            LOGE("Could not hide preview");
+        }
+    }
+}
+
 void ControlThread::encodingDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
 {
     LOG2("@%s: snapshotBuf = %p, postviewBuf = %p, id = %d",
@@ -1129,7 +1145,7 @@ status_t ControlThread::handleContinuousPreviewBackgrounding()
     if (mThreadRunning == false)
         return INVALID_OPERATION;
 
-    if (mState != STATE_CONTINUOUS_CAPTURE)
+    if (mState != STATE_CONTINUOUS_CAPTURE && mState != STATE_JPEG_CAPTURE)
         return NO_INIT;
 
     // allow backgrounding only in post capture sequence
@@ -1159,7 +1175,7 @@ status_t ControlThread::handleContinuousPreviewForegrounding()
 {
     PreviewThread::PreviewState previewState;
 
-    if (mState != STATE_CONTINUOUS_CAPTURE)
+    if (mState != STATE_CONTINUOUS_CAPTURE && mState != STATE_JPEG_CAPTURE)
         return NO_INIT;
 
     previewState = mPreviewThread->getPreviewState();
@@ -2036,10 +2052,11 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     // takePicture(). This is done for faster shot2shot.
     // TODO: support for fluent transitions regardless of buffer type
     //       transparently
+    // JPEG capture mode we use sharedGfxBuffers (0-copy) even in standard mode
 
     bool useSharedGfxBuffers =
         (mPreviewUpdateMode != IntelCameraParameters::PREVIEW_UPDATE_MODE_WINDOWLESS)
-        && (mIntelParamsAllowed || mode != MODE_CONTINUOUS_CAPTURE);
+        && (mIntelParamsAllowed || (mode != MODE_CONTINUOUS_CAPTURE));
 
     if (mHALVideoStabilization) {
         // hal video stabilization needs bigger capture buffers of its own, so
@@ -2450,7 +2467,7 @@ status_t ControlThread::handleMessageStartPreview()
             LOGI("Preview window not set deferring start preview until then");
             mPreviewThread->setPreviewState(PreviewThread::STATE_NO_WINDOW);
         }
-    } else if (mState == STATE_CONTINUOUS_CAPTURE) {
+    } else if (mState == STATE_CONTINUOUS_CAPTURE || mState == STATE_JPEG_CAPTURE) {
         // already in continuous-state
         status = handleContinuousPreviewForegrounding();
     } else {
@@ -2497,7 +2514,7 @@ status_t ControlThread::handleMessageStopPreview()
     // In STATE_CAPTURE, preview is already stopped, nothing to do
     if (mState != STATE_CAPTURE) {
         stopFaceDetection(true);
-        if (mState == STATE_CONTINUOUS_CAPTURE) {
+        if (mState == STATE_CONTINUOUS_CAPTURE || mState == STATE_JPEG_CAPTURE) {
             status = handleContinuousPreviewBackgrounding();
             if (status == NO_ERROR)
                 goto preview_stopped;
@@ -4528,7 +4545,7 @@ status_t ControlThread::cancelCapture()
     if (mState == STATE_CAPTURE) {
         // online capture
         status = stopCapture();
-    } else if (mState == STATE_CONTINUOUS_CAPTURE) {
+    } else if (mState == STATE_CONTINUOUS_CAPTURE || mState == STATE_JPEG_CAPTURE) {
         // offline capture
         stopOfflineCapture();
         status |= cancelPostCaptureThread();
@@ -4755,16 +4772,6 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
         // continuous jpeg capture use atomisp frame not snapshot or postview here
         LOG1("CaptureSubState %s -> IDLE",sCaptureSubstateStrings[mCaptureSubState]);
         mCaptureSubState = STATE_CAPTURE_IDLE;
-
-        // standard goole api request stop preview on take picture
-        if (mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD) {
-            LOG1("@%s: stopping continuous jpeg capture devices.", __FUNCTION__);
-            //TODO CJC: make syncronication that last preview is same as capture
-            status = handleMessageStopPreview();
-            if(status != NO_ERROR) {
-                LOGE("Could not stop preview");
-            }
-        }
     } else {
         LOGW("Received a picture Done during invalid state %d; buf id:%d, ptr=%p", mState, msg->snapshotBuf.id, msg->snapshotBuf.buff);
     }

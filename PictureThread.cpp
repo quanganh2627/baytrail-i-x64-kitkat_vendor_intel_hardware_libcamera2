@@ -375,6 +375,7 @@ bool PictureThread::atomIspNotify(IAtomIspObserver::Message *msg, const Observer
         LOG2("@%s: thumbnailFrameId = %d, nv12metaFrameCount = %d", __FUNCTION__, thumbnailFrameId , nv12metaFrameCount);
         if (thumbnailFrameId == nv12metaFrameCount && thumbnailFrameId != 0) {
             LOG1("@%s: Copy frame for thumbnail. thumbnailFrameId = %d", __FUNCTION__, thumbnailFrameId);
+            mPictureDoneCallback->atPostviewPresent();
             Mutex::Autolock lock(mCapturePostViewBufLock);
 
             if (mCapturePostViewBuf.dataPtr != NULL) {

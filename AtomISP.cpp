@@ -2635,7 +2635,7 @@ status_t AtomISP::startOfflineCapture(ContinuousCaptureConfig &config)
     if (mHALZSLEnabled || mHALSDVEnabled)
         return OK;
 
-    if (!inContinuousMode()) {
+    if (!inContinuousMode() || mMode == MODE_CONTINUOUS_JPEG) {
         LOGE("@%s: invalid mode %d", __FUNCTION__, mMode);
         return INVALID_OPERATION;
     }
@@ -2678,7 +2678,7 @@ status_t AtomISP::startOfflineCapture(ContinuousCaptureConfig &config)
 status_t AtomISP::stopOfflineCapture()
 {
     LOG1("@%s", __FUNCTION__);
-    if (!inContinuousMode()) {
+    if (!inContinuousMode() || mMode == MODE_CONTINUOUS_JPEG) {
         LOGE("@%s: invalid mode %d", __FUNCTION__, mMode);
         return INVALID_OPERATION;
     }
@@ -2768,7 +2768,7 @@ status_t AtomISP::rawBufferCapture(int expId)
 
 bool AtomISP::isOfflineCaptureRunning() const
 {
-    if (inContinuousMode() && mMainDevice->isStarted())
+    if (inContinuousMode() && mMode != MODE_CONTINUOUS_JPEG && mMainDevice->isStarted())
         return true;
 
     return false;

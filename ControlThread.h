@@ -153,6 +153,7 @@ public:
 // callback methods
 private:
     virtual void previewBufferCallback(AtomBuffer *buff, ICallbackPreview::CallbackType t);
+    virtual void atPostviewPresent();
     virtual void encodingDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf);
     virtual void pictureDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf);
     virtual void postProcCaptureTrigger();

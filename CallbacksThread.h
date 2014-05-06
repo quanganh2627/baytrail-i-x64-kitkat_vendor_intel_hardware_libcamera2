@@ -33,6 +33,7 @@ class ICallbackPicture {
 public:
     ICallbackPicture() {}
     virtual ~ICallbackPicture() {}
+    virtual void atPostviewPresent() = 0;
     virtual void encodingDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf) = 0;
     virtual void pictureDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf) = 0;
 };
