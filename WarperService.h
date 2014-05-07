@@ -47,7 +47,9 @@ public:
     // Thread overrides
     status_t requestExitAndWait();
 
-    status_t  warpBackFrame(AtomBuffer *frame, double projective[PROJ_MTRX_DIM][PROJ_MTRX_DIM]);
+    status_t warpBackFrame(AtomBuffer *frame, double projective[PROJ_MTRX_DIM][PROJ_MTRX_DIM]);
+    status_t updateFrameDimensions(GLuint width, GLuint height);
+    status_t updateStatus(bool active);
 
 // prevent copy constructor and assignment operator
 private:
@@ -61,6 +63,8 @@ private:
       enum MessageId {
           MESSAGE_ID_EXIT = 0,            // call requestExitAndWait
           MESSAGE_ID_WARP_BACK_FRAME,
+          MESSAGE_ID_UPDATE_FRAME_DIMENSIONS,
+          MESSAGE_ID_UPDATE_STATUS,
           // max number of messages
           MESSAGE_ID_MAX
       };
@@ -74,9 +78,20 @@ private:
         double projective[PROJ_MTRX_DIM][PROJ_MTRX_DIM];
     };
 
+    struct MessageUpdateFrameDimensions {
+        GLuint width;
+        GLuint height;
+    };
+
+    struct MessageUpdateStatus {
+        bool active;
+    };
+
     // union of all message data
     union MessageData {
         MessageWarpBackFrame messageWarpBackFrame;
+        MessageUpdateFrameDimensions messageUpdateFrameDimensions;
+        MessageUpdateStatus messageUpdateStatus;
     };
 
     // message id and message data
@@ -90,6 +105,8 @@ private:
     // thread message execution functions
     status_t handleMessageExit();
     status_t handleMessageWarpBackFrame(MessageWarpBackFrame &msg);
+    status_t handleMessageUpdateFrameDimensions(MessageUpdateFrameDimensions &msg);
+    status_t handleMessageUpdateStatus(MessageUpdateStatus &msg);
 
     // main message function
     status_t waitForAndExecuteMessage();
@@ -104,6 +121,12 @@ private:
     MessageQueue<Message, MessageId> mMessageQueue;
     bool mThreadRunning;
     GPUWarper *mGPUWarper;
+
+    GLuint mWidth;
+    GLuint mHeight;
+
+    bool mFrameDimChanged;
+    bool mGPUWarperActive;
 };
 
 } /* namespace android */

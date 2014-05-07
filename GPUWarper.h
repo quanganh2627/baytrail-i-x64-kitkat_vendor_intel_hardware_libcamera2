@@ -46,6 +46,7 @@ private:
 public:
     status_t init();
     status_t warpBackFrame(AtomBuffer *frame, double projective[PROJ_MTRX_DIM][PROJ_MTRX_DIM]);
+    status_t updateFrameDimensions(GLuint width, GLuint height);
 
 // private methods
 private:

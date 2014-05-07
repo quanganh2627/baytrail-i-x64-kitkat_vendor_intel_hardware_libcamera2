@@ -27,6 +27,10 @@ WarperService::WarperService() :
         ,mMessageQueue("WarperService", MESSAGE_ID_MAX)
         ,mThreadRunning(false)
         ,mGPUWarper(NULL)
+        ,mWidth(0)
+        ,mHeight(0)
+        ,mFrameDimChanged(false)
+        ,mGPUWarperActive(false)
 {
     LOG1("@%s", __FUNCTION__);
 }
@@ -47,6 +51,25 @@ bool WarperService::threadLoop() {
     }
 
     return false;
+}
+
+status_t WarperService::updateFrameDimensions(GLuint width, GLuint height) {
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_UPDATE_FRAME_DIMENSIONS;
+    msg.data.messageUpdateFrameDimensions.width = width;
+    msg.data.messageUpdateFrameDimensions.height = height;
+
+    return mMessageQueue.send(&msg, MESSAGE_ID_UPDATE_FRAME_DIMENSIONS);
+}
+
+status_t WarperService::updateStatus(bool active) {
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_UPDATE_STATUS;
+    msg.data.messageUpdateStatus.active = active;
+
+    return mMessageQueue.send(&msg, MESSAGE_ID_UPDATE_STATUS);
 }
 
 status_t WarperService::warpBackFrame(AtomBuffer *frame, double projective[PROJ_MTRX_DIM][PROJ_MTRX_DIM]) {
@@ -72,25 +95,90 @@ status_t WarperService::warpBackFrame(AtomBuffer *frame, double projective[PROJ_
     return mMessageQueue.send(&msg, MESSAGE_ID_WARP_BACK_FRAME);
 }
 
+status_t WarperService::handleMessageUpdateFrameDimensions(MessageUpdateFrameDimensions &msg) {
+    LOG2("@%s", __FUNCTION__);
+
+    status_t status = NO_ERROR;
+
+    if (msg.width != mWidth || msg.height != mHeight) {
+        mWidth = msg.width;
+        mHeight = msg.height;
+        mFrameDimChanged = true;
+
+        if (mGPUWarperActive) {
+            if (mGPUWarper == NULL) {
+                LOGE("GPUWarper is not initialized.");
+                mMessageQueue.reply(MESSAGE_ID_UPDATE_FRAME_DIMENSIONS, INVALID_OPERATION);
+                return INVALID_OPERATION;
+            }
+
+            status = mGPUWarper->updateFrameDimensions(mWidth, mHeight);
+            if (status != NO_ERROR) {
+                mMessageQueue.reply(MESSAGE_ID_UPDATE_FRAME_DIMENSIONS, status);
+                return status;
+            }
+            mFrameDimChanged = false;
+        }
+    }
+
+    mMessageQueue.reply(MESSAGE_ID_UPDATE_FRAME_DIMENSIONS, OK);
+    return OK;
+}
+
+status_t WarperService::handleMessageUpdateStatus(MessageUpdateStatus &msg) {
+    LOG2("@%s", __FUNCTION__);
+
+    status_t status = NO_ERROR;
+
+    mGPUWarperActive = msg.active;
+
+    if (mGPUWarperActive) {
+
+        if (mGPUWarper == NULL) {
+            mGPUWarper = new GPUWarper(mWidth, mHeight, 64);
+            if (mGPUWarper == NULL) {
+                LOGE("Failed to create GPUWarper");
+                mGPUWarperActive = false;
+                mMessageQueue.reply(MESSAGE_ID_UPDATE_STATUS, NO_MEMORY);
+                return NO_MEMORY;
+            }
+
+            status = mGPUWarper->init();
+            if (status != NO_ERROR) {
+                mGPUWarperActive = false;
+                mMessageQueue.reply(MESSAGE_ID_UPDATE_STATUS, status);
+                return status;
+            }
+
+            LOG1("GPUWarper initialized.");
+
+        } else {
+            if (mFrameDimChanged) {
+                status = mGPUWarper->updateFrameDimensions(mWidth, mHeight);
+                if (status != NO_ERROR) {
+                    mMessageQueue.reply(MESSAGE_ID_UPDATE_STATUS, status);
+                    return status;
+                }
+
+                mFrameDimChanged = false;
+            }
+        }
+    }
+
+    mMessageQueue.reply(MESSAGE_ID_UPDATE_STATUS, OK);
+    return OK;
+}
+
 status_t WarperService::handleMessageWarpBackFrame(MessageWarpBackFrame &msg) {
     LOG2("@%s", __FUNCTION__);
 
     status_t status;
 
     if (mGPUWarper == NULL) {
-        mGPUWarper = new GPUWarper(msg.frame->width, msg.frame->height, 64);
-        if (mGPUWarper == NULL) {
-            LOGE("Failed to create GPUWarper");
-            mMessageQueue.reply(MESSAGE_ID_WARP_BACK_FRAME, UNKNOWN_ERROR);
-            return NO_MEMORY;
-        }
-
-        status = mGPUWarper->init();
-        if (status != NO_ERROR) {
-            mMessageQueue.reply(MESSAGE_ID_WARP_BACK_FRAME, status);
-            return status;
-        }
-
+        // GPUWarper should be initialized before entering this function
+        LOGE("GPUWarper is not initialized.");
+        mMessageQueue.reply(MESSAGE_ID_WARP_BACK_FRAME, INVALID_OPERATION);
+        return INVALID_OPERATION;
     }
 
     status = mGPUWarper->warpBackFrame(msg.frame, msg.projective);
@@ -115,6 +203,12 @@ status_t WarperService::waitForAndExecuteMessage() {
         break;
     case MESSAGE_ID_WARP_BACK_FRAME:
         status = handleMessageWarpBackFrame(msg.data.messageWarpBackFrame);
+        break;
+    case MESSAGE_ID_UPDATE_FRAME_DIMENSIONS:
+        status = handleMessageUpdateFrameDimensions(msg.data.messageUpdateFrameDimensions);
+        break;
+    case MESSAGE_ID_UPDATE_STATUS:
+        status = handleMessageUpdateStatus(msg.data.messageUpdateStatus);
         break;
     default:
         status = BAD_VALUE;

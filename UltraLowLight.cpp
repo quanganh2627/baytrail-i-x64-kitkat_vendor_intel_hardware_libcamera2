@@ -92,8 +92,10 @@ UltraLowLight::~UltraLowLight()
 void UltraLowLight::setMode(ULLMode aMode) {
 
     mUserMode = aMode;
-    if (mUserMode == ULL_ON)
+    if (mUserMode == ULL_ON) {
         mTrigger = true;
+        if (!PlatformData::isGraphicGen()) mWarper->updateStatus(true);
+    }
 }
 
 /**
@@ -857,8 +859,10 @@ bool UltraLowLight::updateTrigger(bool trigger)
     change = mTrigger == trigger ? false:true;
     mTrigger = trigger;
 
-    if (change)
+    if (change) {
         LOG1("New trigger: %s", mTrigger?"true":"false");
+        if (!PlatformData::isGraphicGen() && mUserMode != ULL_ON) mWarper->updateStatus(mTrigger);
+    }
 
     return change;
 }

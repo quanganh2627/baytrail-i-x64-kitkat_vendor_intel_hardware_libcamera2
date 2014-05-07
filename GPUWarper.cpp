@@ -1001,16 +1001,9 @@ status_t GPUWarper::warpBackFrame(AtomBuffer *frame, double projective[PROJ_MTRX
     }
 
     mStride = frame->bpl;
-
-    if (frame->width != int(mWidth) || frame->height != int(mHeight)) {
-
-        clearWarper();
-
-        mWidth = frame->width;
-        mHeight = frame->height;
-
-        status = setupWarper();
-        if(status != NO_ERROR) return status;
+    status = updateFrameDimensions(frame->width, frame->height);
+    if (status != NO_ERROR) {
+        return status;
     }
 
     mInFrame = (GLubyte *) frame->dataPtr;
@@ -1218,6 +1211,25 @@ void GPUWarper::RGBATexToREDorRG(GLuint iTexID, GLenum actTex, EGLImageKHR image
     glDisableVertexAttribArray(vertex_pos);
     glDisableVertexAttribArray(vertex_texCoord);
 
+}
+
+status_t GPUWarper::updateFrameDimensions(GLuint width, GLuint height) {
+
+    status_t status = NO_ERROR;
+
+    if (width != mWidth || height != mHeight) {
+
+        clearWarper();
+
+        mWidth = width;
+        mHeight = height;
+
+        status = setupWarper();
+
+        LOG1("Frame dimensions updated.");
+    }
+
+    return status;
 }
 
 } // namespace android

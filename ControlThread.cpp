@@ -7113,6 +7113,14 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
             }
         }
 
+        if (mWarperService != NULL) {
+            status = mWarperService->updateFrameDimensions(picWidth, picHeight);
+            if (status != NO_ERROR) {
+                LOGE("Failed to update Warper Service frame dimensions.");
+                goto exit;
+            }
+        }
+
     }
 
     mParameters = newParams;
