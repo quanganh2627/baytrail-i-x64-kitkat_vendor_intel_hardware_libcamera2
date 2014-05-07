@@ -92,7 +92,20 @@ const size_t NV12_META_AF_STATE_ADDR = 0x846;
 const size_t NV12_META_END_MARKER_ADDR = 0xFF4;
 const size_t NV12_META_TOP_OFFSET_ADDR  = 0x13E;
 const size_t NV12_META_LEFT_OFFSET_ADDR = 0x13C;
+const size_t NV12_META_FD_ONOFF_ADDR = 0x70;
+const size_t NV12_META_FD_COUNT_ADDR = 0x72;
+const size_t NV12_META_FIRST_FACE_ADDR = 0x74;
 
+const uint16_t NV12_META_MAX_FACE_COUNT = 16;
+
+struct __attribute__ ((__packed__)) NV12MetaFace {
+    int16_t xstart;
+    int16_t ystart;
+    int16_t xend;
+    int16_t yend;
+    uint16_t confidence;
+    uint16_t angle;
+};
 
 // NV12 META data
 const char NV12_META_START_MARKER[] =  "METADATA-START";

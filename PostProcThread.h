@@ -222,6 +222,8 @@ private:
     status_t handleMessageSetZoom(MessageConfig &msg);
     status_t handleMessageSetRotation(MessageConfig &msg);
 
+    status_t handleExtIspFaceDetection(AtomBuffer *auxBuf);
+
     // main message function
     status_t waitForAndExecuteMessage();
 
