@@ -25,7 +25,7 @@
 
 namespace android {
 
-static bool validateSize(int width, int height, Vector<Size> &supportedSizes)
+static bool validateSize(int width, int height, Vector<Size> &supportedSizes, bool onlyWarning)
 {
     if (width < 0 || height < 0)
         return false;
@@ -34,8 +34,13 @@ static bool validateSize(int width, int height, Vector<Size> &supportedSizes)
         if (width == it->width && height == it->height)
             return true;
 
-    LOGW("WARNING: The Size %dx%d is not fully supported. Some issues might occur!", width, height);
-    return true;
+    if (onlyWarning) {
+        LOGW("WARNING: The Size %dx%d is not fully supported. Some issues might occur!", width, height);
+        return true;
+    } else {
+        LOGE("Invalid size %dx%d is not in supported list.", width, height);
+        return false;
+    }
 }
 
 /**
@@ -181,6 +186,11 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
 {
     LOG1("@%s: oldparams= %p, params = %p", __FUNCTION__, oldParams, params);
 
+    bool sizeErrorOnlyWarning(true);
+    if (PlatformData::supportsContinuousJpegCapture(cameraId)) {
+        sizeErrorOnlyWarning = false;
+    }
+
     // READ-ONLY PARAMETERS
     if (!validateReadOnlyParameters(oldParams, params,
                                     // Google Parameters
@@ -285,7 +295,7 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
         supportedSizes.add(size6mp);
     }
     params->getPreviewSize(&width, &height);
-    if (!validateSize(width, height, supportedSizes)) {
+    if (!validateSize(width, height, supportedSizes, sizeErrorOnlyWarning)) {
         LOGE("bad preview size");
         return BAD_VALUE;
     }
@@ -306,7 +316,7 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
     params->getVideoSize(&width, &height);
     supportedSizes.clear();
     params->getSupportedVideoSizes(supportedSizes);
-    if (!validateSize(width, height, supportedSizes)) {
+    if (!validateSize(width, height, supportedSizes, sizeErrorOnlyWarning)) {
         LOGE("bad video size %dx%d", width, height);
         return BAD_VALUE;
     }
@@ -326,7 +336,7 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
     if (width == 0 && height == 0) {
         LOG2("@%s: snapshot size auto select HACK in use", __FUNCTION__);
     } else {
-        if (!validateSize(width, height, supportedSizes)) {
+        if (!validateSize(width, height, supportedSizes, sizeErrorOnlyWarning)) {
             LOGE("bad picture size");
             return BAD_VALUE;
         }
@@ -360,7 +370,7 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
                 break;
             ++thumbnailSizes;
         }
-        if (!validateSize(thumbWidth, thumbHeight, supportedSizes)) {
+        if (!validateSize(thumbWidth, thumbHeight, supportedSizes, sizeErrorOnlyWarning)) {
             LOGE("bad thumbnail size: (%d,%d)", thumbWidth, thumbHeight);
             return BAD_VALUE;
         }

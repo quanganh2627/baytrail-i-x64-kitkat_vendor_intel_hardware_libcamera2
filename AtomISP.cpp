@@ -313,7 +313,7 @@ status_t AtomISP::init()
      */
     setSnapshotFrameFormat(formatDescriptorSs);
 
-    setVideoFrameFormat(RESOLUTION_VGA_WIDTH, RESOLUTION_VGA_HEIGHT, V4L2_PIX_FMT_NV12);
+    setVideoFrameFormat(mConfig.recordingLimits.maxWidth, mConfig.recordingLimits.maxHeight, V4L2_PIX_FMT_NV12);
 
     status = computeZoomRatios();
     fetchIspVersions();
