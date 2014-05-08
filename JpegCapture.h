@@ -98,15 +98,6 @@ const size_t NV12_META_FIRST_FACE_ADDR = 0x74;
 
 const uint16_t NV12_META_MAX_FACE_COUNT = 16;
 
-struct __attribute__ ((__packed__)) NV12MetaFace {
-    int16_t xstart;
-    int16_t ystart;
-    int16_t xend;
-    int16_t yend;
-    uint16_t confidence;
-    uint16_t angle;
-};
-
 // NV12 META data
 const char NV12_META_START_MARKER[] =  "METADATA-START";
 const char NV12_META_END_MARKER[] = "METADATA-END";

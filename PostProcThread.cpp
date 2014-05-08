@@ -101,7 +101,10 @@ void PostProcThread::getDefaultParameters(CameraParameters *params, CameraParame
         return;
     }
     // Set maximum number of detectable faces
-    params->set(CameraParameters::KEY_MAX_NUM_DETECTED_FACES_HW, MAX_FACES_DETECTABLE);
+    if (PlatformData::supportsContinuousJpegCapture(cameraId))
+        params->set(CameraParameters::KEY_MAX_NUM_DETECTED_FACES_HW, NV12_META_MAX_FACE_COUNT);
+    else
+        params->set(CameraParameters::KEY_MAX_NUM_DETECTED_FACES_HW, MAX_FACES_DETECTABLE);
     intel_params->set(IntelCameraParameters::KEY_SMILE_SHUTTER_THRESHOLD, STRINGIFY(SMILE_THRESHOLD));
     intel_params->set(IntelCameraParameters::KEY_BLINK_SHUTTER_THRESHOLD, STRINGIFY(BLINK_THRESHOLD));
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SMILE_SHUTTER, PlatformData::supportedSmileShutter(cameraId));
@@ -866,8 +869,7 @@ status_t PostProcThread::handleExtIspFaceDetection(AtomBuffer *auxBuf)
     face_metadata.faces = faces;
     face_metadata.number_of_faces = numFaces;
 
-    NV12MetaFace *nv12Faces = (NV12MetaFace *)(((unsigned char*)auxBuf->dataPtr) + NV12_META_FIRST_FACE_ADDR);
-    for (int i = 0; i < numFaces; i++) {
+    for (int i = 0, addr = 0; i < numFaces; i++) {
         // unsupported fields
         faces[i].id = 0;
         faces[i].left_eye[0]  = faces[i].left_eye[1]  = -2000;
@@ -875,11 +877,18 @@ status_t PostProcThread::handleExtIspFaceDetection(AtomBuffer *auxBuf)
         faces[i].mouth[0]     = faces[i].mouth[1]     = -2000;
 
         // supported fields
-        faces[i].score   = nv12Faces[i].confidence + 1; /* android valid range is 1 to 100. ext isp provides 0 to 99 */
-        faces[i].rect[0] = nv12Faces[i].xstart;
-        faces[i].rect[1] = nv12Faces[i].ystart;
-        faces[i].rect[2] = nv12Faces[i].xend;
-        faces[i].rect[3] = nv12Faces[i].yend;
+        faces[i].rect[0] = (int16_t) getU16fromFrame(nv12meta, NV12_META_FIRST_FACE_ADDR + addr);
+        addr += 2;
+        faces[i].rect[1] = (int16_t) getU16fromFrame(nv12meta, NV12_META_FIRST_FACE_ADDR + addr);
+        addr += 2;
+        faces[i].rect[2] = (int16_t) getU16fromFrame(nv12meta, NV12_META_FIRST_FACE_ADDR + addr);
+        addr += 2;
+        faces[i].rect[3] = (int16_t) getU16fromFrame(nv12meta, NV12_META_FIRST_FACE_ADDR + addr);
+        addr += 2;
+        faces[i].score   = (int16_t) getU16fromFrame(nv12meta, NV12_META_FIRST_FACE_ADDR + addr) + 1; /* android valid range is 1 to 100. ext isp provides 0 to 99 */
+        addr += 2;
+        // skip the angle
+        addr += 2;
     }
     // send face info towards the application
     mpListener->facesDetected(&face_metadata);

@@ -1301,9 +1301,10 @@ skip_displaying:
         GfxAtomBuffer *outputBuffer = dequeueFromWindow();
         if (outputBuffer) {
             outputBuffer->owner = OWNER_CLIENT;
-            // restore the owner and state of input AtomBuffer to output
+            // restore the owner, state and aux buf of input AtomBuffer to output
             outputBuffer->buffer.owner = msg->buff.owner;
             outputBuffer->buffer.status = msg->buff.status;
+            outputBuffer->buffer.auxBuf = msg->buff.auxBuf;
             if (!outputBufferCallback(&outputBuffer->buffer))
                 msg->buff.owner->returnBuffer(&outputBuffer->buffer);
         }
