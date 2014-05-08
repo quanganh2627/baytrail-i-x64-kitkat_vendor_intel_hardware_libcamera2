@@ -459,6 +459,9 @@ status_t ControlThread::init()
     msg.params = mParamCache;
     handleMessageSetParameters(&msg);
 
+    // set preview update mode from platform data
+    processPreviewUpdateMode(&mParameters, &mIntelParameters);
+
     return NO_ERROR;
 
 bail:
@@ -2614,8 +2617,10 @@ status_t ControlThread::handleMessageSetPreviewWindow(MessagePreviewWindow *msg)
         && currentState != PreviewThread::STATE_STOPPED) {
         // preview was started windowless, force back to standard and make it public
         mPreviewUpdateMode = IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD;
-        mParameters.set(IntelCameraParameters::KEY_PREVIEW_UPDATE_MODE,
-                        IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD);
+        if (mIntelParamsAllowed) {
+            mParameters.set(IntelCameraParameters::KEY_PREVIEW_UPDATE_MODE,
+                            IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD);
+        }
         // stop preview
         bool faceActive = mFaceDetectionActive;
         stopFaceDetection(true);
