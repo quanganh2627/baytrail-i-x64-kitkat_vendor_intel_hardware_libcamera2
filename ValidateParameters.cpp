@@ -323,9 +323,13 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
     params->getPictureSize(&width, &height);
     supportedSizes.clear();
     params->getSupportedPictureSizes(supportedSizes);
-    if (!validateSize(width, height, supportedSizes)) {
-        LOGE("bad picture size");
-        return BAD_VALUE;
+    if (width == 0 && height == 0) {
+        LOG2("@%s: snapshot size auto select HACK in use", __FUNCTION__);
+    } else {
+        if (!validateSize(width, height, supportedSizes)) {
+            LOGE("bad picture size");
+            return BAD_VALUE;
+        }
     }
 
     // JPEG QUALITY
