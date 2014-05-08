@@ -65,7 +65,7 @@ const size_t HDR_INFO_COUNT_ADDR = 0x10;
 
 // HDR INFO DATA
 const char HDR_INFO_MODE_HDR = 0x10;
-const char HDR_INFO_MODE_LSS = 0x20;
+const char HDR_INFO_MODE_LLS = 0x20;
 
 // JPEG INFO data
 const char JPEG_INFO_START_MARKER[] =  "JPEG INFO-START";

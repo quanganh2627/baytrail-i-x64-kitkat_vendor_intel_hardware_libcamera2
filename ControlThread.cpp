@@ -1772,7 +1772,7 @@ ControlThread::ShootingMode ControlThread::selectShootingMode()
 
         case STATE_JPEG_CAPTURE:
             if (mHdr.enabled)
-                ret = SHOOTING_MODE_EXTISP_HDR_LSS;
+                ret = SHOOTING_MODE_EXTISP_HDR_LLS;
             else
                 ret = SHOOTING_MODE_JPEG;
             break;
@@ -2998,8 +2998,8 @@ status_t ControlThread::handleMessageTakePicture() {
             status = captureJpegPic();
             break;
 
-        case SHOOTING_MODE_EXTISP_HDR_LSS:
-            status = captureExtIspHDRLSSPic();
+        case SHOOTING_MODE_EXTISP_HDR_LLS:
+            status = captureExtIspHDRLLSPic();
             break;
 
         default:
@@ -4289,12 +4289,12 @@ exit:
     return status;
 }
 
-status_t ControlThread::captureExtIspHDRLSSPic()
+status_t ControlThread::captureExtIspHDRLLSPic()
 {
     LOG1("@%s: ", __FUNCTION__);
     status_t status = OK;
 
-    // pause preview observer, because extisp preview dies during HDR/LSS capture anyway,
+    // pause preview observer, because extisp preview dies during HDR/LLS capture anyway,
     // plus we want full control here for grabbing the frames (incl. preview for thumb)
     mISP->pauseObserver(OBSERVE_PREVIEW_STREAM);
 
@@ -4308,7 +4308,7 @@ status_t ControlThread::captureExtIspHDRLSSPic()
     bool requestRawCallback = true;
     mCallbacksThread->requestTakePicture(requestPostviewCallback, requestRawCallback, syncJpegCbWithPostview);
 
-    // request the capture - note preview dies in HDR/LSS mode, so we don't seem to get
+    // request the capture - note preview dies in HDR/LLS mode, so we don't seem to get
     // reliably a preview frame for thumb before the YUV images for HDR
     mISP->requestJpegCapture();
 
@@ -4345,7 +4345,7 @@ status_t ControlThread::captureExtIspHDRLSSPic()
             yuvBuffers[frameIndex] = buffer; // store (copy) AtomBuffer
 
             if ((hdrinfo[HDR_INFO_MODE_ADDR] == HDR_INFO_MODE_HDR && frameIndex == 0x02) ||
-                (hdrinfo[HDR_INFO_MODE_ADDR] == HDR_INFO_MODE_LSS && frameIndex == 0x04)) {
+                (hdrinfo[HDR_INFO_MODE_ADDR] == HDR_INFO_MODE_LLS && frameIndex == 0x04)) {
                 // restart preview so that we get something for thumbnail
                 mHwcg.mIspCI->setHDR(2);
                 // get preview frame for thumbnail
@@ -4353,13 +4353,13 @@ status_t ControlThread::captureExtIspHDRLSSPic()
 
                 mISP->startObserver(OBSERVE_PREVIEW_STREAM); // this can be left out if preview needs to stay stopped
                 succesfull = true;
-                // TODO FIXME this needs to be removed, this is here just because the processing HDR/LSS and return path is not implemented yet
+                // TODO FIXME this needs to be removed, this is here just because the processing HDR/LLS and return path is not implemented yet
                 mISP->putSnapshot(&buffer, NULL);
 
                 break; // out of for-loop
             }
 
-            // TODO FIXME this needs to be removed, this is here just because the processing HDR/LSS and return path is not implemented yet
+            // TODO FIXME this needs to be removed, this is here just because the processing HDR/LLS and return path is not implemented yet
             mISP->putSnapshot(&buffer, NULL);
 
         } else
@@ -4375,22 +4375,22 @@ status_t ControlThread::captureExtIspHDRLSSPic()
     }
 
     // now, the yuvBuffers are properly captured in the array "yuvBuffers", and
-    // "buffer" has the preview frame for thumbnail. TODO: Process HDR/LSS
+    // "buffer" has the preview frame for thumbnail. TODO: Process HDR/LLS
     // preferably in some other thread than ControlThread, then send
     // result to encoding, and handle returning of the buffers to AtomISP.
     switch (hdrinfo[HDR_INFO_MODE_ADDR]) {
         case HDR_INFO_MODE_HDR:
             LOGW("HDR processing not implemented yet!");
             break;
-        case HDR_INFO_MODE_LSS:
-            LOGW("LSS processing not implemented yet!");
+        case HDR_INFO_MODE_LLS:
+            LOGW("LLS processing not implemented yet!");
             break;
         default:
-            LOGE("Unknown & unimplemented mode encountered in HDR/LSS processing");
+            LOGE("Unknown & unimplemented mode encountered in HDR/LLS processing");
             break;
     }
 
-    LOG1("@%s: HDR/LSS DONE!", __FUNCTION__);
+    LOG1("@%s: HDR/LLS DONE!", __FUNCTION__);
 
     return status;
 }
