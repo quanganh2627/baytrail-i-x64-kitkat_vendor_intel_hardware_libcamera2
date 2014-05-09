@@ -46,16 +46,19 @@ status_t PlatformBase::getSensorNames(Vector<String8>& names)
 
     status_t ret = NO_ERROR;
     int i = 0;
+    int newIndex = 0;
     String8 sensorName;
     ssize_t idx;
     struct v4l2_input input;
+    atomisp_camera_port ispPort;
 
-    V4L2VideoNode *mainDevice = new V4L2VideoNode("/dev/video0", 0);
+    sp<V4L2VideoNode> mainDevice = new V4L2VideoNode("/dev/video0", 0);
     if (mainDevice->open() != NO_ERROR) {
         LOGE("@%s, Failed to open first device!", __FUNCTION__);
         return NO_INIT;
     }
 
+    names.resize(ATOMISP_CAMERA_NR_PORTS); // Reserve space for reordering.
     while (ret == NO_ERROR) {
         idx = -1;
         CLEAR(input);
@@ -68,8 +71,31 @@ status_t PlatformBase::getSensorNames(Vector<String8>& names)
                 sensorName.append((const char*)input.name);
             else
                 sensorName.append((const char*)input.name, idx);
-            names.push(sensorName);
-            LOG1("@%s: %s at index %d", __FUNCTION__, sensorName.string(), i);
+
+            // Make sure sensors are ordered.
+            // First three slots are reserved for primary, secondary, and
+            // tertiary cameras respectively. Rest are pushed at the end.
+            ispPort = (atomisp_camera_port)input.reserved[1];
+            switch (ispPort) {
+            case ATOMISP_CAMERA_PORT_PRIMARY:
+                newIndex = 0;
+                break;
+            case ATOMISP_CAMERA_PORT_SECONDARY:
+                newIndex = 1;
+                break;
+            case ATOMISP_CAMERA_PORT_TERTIARY:
+                newIndex = 2;
+                break;
+            default:
+                newIndex = -1;
+                break;
+            }
+
+            if ( newIndex == -1 )
+                newIndex = names.add(sensorName);
+            else
+                names.replaceAt(sensorName, newIndex);
+            LOG1("@%s: %s at index %d (was %d)", __FUNCTION__, sensorName.string(), newIndex, i);
             i++;
         }
     }
@@ -78,6 +104,13 @@ status_t PlatformBase::getSensorNames(Vector<String8>& names)
         ret = NO_ERROR;
     } else {
         LOGE("@%s: Device input enumeration failed for sensor index %d (err = %d)", __FUNCTION__, i,  ret);
+    }
+
+    // It is possible there is no primary (or secondary) sensor.
+    // Remove empty items from the array.
+    for (i = names.size() - 1; i >= 0; --i) {
+        if (names[i].isEmpty())
+            names.removeAt(i);
     }
 
     mainDevice->close();
