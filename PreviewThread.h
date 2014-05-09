@@ -25,6 +25,7 @@
 #include "AtomCommon.h"
 #include "IAtomIspObserver.h"
 #include "HALVideoStabilization.h"
+#include "CamHeapMem.h"
 
 namespace android {
 
@@ -162,6 +163,19 @@ public:
 
 // private types
 private:
+    // fake heap for avoiding memory copy for preview callbacks with buffers from gralloc
+    class FakeHeap : public MemoryHeapBase {
+    public:
+        FakeHeap(int size, void *ptr) : mSize(size), mPtr(ptr) {};
+        virtual ~FakeHeap() {};
+        int         getHeapID() const { return 0; }
+        void*       getBase() const { return mPtr; }
+        size_t      getSize() const { return mSize; }
+        uint32_t    getFlags() const { return 0; }
+        uint32_t    getOffset() const { return 0; }
+        int mSize;
+        void *mPtr;
+    };
 
     // thread message id's
     enum MessageId {
@@ -360,6 +374,7 @@ private:
     int mRotation;   /*!< Relative rotation of the camera scan order to
                           the display attached to overlay plane */
     bool mHALVideoStabilization;
+    sp<CameraHeapMemory> *mFakeHeaps;
 }; // class PreviewThread
 
 }; // namespace android

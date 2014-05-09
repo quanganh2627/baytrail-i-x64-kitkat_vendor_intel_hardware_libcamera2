@@ -37,6 +37,7 @@
 #include "IDvs.h"
 #include "SensorHW.h"
 #include "SensorEmbeddedMetaData.h"
+#include "CamHeapMem.h"
 
 namespace android {
 

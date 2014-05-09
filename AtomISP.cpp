@@ -34,9 +34,6 @@
 #include <linux/atomisp.h>
 #include "HALVideoStabilization.h"
 #include "PerformanceTraces.h"
-#include <binder/IMemory.h>
-#include <binder/MemoryBase.h>
-#include <binder/MemoryHeapBase.h>
 
 #define DEFAULT_SENSOR_FPS      15.0
 #define DEFAULT_PREVIEW_FPS     30.0
@@ -4840,7 +4837,7 @@ void AtomISP::initBufferArray(AtomBuffer *buffers, AtomBuffer &formatDescriptor,
 status_t AtomISP::allocateMultiStreamsHALZSLBuffers()
 {
     LOG1("@%s", __FUNCTION__);
-    int i;
+    int i = 0;
     status_t status = NO_ERROR;
     void *bufPool[sNumHALZSLBuffers];
 
@@ -5190,33 +5187,6 @@ void AtomISP::initMetaDataBuf(IntelMetadataBuffer* metaDatabuf)
 
 }
 #endif
-
-/**
- * Have to copy this private class here because we want to access the MemoryBase object
- * which is hiding in the handle of camera_memory_t
- * It's for camera recording to share MemoryHeap buffer only.
- * FIXME: remove it if we are able to share graphic buffer in the fulture
- */
-class CameraHeapMemory : public RefBase {
-public:
-    CameraHeapMemory(int fd, size_t buf_size, uint_t num_buffers = 1) :
-        mBufSize(buf_size),
-        mNumBufs(num_buffers) {}
-
-    CameraHeapMemory(size_t buf_size, uint_t num_buffers = 1) :
-        mBufSize(buf_size),
-        mNumBufs(num_buffers) {}
-
-    void commonInitialization() {}
-
-    virtual ~CameraHeapMemory() {}
-
-    size_t mBufSize;
-    uint_t mNumBufs;
-    sp<MemoryHeapBase> mHeap;
-    sp<MemoryBase> *mBuffers;
-    camera_memory_t handle;
-};
 
 status_t AtomISP::allocateMetaDataBuffers(AtomBuffer *buffers, int numBuffers)
 {

@@ -30,8 +30,16 @@
 #include "nv12rotation.h"
 #include "PlatformData.h"
 #include "MemoryUtils.h"
+#ifndef GRAPHIC_IS_GEN
+#include <hal_public.h>
+#else
+#include <ufo/graphics.h>
+#include "VAScaler.h"
+#endif
 
 namespace android {
+
+void release_camera_memory_t(struct camera_memory *mem) { delete mem; }
 
 PreviewThread::PreviewThread(sp<CallbacksThread> callbacksThread, Callbacks* callbacks) :
     Thread(true) // callbacks may call into java
@@ -59,6 +67,7 @@ PreviewThread::PreviewThread(sp<CallbacksThread> callbacksThread, Callbacks* cal
     ,mOverlayEnabled(false)
     ,mRotation(0)
     ,mHALVideoStabilization(false)
+    ,mFakeHeaps(0)
 {
     LOG1("@%s", __FUNCTION__);
     mPreviewBuffers.setCapacity(MAX_NUMBER_PREVIEW_GFX_BUFFERS);
@@ -67,6 +76,10 @@ PreviewThread::PreviewThread(sp<CallbacksThread> callbacksThread, Callbacks* cal
 PreviewThread::~PreviewThread()
 {
     LOG1("@%s", __FUNCTION__);
+    for (uint32_t i = 0; i < mNumOfPreviewBuffers; i++) {
+        mFakeHeaps[i].clear();
+    }
+    delete[] mFakeHeaps;
     mDebugFPS.clear();
     freeGfxPreviewBuffers();
     freeLocalPreviewBuf();
@@ -1119,6 +1132,8 @@ status_t PreviewThread::handlePreviewCallback(AtomBuffer &srcBuff)
         allocateLocalPreviewBuf();
     }
 
+    AtomBuffer *callbackBuffer = &mPreviewBuf;
+
     if (mCallbacks->msgTypeEnabled(CAMERA_MSG_PREVIEW_FRAME) && mPreviewBuf.dataPtr) {
         void *src = srcBuff.dataPtr;
         int src_bpl = srcBuff.bpl;
@@ -1146,14 +1161,16 @@ status_t PreviewThread::handlePreviewCallback(AtomBuffer &srcBuff)
             break;
 
         case V4L2_PIX_FMT_NV21: // you need to do this for the first time
-            if (mPreviewBuf.width  == RESOLUTION_6MP_WIDTH &&
-                mPreviewBuf.height == RESOLUTION_6MP_HEIGHT) {
-                // for ext isp 6MP preview, allow NV12 for panorama resolution.
-                memcpy(mPreviewBuf.dataPtr, srcBuff.dataPtr, srcBuff.size);
-            } else
+            if (srcBuff.fourcc == HAL_PIXEL_FORMAT_YCbCr_420_SP) {
+                if (srcBuff.bpl == srcBuff.width)
+                    callbackBuffer = &srcBuff; // zero-copy, already NV21
+                else
+                    copyNV21ToNV21(srcBuff.width, srcBuff.height, srcBuff.bpl, srcBuff.width, (char*) src, (char *) mPreviewBuf.dataPtr);
+            } else {
                 convertBuftoNV21(mPreviewFourcc, mPreviewBuf.width,
                                  mPreviewBuf.height, src_bpl,
                                  mPreviewBuf.bpl, src, mPreviewBuf.dataPtr);
+            }
             break;
         case V4L2_PIX_FMT_RGB565:
             if (mPreviewFourcc == V4L2_PIX_FMT_NV12)
@@ -1166,7 +1183,7 @@ status_t PreviewThread::handlePreviewCallback(AtomBuffer &srcBuff)
             break;
         }
         if (status == NO_ERROR)
-            mCallbacksThread->previewFrameDone(&mPreviewBuf);
+            mCallbacksThread->previewFrameDone(callbackBuffer);
     }
 
     return status;
@@ -1525,6 +1542,7 @@ status_t PreviewThread::handleSetPreviewConfig(MessageSetPreviewConfig *msg)
 
     if (status == NO_ERROR) {
         mNumOfPreviewBuffers = bufferCount;
+        mFakeHeaps = new sp<CameraHeapMemory>[bufferCount];
         status = fetchReservedBuffers(reservedBufferCount);
     }
 
@@ -1607,6 +1625,26 @@ status_t PreviewThread::handleFetchPreviewBuffers()
             }
 
             tmpBuf.dataPtr = mapperPointer.ptr;
+
+            if (tmpBuf.width == RESOLUTION_6MP_WIDTH &&
+                tmpBuf.height == RESOLUTION_6MP_HEIGHT) {
+                // ATM, not all use cases use NV21, but the ext-isp 6MP preview does
+                tmpBuf.fourcc = HAL_PIXEL_FORMAT_YCbCr_420_SP;
+                // fake heap is for callbacks and thus stride has to match width
+                // thus size calculation is w*h*3/2
+                int fakeHeapSize = tmpBuf.width * tmpBuf.height * 3 / 2;
+                // create fake heap
+                CameraHeapMemory *camHeap = new CameraHeapMemory(fakeHeapSize, 1);
+                // store in sp<CameraHeapMemory> for destruction
+                mFakeHeaps[tmpBuf.id] = camHeap;
+                camHeap->mHeap = new FakeHeap(fakeHeapSize, tmpBuf.dataPtr);
+                camHeap->commonInitialization();
+                tmpBuf.buff = new camera_memory_t();
+                tmpBuf.buff->release = release_camera_memory_t;
+                tmpBuf.buff->handle = camHeap;
+                tmpBuf.buff->size = fakeHeapSize;
+                tmpBuf.buff->data = tmpBuf.dataPtr;
+            }
 
             GfxAtomBuffer newBuf;
             newBuf.buffer = tmpBuf;

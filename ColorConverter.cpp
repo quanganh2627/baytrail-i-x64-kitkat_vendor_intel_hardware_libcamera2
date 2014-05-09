@@ -209,6 +209,17 @@ void copyYV12ToYV12(int width, int height, int srcBpl, int dstBpl, void *src, vo
     }
 }
 
+// copy NV21 to NV21 (Y plane, VU interleaved) in case of different bpl length
+void copyNV21ToNV21(int width, int height, int srcBpl, int dstBpl, char *src, char *dst)
+{
+    int copyHeight = height * 3 / 2;
+    while (copyHeight--) {
+        memcpy(dst, src, width);
+        src += srcBpl;
+        dst += dstBpl;
+    }
+}
+
 // covert NV12 (Y plane, interlaced UV bytes) to
 // NV21 (Y plane, interlaced VU bytes) and trim bpl to real width
 void trimConvertNV12ToNV21(int width, int height, int srcBpl, void *src, void *dst)
