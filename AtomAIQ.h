@@ -381,6 +381,7 @@ public:
     status_t setSmartSceneDetection(bool en);
     bool     getSmartSceneDetection();
     status_t getSmartSceneMode(String8 &sceneMode, bool &sceneHdr);
+    virtual void setFaceDetection(bool enabled) { return; /* No-op in Intel AIQ */ }
     status_t setFaces(const ia_face_state& faceState);
 
     status_t getGridWindow(AAAWindowInfo& window);

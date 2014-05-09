@@ -8026,6 +8026,9 @@ status_t ControlThread::startFaceDetection()
         LOGE("starting FD in stop state");
         return INVALID_OPERATION;
     }
+
+    m3AControls->setFaceDetection(true);
+
     if (mPostProcThread != 0) {
         mPostProcThread->startFaceDetection();
         mFaceDetectionActive = true;
@@ -8043,6 +8046,7 @@ status_t ControlThread::stopFaceDetection(bool wait)
         return NO_ERROR;
     }
 
+    m3AControls->setFaceDetection(false);
     mFaceDetectionActive = false;
     disableMsgType(CAMERA_MSG_PREVIEW_METADATA);
     if (mPostProcThread != 0) {

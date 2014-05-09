@@ -36,6 +36,8 @@ public:
 
     virtual status_t setAfWindows(CameraWindow *windows, size_t numWindows, const AAAWindowInfo *convWindow = NULL);
 
+    virtual void setFaceDetection(bool enabled);
+
 // prevent copy constructor and assignment operator
 private:
     AtomExtIsp3A(const AtomExtIsp3A& other);
@@ -50,6 +52,7 @@ private:
     IHWLensControl *mLensCI;
     AeMode mPublicAeMode;
     int mDrvAfMode;
+    bool mFaceDetectionActive;
 };
 
 } // namespace android

@@ -29,6 +29,7 @@ AtomExtIsp3A::AtomExtIsp3A(int cameraId, HWControlGroup &hwcg)
     ,mFlashCI(hwcg.mFlashCI)
     ,mLensCI(hwcg.mLensCI)
     ,mDrvAfMode(-1)
+    ,mFaceDetectionActive(false)
 {
 
 }
@@ -63,7 +64,7 @@ status_t AtomExtIsp3A::setAfMode(AfMode mode)
             break;
             // TODO: Support both movie and still/preview CAF (AtomAIQ)
         case CAM_AF_MODE_CONTINUOUS:
-            modeTmp = EXT_ISP_FOCUS_MODE_PREVIEW_CAF;
+            modeTmp = mFaceDetectionActive ? EXT_ISP_FOCUS_MODE_FACE_CAF : EXT_ISP_FOCUS_MODE_PREVIEW_CAF;
             break;
         case CAM_AF_MODE_AUTO:
             // For m10mo AF MODE "auto" == "normal"
@@ -78,6 +79,8 @@ status_t AtomExtIsp3A::setAfMode(AfMode mode)
     // TODO: Set FACE mode in setFaceDetection function
 
     // TODO: If the sensor does not support the setting, we should return NO_ERROR
+
+    // TODO: Check do we need setAfEnabled() always when AF mode changes?
 
     int ret = mSensorCI->setAfMode(modeTmp);
     if (ret != 0) {
@@ -215,5 +218,33 @@ status_t AtomExtIsp3A::setAfWindows(CameraWindow *windows, size_t numWindows, co
 
 
 
+
+void AtomExtIsp3A::setFaceDetection(bool enabled)
+{
+    LOG1("@%s", __FUNCTION__);
+    AfMode currAfMode = getAfMode();
+
+    mFaceDetectionActive = enabled;
+
+    // TODO: movie CAF and face detection?
+    // - We do not support face detection in video currently...
+    if (enabled && currAfMode == CAM_AF_MODE_CONTINUOUS) {
+        // If current AF is continuous, set the AF mode to FACE_CAF
+        int ret = mSensorCI->setAfMode(EXT_ISP_FOCUS_MODE_FACE_CAF);
+
+        if (ret != 0) {
+            LOGE("Error setting FACE AF mode in the driver");
+            return;
+        }
+
+        mDrvAfMode = EXT_ISP_FOCUS_MODE_FACE_CAF;
+    } else if (!enabled) {
+        // FD got disabled, reset to current "normal" AF mode
+        setAfMode(currAfMode);
+    }
+
+    // Explicitly need AF_START to go into the set CAF mode
+    setAfEnabled(true);
+}
 
 } // namespace android

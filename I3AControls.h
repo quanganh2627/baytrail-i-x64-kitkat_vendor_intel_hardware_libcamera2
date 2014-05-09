@@ -241,6 +241,7 @@ public:
     virtual void setPublicAeMode(AeMode mode) = 0;
     virtual AeMode getPublicAeMode() = 0;
     virtual AfStatus getCAFStatus() = 0;
+    virtual void setFaceDetection(bool enabled) = 0;
     virtual status_t setFaces(const ia_face_state& faceState) = 0;
     virtual status_t setFlash(int numFrames) = 0;
     virtual status_t getGBCEResults(ia_aiq_gbce_results *gbce_results) = 0;

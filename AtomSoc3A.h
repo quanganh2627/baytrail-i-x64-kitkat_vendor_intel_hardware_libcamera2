@@ -139,6 +139,7 @@ public:
 
     virtual AfStatus getCAFStatus() { return CAM_AF_STATUS_FAIL; }
     status_t getSmartSceneMode(String8 &sceneMode, bool &sceneHdr) { return INVALID_OPERATION; }
+    virtual void setFaceDetection(bool enabled) { return; }
     status_t setFaces(const ia_face_state& faceState) { return INVALID_OPERATION; }
     status_t setFlash(int numFrames);
     virtual bool getAeUllTrigger() { return false; }
