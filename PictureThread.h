@@ -218,8 +218,8 @@ private:
                                      resolution than the image requested by the client */
     AtomBuffer      mFirstPartBuf;
 
-    AtomBuffer      mCapturePostViewBuf;
-    Mutex           mCapturePostViewBufLock; // protect mCapturePostViewBuf
+    List<AtomBuffer> mCapturePostViewBufList;
+    Mutex            mCapturePostViewBufListLock; // protect mCapturePostViewBufList
 
     /*
      * The resolution below is set up during initialize in case the receiving buffer

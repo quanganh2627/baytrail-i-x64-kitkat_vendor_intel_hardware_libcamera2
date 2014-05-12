@@ -50,7 +50,6 @@ PictureThread::PictureThread(I3AControls *aaaControls, sp<ScalerService> scaler,
     ,mThumbBuf(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW))
     ,mScaledPic(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT))
     ,mFirstPartBuf(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT))
-    ,mCapturePostViewBuf(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW))
     ,mPictureQuality(80)
     ,mThumbnailQuality(50)
     ,mInputBufferArray(NULL)
@@ -93,8 +92,12 @@ PictureThread::~PictureThread()
     LOG2("@%s: release mScaledPic", __FUNCTION__);
     MemoryUtils::freeAtomBuffer(mScaledPic);
 
-    LOG2("@%s: release mCapturePostViewBuf", __FUNCTION__);
-    MemoryUtils::freeAtomBuffer(mCapturePostViewBuf);
+    LOG2("@%s: release mCapturePostViewBufList", __FUNCTION__);
+    List<AtomBuffer>::iterator it = mCapturePostViewBufList.begin();
+    while (it != mCapturePostViewBufList.end()) {
+        MemoryUtils::freeAtomBuffer(*it);
+        it = mCapturePostViewBufList.erase(it); // returns pointer to next item in list
+    }
 
     LOG2("@%s: release InputBuffers", __FUNCTION__);
     freeInputBuffers();
@@ -376,21 +379,20 @@ bool PictureThread::atomIspNotify(IAtomIspObserver::Message *msg, const Observer
         if (thumbnailFrameId == nv12metaFrameCount && thumbnailFrameId != 0) {
             LOG1("@%s: Copy frame for thumbnail. thumbnailFrameId = %d", __FUNCTION__, thumbnailFrameId);
             mPictureDoneCallback->atPostviewPresent();
-            Mutex::Autolock lock(mCapturePostViewBufLock);
-
-            if (mCapturePostViewBuf.dataPtr != NULL) {
-                LOGE("mCapturePostViewBuf not released. Should not happen.");
-                MemoryUtils::freeAtomBuffer(mCapturePostViewBuf);
-
+            AtomBuffer capturePostViewBuf(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW));
+            capturePostViewBuf.fourcc = msg->data.frameBuffer.buff.fourcc;
+            capturePostViewBuf.width = msg->data.frameBuffer.buff.width;
+            capturePostViewBuf.height = msg->data.frameBuffer.buff.height;
+            capturePostViewBuf.bpl = msg->data.frameBuffer.buff.bpl;
+            capturePostViewBuf.id = thumbnailFrameId;
+            mCallbacks->allocateMemory(&capturePostViewBuf, msg->data.frameBuffer.buff.size);
+            if (capturePostViewBuf.dataPtr == NULL) {
+                LOGE("Failed to allocate memory for capturePostViewBuf");
+            } else {
+                memcpy(capturePostViewBuf.dataPtr, msg->data.frameBuffer.buff.dataPtr, capturePostViewBuf.size);
+                Mutex::Autolock lock(mCapturePostViewBufListLock);
+                mCapturePostViewBufList.push_back(capturePostViewBuf);
             }
-
-            mCapturePostViewBuf.fourcc = msg->data.frameBuffer.buff.fourcc;
-            mCapturePostViewBuf.width = msg->data.frameBuffer.buff.width;
-            mCapturePostViewBuf.height = msg->data.frameBuffer.buff.height;
-            mCapturePostViewBuf.bpl = msg->data.frameBuffer.buff.bpl;
-            mCapturePostViewBuf.id = thumbnailFrameId;
-            mCallbacks->allocateMemory(&mCapturePostViewBuf, msg->data.frameBuffer.buff.size);
-            memcpy(mCapturePostViewBuf.dataPtr, msg->data.frameBuffer.buff.dataPtr, mCapturePostViewBuf.size);
         }
 
         // send message
@@ -554,7 +556,10 @@ status_t PictureThread::assembleJpeg(AtomBuffer *mainBuf, AtomBuffer *mainBuf2)
     char *copyTo(0);
 
     AtomBuffer destBuf = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT_JPEG);
-    AtomBuffer *postviewBuf(NULL);
+    AtomBuffer postviewBuf = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
+
+    uint32_t thumbnailId(getU32fromFrame((uint8_t*)mainBuf->dataPtr,
+                                         JPEG_INFO_START + JPEG_INFO_YUV_FRAME_ID_ADDR));
 
     if (mExifBuf.dataPtr == NULL) {
         mCallbacks->allocateMemory(&mExifBuf, EXIF_SIZE_LIMITATION + sizeof(JPEG_MARKER_SOI));
@@ -568,20 +573,34 @@ status_t PictureThread::assembleJpeg(AtomBuffer *mainBuf, AtomBuffer *mainBuf2)
     // Read exif info from META data
     setupExifWithNv12Meta(mainBuf);
 
-    mCapturePostViewBufLock.lock();
-    if (mCapturePostViewBuf.dataPtr != NULL) {
-        postviewBuf = &mCapturePostViewBuf;
-        LOG2("@%s: Thumbnail id, %u = %u", __FUNCTION__, mCapturePostViewBuf.id,
-             getU32fromFrame((uint8_t*)mainBuf->dataPtr, JPEG_INFO_START + JPEG_INFO_THUMBNAIL_FRAME_ID_ADDR));
+    mCapturePostViewBufListLock.lock();
+    while (!mCapturePostViewBufList.empty()) {
+        List<AtomBuffer>::iterator it = mCapturePostViewBufList.begin();
+        uint32_t postviewBufId = (it)->id;
+        if (thumbnailId == postviewBufId) {
+            postviewBuf = *(it);
+            mCapturePostViewBufList.erase(it);
+            break;
+        } else if (thumbnailId > postviewBufId) {
+            LOGW("Old thumbnail(%u) buffer in queue (expect %u)", postviewBufId, thumbnailId);
+            mCapturePostViewBufList.erase(it);
+        } else {
+            LOGW("Could not find thumbnail (%u) for capture.", thumbnailId);
+            break;
+        }
+    }
+    mCapturePostViewBufListLock.unlock();
+
+    if (postviewBuf.dataPtr != NULL) {
+        LOG2("@%s: Thumbnail id, %u - %u", __FUNCTION__, postviewBuf.id,
+             getU32fromFrame((uint8_t*)mainBuf->dataPtr, JPEG_INFO_START + JPEG_INFO_YUV_FRAME_ID_ADDR));
+        encodeExif(&postviewBuf);
+    } else {
+        LOGW("No thumbnail available during JPEG assemble.");
+        encodeExif(NULL);
     }
 
-    // Convert and encode the thumbnail, if present and EXIF maker is initialized
-    if (mExifMaker->isInitialized()) {
-        encodeExif(postviewBuf);
-    }
-
-    MemoryUtils::freeAtomBuffer(mCapturePostViewBuf);
-    mCapturePostViewBufLock.unlock();
+    MemoryUtils::freeAtomBuffer(postviewBuf);
 
     LOG2("@%s: part one frame count = %u", __FUNCTION__,
          getU32fromFrame((uint8_t*) mainBuf->dataPtr, JPEG_META_START + JPEG_META_FRAME_COUNT_ADDR));
@@ -625,6 +644,7 @@ status_t PictureThread::assembleJpeg(AtomBuffer *mainBuf, AtomBuffer *mainBuf2)
     destBuf.height = mainBuf->height;
     destBuf.fourcc = V4L2_PIX_FMT_JPEG;
     destBuf.frameCounter = mainBuf->frameCounter;
+    destBuf.id = thumbnailId;
 
     mCallbacksThread->compressedFrameDone(&destBuf, NULL, NULL);
 
