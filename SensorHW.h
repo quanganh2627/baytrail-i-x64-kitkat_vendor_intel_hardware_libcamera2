@@ -17,6 +17,8 @@
 #ifndef ANDROID_LIBCAMERA_SENSOR_CLASS
 #define ANDROID_LIBCAMERA_SENSOR_CLASS
 
+#include <utils/RefBase.h>
+
 #include "ICameraHwControls.h"
 #include "PlatformData.h"
 #include "AtomIspObserverManager.h" // IObserverSubject
@@ -33,6 +35,7 @@ class SensorHW
     :public IHWSensorControl //!< Provides sensor control interface
     ,private IObserverSubject //!< Provides frame synchronization source
     ,private IAtomIspObserver //!< for temporary workaround, see AtomISP::start()
+    ,public RefBase
 {
 
 public:

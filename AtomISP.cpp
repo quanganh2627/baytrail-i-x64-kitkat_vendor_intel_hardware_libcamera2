@@ -106,7 +106,6 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService, Callbacks *callb
     ,mStatisticSkips(0)
     ,mDVSFrameSkips(0)
     ,mVideoZoomFrameSkips(0)
-    ,mSensorHW(cameraId)
     ,mSessionId(0)
     ,mLowLight(false)
     ,mXnr(0)
@@ -181,13 +180,13 @@ status_t AtomISP::initDevice()
 
     initFileInject();
 
-    mSensorHW.selectActiveSensor(mMainDevice);
+    mSensorHW->selectActiveSensor(mMainDevice);
 
     /**
      * open ATOMISP subdevice according to sensor
      */
     char ispDev[ISP_DEVICE_NAME_LENGTH_MAX];
-    status = mSensorHW.getIspDevicePath(ispDev, ISP_DEVICE_NAME_LENGTH_MAX);
+    status = mSensorHW->getIspDevicePath(ispDev, ISP_DEVICE_NAME_LENGTH_MAX);
     if (status == NO_ERROR) {
         m3AEventSubdevice = new V4L2Subdevice(ispDev, V4L2_ISP_SUBDEV);
     } else {
@@ -260,6 +259,13 @@ status_t AtomISP::init()
 
     status_t status = NO_ERROR;
 
+    mSensorHW = new SensorHW(mCameraId);
+
+    if (mSensorHW == NULL) {
+        LOGE("Failed to allocate SensorHW");
+        return NO_MEMORY;
+    }
+
     mConfig.num_recording_buffers = PlatformData::getRecordingBufNum();
     mConfig.num_preview_buffers = PlatformData::getPreviewBufNum();
 
@@ -330,7 +336,7 @@ status_t AtomISP::init()
  */
 IHWSensorControl* AtomISP::getSensorControlInterface()
 {
-    return isDeviceInitialized() ? (IHWSensorControl*) &mSensorHW : NULL;
+    return isDeviceInitialized() ? (IHWSensorControl*) mSensorHW.get() : NULL;
 }
 
 /**
@@ -449,6 +455,8 @@ AtomISP::~AtomISP()
 
     delete mSensorEmbeddedMetaData;
     mSensorEmbeddedMetaData = NULL;
+
+    mSensorHW.clear();
 }
 
 void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *intel_params)
@@ -1029,7 +1037,7 @@ status_t AtomISP::configure(AtomMode mode)
         mMode = mode;
         dumpFrameInfo(mode);
         // Pipeline configured, triggering SensorHW::prepare()
-        status = mSensorHW.prepare(mode == MODE_CAPTURE);
+        status = mSensorHW->prepare(mode == MODE_CAPTURE);
     }
 
     /**
@@ -1105,9 +1113,9 @@ status_t AtomISP::start()
         // implementation moved from AtomISP into SensorHW class. To
         // ensure the observing thread is created regardless whether
         // there are clients attaching, we attach SensorHW itself.
-        attachObserver((IAtomIspObserver *) &mSensorHW, OBSERVE_FRAME_SYNC_SOF);
+        attachObserver((IAtomIspObserver *) mSensorHW.get(), OBSERVE_FRAME_SYNC_SOF);
     }
-    mSensorHW.start();
+    mSensorHW->start();
 
     /** The reason to call the function "mSensorEmbeddedMetadata.init()" here is
      * the mSensorEmbeddedMetadata need the metadata buffer size from ISP to
@@ -1198,7 +1206,7 @@ status_t AtomISP::stop()
 
     if (mSensorType == SENSOR_TYPE_RAW) {
         // TODO: Workaround to be removed, See AtomISP::start()
-        detachObserver((IAtomIspObserver *) &mSensorHW, OBSERVE_FRAME_SYNC_SOF);
+        detachObserver((IAtomIspObserver *) mSensorHW.get(), OBSERVE_FRAME_SYNC_SOF);
     }
 
     runStopISPActions();
@@ -1230,7 +1238,7 @@ status_t AtomISP::stop()
         break;
     };
 
-    mSensorHW.stop();
+    mSensorHW->stop();
 
     if (mFileInject.active == true)
         stopFileInject();
@@ -2431,7 +2439,7 @@ status_t AtomISP::startCapture()
     // snapshot number. Otherwise, the raw dump image would be corrupted.
     // also since CSS1.5 we cannot capture from postview at the same time
     int snapNum;
-    if (mConfig.snapshot.fourcc == mSensorHW.getRawFormat())
+    if (mConfig.snapshot.fourcc == mSensorHW->getRawFormat())
         snapNum = 1;
     else
         snapNum = mConfig.num_snapshot;
@@ -3095,7 +3103,7 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
         //               limited high-resolution video recordiing
         // TODO: if we get more cases like this, move to PlatformData.h
         const char* sensorName = "ov8830";
-        if (strncmp(mSensorHW.getSensorName(), sensorName, sizeof(sensorName) - 1) == 0) {
+        if (strncmp(mSensorHW->getSensorName(), sensorName, sizeof(sensorName) - 1) == 0) {
             LOG1("Quirk for sensor %s, limiting video preview size", sensorName);
             reducedVf = true;
         }
@@ -3115,7 +3123,7 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
         }
         //Workaround 5, video recording FOV issue
         const char manUsensorBName[] = "imx132";
-        if (strncmp(mSensorHW.getSensorName(), manUsensorBName, sizeof(manUsensorBName) - 1) == 0) {
+        if (strncmp(mSensorHW->getSensorName(), manUsensorBName, sizeof(manUsensorBName) - 1) == 0) {
             // If DVS is not enabled, keep preview height as 1080 which is full FOV height for IMX132.
             // If DVS is enabled, keep preview height as 900 which is 20% cut off by 1080.
             // 1080 = 900 * (1 + 20%)
@@ -4607,7 +4615,7 @@ status_t AtomISP::putSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
 
     ret0 = mMainDevice->putFrame(snapshotBuf->id);
 
-    if (mConfig.snapshot.fourcc == mSensorHW.getRawFormat() || postviewBuf == NULL) {
+    if (mConfig.snapshot.fourcc == mSensorHW->getRawFormat() || postviewBuf == NULL) {
         // for RAW captures we do not dequeue the postview, therefore we do
         // not need to return it.
         ret1 = 0;
@@ -6234,7 +6242,7 @@ IObserverSubject* AtomISP::observerSubjectByType(ObserverType t)
             s = &mPreviewStreamSource;
             break;
         case OBSERVE_FRAME_SYNC_SOF:
-            s = mSensorHW.getFrameSyncSource();
+            s = mSensorHW->getFrameSyncSource();
             break;
         case OBSERVE_3A_STAT_READY:
             s = &m3AStatSource;
@@ -6401,7 +6409,7 @@ status_t AtomISP::AAAStatSource::observe(IAtomIspObserver::Message *msg)
             // number of events - not providing the identifier for a frame.
             // Workaroud: Using exposure synchronization in SensorHW to identify
             // timestamp for the frame of statistics origin.
-            nsecs_t frameTs = mISP->mSensorHW.getFrameTimestamp(TIMEVAL2USECS(&msg->data.event.timestamp));
+            nsecs_t frameTs = mISP->mSensorHW->getFrameTimestamp(TIMEVAL2USECS(&msg->data.event.timestamp));
             msg->data.event.timestamp.tv_sec = frameTs / 1000000;
             msg->data.event.timestamp.tv_usec = (frameTs % 1000000);
         }

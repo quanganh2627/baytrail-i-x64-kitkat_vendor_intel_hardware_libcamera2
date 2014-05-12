@@ -73,7 +73,7 @@ public:
     explicit AtomISP(int cameraId, sp<ScalerService> scalerService, Callbacks *callbacks);
     virtual ~AtomISP();
 
-    status_t initDevice();
+
     status_t init();
     void deInitDevice();
     bool isDeviceInitialized() const;
@@ -378,6 +378,7 @@ private:
 
 // private methods
 private:
+    status_t initDevice();
 
     status_t computeZoomRatios();
     status_t initCameraInput();
@@ -586,7 +587,7 @@ private:
     sp<V4L2Subdevice>  m3AEventSubdevice;
     sp<V4L2VideoNode>  mOriginalPreviewDevice;
     sp<V4L2VideoNode>  mFileInjectDevice;
-    SensorHW           mSensorHW;
+    sp<SensorHW>       mSensorHW;              /* AtomISP owns this! */
 
     int dumpPreviewFrame(int previewIndex);
     int dumpRecordingFrame(int recordingIndex);
