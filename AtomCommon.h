@@ -85,6 +85,9 @@
 #define ATOMISP_EVENT_RECOVERY_WAIT 33000 // Time to usleep between retry's after erros from v4l2_event receiving.
 #define FRAME_SYNC_POLL_TIMEOUT 500
 
+// workaround to remove dependency to graphics
+#define CAM_HAL_PIXEL_FORMAT_NV21 0x3132564E
+
 namespace android {
 struct AtomBuffer;
 class IBufferOwner

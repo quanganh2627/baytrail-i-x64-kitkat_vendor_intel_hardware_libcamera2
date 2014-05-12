@@ -39,7 +39,11 @@
 
 namespace android {
 
-void release_camera_memory_t(struct camera_memory *mem) { delete mem; }
+void release_camera_memory_t(struct camera_memory *mem)
+{
+    LOG1("@%s: releasing fake heap camera_memory_t", __FUNCTION__);
+    delete mem;
+}
 
 PreviewThread::PreviewThread(sp<CallbacksThread> callbacksThread, Callbacks* callbacks) :
     Thread(true) // callbacks may call into java
@@ -1161,7 +1165,7 @@ status_t PreviewThread::handlePreviewCallback(AtomBuffer &srcBuff)
             break;
 
         case V4L2_PIX_FMT_NV21: // you need to do this for the first time
-            if (srcBuff.fourcc == HAL_PIXEL_FORMAT_YCbCr_420_SP) {
+            if (srcBuff.fourcc == CAM_HAL_PIXEL_FORMAT_NV21) {
                 if (srcBuff.bpl == srcBuff.width)
                     callbackBuffer = &srcBuff; // zero-copy, already NV21
                 else
@@ -1450,6 +1454,16 @@ status_t PreviewThread::handleSetPreviewConfig(MessageSetPreviewConfig *msg)
 
     if ((w != 0 && h != 0)) {
         LOG1("Setting new preview size: %dx%d", w, h);
+
+        // ATM, we can't yet configure all resolutions for NV21, so we
+        // will only configure the special ext-isp 6MP preview for that.
+        // rest of resolutions will have whatever is the default in camera
+        // profiles
+        if (w == RESOLUTION_6MP_WIDTH && h == RESOLUTION_6MP_HEIGHT)
+            mPreviewFourcc = V4L2_PIX_FMT_NV21;
+        else
+            mPreviewFourcc = PlatformData::getPreviewPixelFormat();
+
         if (mPreviewWindow != NULL) {
 
             /**
@@ -1626,10 +1640,12 @@ status_t PreviewThread::handleFetchPreviewBuffers()
 
             tmpBuf.dataPtr = mapperPointer.ptr;
 
-            if (tmpBuf.width == RESOLUTION_6MP_WIDTH &&
+            // create fake heaps for zero-copy callbacks for the ATM only NV21
+            // use-case (ext-isp 6MP preview for panorama)
+            if (tmpBuf.width  == RESOLUTION_6MP_WIDTH &&
                 tmpBuf.height == RESOLUTION_6MP_HEIGHT) {
                 // ATM, not all use cases use NV21, but the ext-isp 6MP preview does
-                tmpBuf.fourcc = HAL_PIXEL_FORMAT_YCbCr_420_SP;
+                tmpBuf.fourcc = CAM_HAL_PIXEL_FORMAT_NV21;
                 // fake heap is for callbacks and thus stride has to match width
                 // thus size calculation is w*h*3/2
                 int fakeHeapSize = tmpBuf.width * tmpBuf.height * 3 / 2;

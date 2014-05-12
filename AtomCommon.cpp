@@ -447,7 +447,10 @@ int getGFXHALPixelFormatFromV4L2Format(int previewFormat)
 
     switch(previewFormat) {
     case V4L2_PIX_FMT_NV12:
-         halPixelFormat = HAL_PIXEL_FORMAT_NV12;
+        halPixelFormat = HAL_PIXEL_FORMAT_NV12;
+        break;
+    case V4L2_PIX_FMT_NV21:
+        halPixelFormat = CAM_HAL_PIXEL_FORMAT_NV21;
         break;
     case V4L2_PIX_FMT_YVU420:
         halPixelFormat = HAL_PIXEL_FORMAT_YV12;

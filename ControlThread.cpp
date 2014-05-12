@@ -2061,7 +2061,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         (mPreviewUpdateMode != IntelCameraParameters::PREVIEW_UPDATE_MODE_WINDOWLESS)
         && (mIntelParamsAllowed || (mode != MODE_CONTINUOUS_CAPTURE));
 
-    // for ext-isp 6MP panorama, enable zero-copy shared mode always
+    // for ext-isp 6MP panorama, enable zero-copy shared mode always in order have zero-copy preview callbacks
     if (PlatformData::supportsContinuousJpegCapture(mCameraId) &&
         width == RESOLUTION_6MP_WIDTH && height == RESOLUTION_6MP_HEIGHT) {
         useSharedGfxBuffers = true;
