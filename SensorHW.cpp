@@ -1337,9 +1337,11 @@ unsigned int SensorHW::vbiIntervalForItem(unsigned int index)
 {
     struct exposure_history_item *item = mExposureHistory->peek(index);
     unsigned int fll = (item) ? MAX(mInitialModeData.frame_length_lines, item->exposure.integration_time[0]) : mInitialModeData.frame_length_lines;
-
-    unsigned int vbiLL = fll - (mInitialModeData.crop_vertical_end - mInitialModeData.crop_vertical_start + 1) / mInitialModeData.binning_factor_y;
-
+    unsigned int vertical_size = (mInitialModeData.crop_vertical_end - mInitialModeData.crop_vertical_start + 1) / mInitialModeData.binning_factor_y;
+    if (vertical_size > fll)
+        vertical_size = mInitialModeData.output_height;
+    //unsigned int vbiLL = fll - (mInitialModeData.crop_vertical_end - mInitialModeData.crop_vertical_start + 1) / mInitialModeData.binning_factor_y;
+    unsigned int vbiLL = fll - vertical_size;
     return ((long long) mInitialModeData.line_length_pck * vbiLL * 1000000)
            / mInitialModeData.vt_pix_clk_freq_mhz;
 }
