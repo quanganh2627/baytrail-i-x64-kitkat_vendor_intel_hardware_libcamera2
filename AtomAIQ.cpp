@@ -2428,8 +2428,10 @@ status_t AtomAIQ::runAICMain()
 
         /* Apply ISP settings */
         if (m3aState.results.isp_output.data) {
-            struct atomisp_parameters *aic_out_struct = (struct atomisp_parameters *)m3aState.results.isp_output.data;
-            ret |= mISP->setAicParameter(aic_out_struct);
+            memcpy(&mAicOutStruct, m3aState.results.isp_output.data, sizeof(struct atomisp_parameters));
+            mAicOutStruct.isp_config_id = 0;
+            mAicOutStruct.output_frame = NULL;
+            ret |= mISP->setAicParameter(&mAicOutStruct);
         }
 
         if (mFileInjection && ret == 0 && mAwbResults != NULL) {

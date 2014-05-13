@@ -735,6 +735,8 @@ int V4L2VideoNode::qbuf(struct v4l2_buffer_info *buf)
     int ret = 0;
 
     v4l2_buf->flags = buf->cache_flags;
+    // set to 0 as reserved2 will be used for per-frame setting feature on HAL v3
+    v4l2_buf->reserved2 = 0;
     ret = ioctl(mFd, VIDIOC_QBUF, v4l2_buf);
     if (ret < 0) {
         LOGE("VIDIOC_QBUF on %s failed: %s", mName.string(), strerror(errno));

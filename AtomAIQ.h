@@ -422,6 +422,7 @@ public:
 // private members
 private:
     IHWIspControl *mISP;
+    struct atomisp_parameters mAicOutStruct;
     ia_env mPrintFunctions;
 
     aaa_state m3aState;
