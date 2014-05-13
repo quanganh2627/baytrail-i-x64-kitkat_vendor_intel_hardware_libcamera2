@@ -1503,8 +1503,6 @@ status_t ControlThread::initSdv(bool offline)
         burstStateReset();
     }
 
-    allocateSnapshotAndPostviewBuffers(true);
-
     return status;
 }
 
@@ -1685,6 +1683,10 @@ status_t ControlThread::initContinuousCapture()
     AtomBuffer formatDescriptorSs = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR, fourcc);
 
     mParameters.getPictureSize(&formatDescriptorSs.width, &formatDescriptorSs.height);
+    // TODO the bpl should take isp format configure result into account
+    // but the timing of this function call is not quite right for that so use
+    // bpl = width as the best guess
+    formatDescriptorSs.bpl = formatDescriptorSs.width;
 
     int pvWidth;
     int pvHeight;
@@ -2015,13 +2017,18 @@ status_t ControlThread::startPreviewCore(bool videoMode)
             LOGE("failed to init continuous capture");
             return BAD_VALUE;
         }
-    }
-
-    if (state == STATE_JPEG_CAPTURE || (videoMode && mode == MODE_CONTINUOUS_JPEG)) {
+    } else if (state == STATE_JPEG_CAPTURE || (videoMode && mode == MODE_CONTINUOUS_JPEG)) {
         if (initContinuousJpegCapture() != NO_ERROR) {
             LOGE("failed to init continuous jpeg capture");
             return BAD_VALUE;
         }
+    } else {
+        // set default snapshot frame format to isp
+        int fourcc = mISP->getSnapshotPixelFormat();
+        AtomBuffer formatDescriptorSs = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR, fourcc);
+        mParameters.getPictureSize(&formatDescriptorSs.width, &formatDescriptorSs.height);
+        formatDescriptorSs.bpl = formatDescriptorSs.width;
+        mISP->setSnapshotFrameFormat(formatDescriptorSs);
     }
 
     const char* cb_fourcc_s = mParameters.getPreviewFormat();
@@ -2110,6 +2117,10 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     if (status != NO_ERROR) {
         LOGE("Error configuring ISP");
         return status;
+    }
+
+    if (videoMode) {
+        allocateSnapshotAndPostviewBuffers(true);
     }
 
     status = mISP->allocateBuffers(mode);
@@ -3754,6 +3765,7 @@ status_t ControlThread::captureStillPic()
             = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR, fourcc, width, height);
         AtomBuffer formatDescriptorPv
             = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR, selectPostviewFormat(), pvWidth, pvHeight);
+        formatDescriptorSs.bpl = formatDescriptorSs.width; // initial guess
         mISP->setSnapshotFrameFormat(formatDescriptorSs);
         mISP->setPostviewFrameFormat(formatDescriptorPv);
 
@@ -5249,6 +5261,8 @@ status_t ControlThread::allocateSnapshotAndPostviewBuffers(bool videoMode)
 
     AtomBuffer formatDescriptorPv = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR);
     AtomBuffer formatDescriptorSs = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR);
+
+    mISP->getSnapshotFrameFormat(formatDescriptorSs);
     /**
      * if in continuous JPEG capture mark that to snapshot format, else
      * snapshot format is hardcoded to NV12, this is the format between
@@ -5263,7 +5277,6 @@ status_t ControlThread::allocateSnapshotAndPostviewBuffers(bool videoMode)
     else
         formatDescriptorSs.fourcc = V4L2_PIX_FMT_NV12;
 
-    mParameters.getPictureSize(&formatDescriptorSs.width, &formatDescriptorSs.height);
     if (!mAllocatedSnapshotBuffers.isEmpty()) {
         tmpBuffer = mAllocatedSnapshotBuffers.itemAt(0);
 

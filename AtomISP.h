@@ -144,6 +144,7 @@ public:
 
     status_t setPreviewFrameFormat(int width, int height, int bpl, int fourcc = 0);
     status_t setPostviewFrameFormat(AtomBuffer& formatDescriptor);
+    void getSnapshotFrameFormat(AtomBuffer& formatDescriptor) const { formatDescriptor = mConfig.snapshot; }
     void getPostviewFrameFormat(AtomBuffer& formatDescriptor) const;
     status_t setSnapshotFrameFormat(AtomBuffer& formatDescriptor);
     status_t setVideoFrameFormat(int width, int height, int fourcc = 0);

@@ -2973,7 +2973,7 @@ status_t AtomISP::setSnapshotFrameFormat(AtomBuffer& formatDescriptor)
         formatDescriptor.height = mConfig.snapshotLimits.maxHeight;
 
     mConfig.snapshot = formatDescriptor;
-    mConfig.snapshot.bpl = SGXandDisplayBpl(formatDescriptor.fourcc, formatDescriptor.width);
+    mConfig.snapshot.bpl = SGXandDisplayBpl(formatDescriptor.fourcc, formatDescriptor.bpl);
     mConfig.snapshot.size = frameSize(formatDescriptor.fourcc, bytesToPixels(formatDescriptor.fourcc, mConfig.snapshot.bpl), formatDescriptor.height);
     LOG1("width(%d), height(%d), bpl(%d), size(%d), fourcc(%s 0x%x)",
          formatDescriptor.width, formatDescriptor.height, mConfig.snapshot.bpl, mConfig.snapshot.size,v4l2Fmt2Str(formatDescriptor.fourcc), formatDescriptor.fourcc);
