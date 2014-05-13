@@ -136,6 +136,17 @@ void Callbacks::compressedFrameDone(AtomBuffer *buff)
     }
 }
 
+void Callbacks::extIspFrameDone(AtomBuffer *buff)
+{
+    LOG1("@%s", __FUNCTION__);
+    // we don't obey the flags for this, as several callbacks are wanted
+    if (mDataCB != NULL) {
+        LOG1("Sending message: CAMERA_MSG_COMPRESSED_IMAGE, buff id = %d, size = %zu", buff->id, buff->buff->size);
+        mDataCB(CAMERA_MSG_COMPRESSED_IMAGE, buff->buff, 0, NULL, mUserToken);
+    }
+}
+
+
 void Callbacks::postviewFrameDone(AtomBuffer *buff)
 {
     LOG1("@%s", __FUNCTION__);

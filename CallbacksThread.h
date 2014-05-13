@@ -76,6 +76,7 @@ public:
     void focusMove(bool start);
     void panoramaDisplUpdate(camera_panorama_metadata_t &metadata);
     void panoramaSnapshot(const AtomBuffer &livePreview);
+    void extispFrame(const AtomBuffer &yuvBuf);
     status_t requestULLPicture(int id);
     status_t ullTriggered(int id);
     status_t postviewRendered();
@@ -131,6 +132,9 @@ private:
         MESSAGE_ID_ACC_PREVIEW_BUFFER,
         MESSAGE_ID_ACC_ARGUMENT_BUFFER,
         MESSAGE_ID_ACC_METADATA_BUFFER,
+
+        // ExtIsp
+        MESSAGE_ID_EXTISP_FRAME,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -254,6 +258,9 @@ private:
         // MESSAGE_ID_ERROR_CALLBACK
         MessageError error;
 
+        // MESSAGE_ID_EXTISP_FRAME
+        MessageFrame extIspFrame;
+
         // MESSAGE_ID_ACC_NOTIFY
         // MESSAGE_ID_ACC_BUFFER
         MessageAccManager accManager;
@@ -292,6 +299,7 @@ private:
     status_t handleMessageLowBattery();
     status_t handleMessageRawFrameDone(MessageFrame *msg);
     status_t handleMessagePostviewFrameDone(MessageFrame *msg);
+    status_t handleMessageExtIspFrame(MessageFrame *msg);
     status_t handleMessageAccManagerPointer(MessageAccManager *msg);
     status_t handleMessageAccManagerFinished();
     status_t handleMessageAccManagerPreviewBuffer(MessageAccManager *msg);

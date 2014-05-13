@@ -795,6 +795,25 @@ status_t CallbacksThread::handleMessageRawFrameDone(MessageFrame *msg)
     return status;
 }
 
+void CallbacksThread::extispFrame(const AtomBuffer &yuvBuf)
+{
+    LOG1("@%s",__FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_EXTISP_FRAME;
+    msg.data.extIspFrame.frame = yuvBuf;
+
+    mMessageQueue.send(&msg);
+}
+
+status_t CallbacksThread::handleMessageExtIspFrame(MessageFrame *msg)
+{
+    LOG1("@%s",__FUNCTION__);
+    status_t status = NO_ERROR;
+    mCallbacks->extIspFrameDone(&msg->frame);
+    msg->frame.owner->returnBuffer(&msg->frame);
+    return status;
+}
+
 status_t CallbacksThread::handleMessagePostviewFrameDone(MessageFrame *msg)
 {
     LOG1("@%s",__FUNCTION__);
@@ -945,6 +964,10 @@ status_t CallbacksThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_POSTVIEW_FRAME_DONE:
             status = handleMessagePostviewFrameDone(&msg.data.postviewFrame);
+            break;
+
+        case MESSAGE_ID_EXTISP_FRAME:
+            status = handleMessageExtIspFrame(&msg.data.extIspFrame);
             break;
 
         case MESSAGE_ID_ACC_POINTER:

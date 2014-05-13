@@ -4335,12 +4335,14 @@ status_t ControlThread::captureExtIspHDRLLSPic()
 
     // now fetch the buffers from snapshot device
     AtomBuffer yuvBuffers[5];
+    memset(yuvBuffers, 0, sizeof(yuvBuffers));
     AtomBuffer buffer = AtomBufferFactory::createAtomBuffer();
     bool succesfull = false;
     const int MAX_FRAME_GRABS = 16;
     char *hdrinfo = NULL;
     for (int i = 0; i < MAX_FRAME_GRABS; i++) {
         mISP->getSnapshot(&buffer, NULL);
+        buffer.owner = mISP;
 
         /* temporary logging */
         char array[16];
@@ -4358,28 +4360,17 @@ status_t ControlThread::captureExtIspHDRLLSPic()
         hdrinfo = ((char*)buffer.dataPtr) + HDR_INFO_START;
         if (strncmp((char*) &hdrinfo[HDR_INFO_START_MARKER_ADDR], HDR_INFO_START_MARKER, sizeof(HDR_INFO_START_MARKER) - 1) == 0) {
 
-            //mISP->putSnapshot(&buffer, NULL);
             int frameIndex = hdrinfo[HDR_INFO_COUNT_ADDR];
             yuvBuffers[frameIndex] = buffer; // store (copy) AtomBuffer
 
             if ((hdrinfo[HDR_INFO_MODE_ADDR] == HDR_INFO_MODE_HDR && frameIndex == 0x02) ||
                 (hdrinfo[HDR_INFO_MODE_ADDR] == HDR_INFO_MODE_LLS && frameIndex == 0x04)) {
-                // restart preview so that we get something for thumbnail
+                // restart preview (these can be left out if preview needs to stay stopped)
                 mHwcg.mIspCI->setHDR(2);
-                // get preview frame for thumbnail
-                mISP->getPreviewFrame(&buffer);
-
-                mISP->startObserver(OBSERVE_PREVIEW_STREAM); // this can be left out if preview needs to stay stopped
+                mISP->startObserver(OBSERVE_PREVIEW_STREAM);
                 succesfull = true;
-                // TODO FIXME this needs to be removed, this is here just because the processing HDR/LLS and return path is not implemented yet
-                mISP->putSnapshot(&buffer, NULL);
-
                 break; // out of for-loop
             }
-
-            // TODO FIXME this needs to be removed, this is here just because the processing HDR/LLS and return path is not implemented yet
-            mISP->putSnapshot(&buffer, NULL);
-
         } else
             mISP->putSnapshot(&buffer, NULL); // wrong buf, return immediately
     }
@@ -4392,20 +4383,10 @@ status_t ControlThread::captureExtIspHDRLLSPic()
         return UNKNOWN_ERROR;
     }
 
-    // now, the yuvBuffers are properly captured in the array "yuvBuffers", and
-    // "buffer" has the preview frame for thumbnail. TODO: Process HDR/LLS
-    // preferably in some other thread than ControlThread, then send
-    // result to encoding, and handle returning of the buffers to AtomISP.
-    switch (hdrinfo[HDR_INFO_MODE_ADDR]) {
-        case HDR_INFO_MODE_HDR:
-            LOGW("HDR processing not implemented yet!");
-            break;
-        case HDR_INFO_MODE_LLS:
-            LOGW("LLS processing not implemented yet!");
-            break;
-        default:
-            LOGE("Unknown & unimplemented mode encountered in HDR/LLS processing");
-            break;
+    // now, the yuvBuffers are properly captured in the array "yuvBuffers"
+    int frameCount = (hdrinfo[HDR_INFO_MODE_ADDR] == HDR_INFO_MODE_HDR) ? 3 : 5;
+    for (int i = 0; i < frameCount; i++) {
+        mCallbacksThread->extispFrame(yuvBuffers[i]);
     }
 
     LOG1("@%s: HDR/LLS DONE!", __FUNCTION__);
