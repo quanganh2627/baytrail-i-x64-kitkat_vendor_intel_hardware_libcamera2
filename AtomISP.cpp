@@ -5688,12 +5688,23 @@ int AtomISP::dumpFrameInfo(AtomMode mode)
     LOG2("@%s", __FUNCTION__);
 
     if (gLogLevel & CAMERA_DEBUG_LOG_PERF_TRACES) {
-        const char *previewMode[6]={"NoPreview",
-                                    "Preview",
-                                    "Capture",
-                                    "Video",
-                                    "ContinuousCapture",
-                                    "ContinuousVideo"};
+        /**
+         * XXX: Don't forget to adjust the array size when adding support
+         * for more modes; the extra +1 is to compensate for the enum
+         * beginning at -1 rather than at 0
+         */
+        const char *previewMode[MODE_MAX+2]={"NoPreview",
+                                             "Preview",
+                                             "Capture",
+                                             "Video",
+                                             "ContinuousCapture",
+                                             "ContinuousVideo",
+                                             "ContinuousJPEG",
+                                             "Unknown mode"};
+
+        // Sanity check
+        if (mode > MODE_MAX)
+            mode = MODE_MAX;
 
         LOGD("FrameInfo: PreviewMode: %s", previewMode[mode+1]);
         LOGD("FrameInfo: previewSize: %dx%d, bpl: %d",
