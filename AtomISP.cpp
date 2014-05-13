@@ -5206,6 +5206,9 @@ status_t AtomISP::allocateMetaDataBuffers(AtomBuffer *buffers, int numBuffers)
 {
     LOG1("@%s", __FUNCTION__);
 
+    if (buffers == NULL || numBuffers <= 0)
+        return BAD_VALUE;
+
     status_t status = NO_ERROR;
 #ifdef ENABLE_INTEL_METABUFFER
     int allocatedBufs = 0;
@@ -5262,10 +5265,9 @@ status_t AtomISP::allocateMetaDataBuffers(AtomBuffer *buffers, int numBuffers)
 
 errorFree:
     // On error, free the allocated buffers
-    if (buffers != NULL) {
-        for (int i = 0 ; i < allocatedBufs; i++)
-            MemoryUtils::freeAtomBuffer(buffers[i]);
-    }
+    for (int i = 0 ; i < allocatedBufs; i++)
+        MemoryUtils::freeAtomBuffer(buffers[i]);
+
     if (metaDataBuf) {
         delete metaDataBuf;
         metaDataBuf = NULL;
