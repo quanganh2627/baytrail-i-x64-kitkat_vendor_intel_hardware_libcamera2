@@ -117,6 +117,7 @@ public:
     virtual bool dvsEnabled() = 0;
     virtual void setNrEE(bool en) = 0;
     virtual status_t setHDR(int mode) = 0;
+    virtual status_t setLLS(int mode) = 0;
 
     virtual int setAicParameter(struct atomisp_parameters *aic_params) = 0;
     virtual int setIspParameter(struct atomisp_parm *isp_params) = 0;

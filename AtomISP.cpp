@@ -3482,6 +3482,18 @@ status_t AtomISP::setHDR(int mode)
     return status;
 }
 
+status_t AtomISP::setLLS(int mode)
+{
+    LOG1("@%s: %d", __FUNCTION__, mode);
+    struct atomisp_ext_isp_ctrl m10mo_ctrl;
+    CLEAR(m10mo_ctrl);
+    m10mo_ctrl.id = EXT_ISP_LLS_CAPTURE_CTRL;
+    m10mo_ctrl.data = mode;
+    status_t status = mMainDevice->xioctl(ATOMISP_IOC_EXT_ISP_CTRL, &m10mo_ctrl);
+
+    return status;
+}
+
 /**
  * Because first frame should be the reference frame for DVS2 lib to calculate
  * morph table, and zoom factor should not take effect on first 3 frames, so those

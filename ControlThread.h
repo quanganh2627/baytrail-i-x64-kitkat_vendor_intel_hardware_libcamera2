@@ -382,6 +382,11 @@ private:
         MessagePicture *inputBuffers;
     };
 
+    struct ExtIsp {
+        bool LLS;
+        bool HDR;
+    };
+
     struct StillPicParamsCtx {
         int    snapshotWidth;
         int    snapshotHeight;
@@ -761,6 +766,7 @@ private:
                                 mBurstBufsToReturn should be 4*/
     int mUllBurstLength;     /*<! Burst length for ULL*/
     HdrImaging mHdr;
+    ExtIsp mExtIsp;
     FlashStage mAELockFlashStage;
     float mPublicShutter;       /* Shutter set by application */
 

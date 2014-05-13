@@ -283,6 +283,7 @@ protected:
     status_t setDVS(bool enable);
     void setNrEE(bool en);
     status_t setHDR(int mode);
+    status_t setLLS(int mode);
 
     /* ISP related controls */
     int setAicParameter(struct atomisp_parameters *aic_params);

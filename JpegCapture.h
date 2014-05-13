@@ -105,6 +105,12 @@ const char NV12_META_END_MARKER[] = "METADATA-END";
 // JPEG META addresses
 const size_t JPEG_META_FRAME_COUNT_ADDR = 0x13;
 
+// make sure these don't collide with intel extensions
+enum {
+    CAMERA_CMD_EXTISP_HDR        = 0x400,
+    CAMERA_CMD_EXTISP_LLS        = 0x4F0
+};
+
 static uint32_t getU32fromFrame(uint8_t* framePtr, size_t addr) {
 
     uint32_t result = *((uint32_t*)(framePtr + addr));
