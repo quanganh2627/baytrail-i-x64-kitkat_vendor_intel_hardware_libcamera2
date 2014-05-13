@@ -328,6 +328,14 @@ status_t PictureThread::flushBuffers()
         mPictureDoneCallback->pictureDone(&it->data.encode.snapshotBuf, &it->data.encode.postviewBuf);
     }
 
+    mCapturePostViewBufListLock.lock();
+    List<AtomBuffer>::iterator itPostView = mCapturePostViewBufList.begin();
+    while (itPostView != mCapturePostViewBufList.end()) {
+        MemoryUtils::freeAtomBuffer(*itPostView);
+        itPostView = mCapturePostViewBufList.erase(itPostView); // returns pointer to next item in list
+    }
+    mCapturePostViewBufListLock.unlock();
+
     Vector<Message> pendingCapture;
     mMessageQueue.remove(MESSAGE_ID_CAPTURE, &pendingCapture);
     for(it = pendingCapture.begin(); it != pendingCapture.end(); ++it) {

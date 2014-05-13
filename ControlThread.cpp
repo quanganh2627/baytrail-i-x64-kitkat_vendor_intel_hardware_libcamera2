@@ -100,6 +100,7 @@ const char* ControlThread::sCaptureSubstateStrings[]= {
       "ENCODING_DONE",
       "PICTURE_DONE",
       "IDLE"
+      "CONTINOUS_SHOOTING"
 };
 
 ControlThread::ControlThread(int cameraId) :
@@ -144,6 +145,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mPublicShutter(-1)
     ,mDvsEnable(false)
     ,mDualVideo(false)
+    ,mJpegContinuousShootingRunning(false)
     ,mParamCache(NULL)
     ,mPreviewForceChanged(false)
     ,mCameraDump(NULL)
@@ -1043,6 +1045,11 @@ void ControlThread::atPostviewPresent() {
         if(status != NO_ERROR) {
             LOGE("Could not hide preview");
         }
+    }
+
+    if (mJpegContinuousShootingRunning) {
+        LOG2("@%s: request next continuous shooting picture", __FUNCTION__);
+        mCallbacksThread->requestTakePicture(false, false , false);
     }
 }
 
@@ -4405,7 +4412,7 @@ status_t ControlThread::captureExtIspHDRLLSPic()
 }
 
 /**
- * Captures a pictures using Continuous JPEG capture
+ * Captures a picture using Continuous JPEG capture
  */
 status_t ControlThread::captureJpegPic()
 {
@@ -4429,6 +4436,59 @@ status_t ControlThread::captureJpegPic()
     mISP->requestJpegCapture();
 
     return NO_ERROR;
+}
+
+/**
+ * Start capture pictures until stop cancelpicture or stopJpegPicContinuousShooting
+ * is called
+ */
+status_t ControlThread::startJpegPicContinuousShooting()
+{
+    LOG1("@%s: ", __FUNCTION__);
+
+    if (mJpegContinuousShootingRunning) {
+        LOGE("Continuous shooting alread running!");
+        return INVALID_OPERATION;
+    }
+
+    // Configure PictureThread, inform of the picture and thumbnail resolutions
+    mPictureThread->initialize(mParameters, mHwcg.mIspCI->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
+
+    // Notify CallbacksThread that a picture was requested, so grab one from queue
+    mCallbacksThread->requestTakePicture(false, false, false);
+
+    // TODO: do we need somekind of shutter sound
+
+    mJpegContinuousShootingRunning = true;
+    LOG1("CaptureSubState %s -> CONTINUOUS_SHOOTING (startJpegPicContinuousShooting)"
+         , sCaptureSubstateStrings[mCaptureSubState]);
+    mCaptureSubState = STATE_CAPTURE_CONTINUOUS_SHOOTING;
+
+    return mISP->startJpegModeContinuousShooting();
+}
+
+/**
+ * Stop capture continuous shooting pictures in continuous jpeg mode
+ */
+status_t ControlThread::stopJpegPicContinuousShooting()
+{
+    LOG1("@%s: ", __FUNCTION__);
+    status_t status(NO_ERROR);
+
+    if (!mJpegContinuousShootingRunning) {
+        LOGE("Continuous shooting not running!");
+        return INVALID_OPERATION;
+    }
+
+    mISP->stopJpegModeContinuousShooting();
+    status = cancelPictureThread();
+    mJpegContinuousShootingRunning = false;
+    LOG1("CaptureSubState %s -> IDLE (stopJpegPicContinuousShooting)",
+         sCaptureSubstateStrings[mCaptureSubState]);
+    mCaptureSubState = STATE_CAPTURE_IDLE;
+
+
+    return status;
 }
 
 void ControlThread::encodeVideoSnapshot(AtomBuffer &buff)
@@ -4556,6 +4616,9 @@ status_t ControlThread::cancelCapture()
         return status;
     }
 
+    if (mJpegContinuousShootingRunning)
+        stopJpegPicContinuousShooting();
+
     if (mState == STATE_CAPTURE) {
         // online capture
         status = stopCapture();
@@ -4674,8 +4737,12 @@ status_t ControlThread::handleMessageEncodingDone(MessagePicture *msg)
 {
     LOG1("@%s", __FUNCTION__);
 
-    LOG1("CaptureSubState %s -> ENCODING DONE", sCaptureSubstateStrings[mCaptureSubState]);
-    mCaptureSubState = STATE_CAPTURE_ENCODING_DONE;
+    if (mCaptureSubState == STATE_CAPTURE_CONTINUOUS_SHOOTING) {
+        LOG1("ENCODING DONE, stay CaptureSubState CONTINUOUS_SHOOTING");
+    } else {
+        LOG1("CaptureSubState %s -> ENCODING DONE", sCaptureSubstateStrings[mCaptureSubState]);
+        mCaptureSubState = STATE_CAPTURE_ENCODING_DONE;
+    }
 
     return OK;
 }
@@ -4784,8 +4851,12 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
     } else if (mState == STATE_JPEG_CAPTURE) {
         LOG1("@%s: STATE_JPEG_CAPTURE", __FUNCTION__);
         // continuous jpeg capture use atomisp frame not snapshot or postview here
-        LOG1("CaptureSubState %s -> IDLE",sCaptureSubstateStrings[mCaptureSubState]);
-        mCaptureSubState = STATE_CAPTURE_IDLE;
+        if (mCaptureSubState == STATE_CAPTURE_CONTINUOUS_SHOOTING) {
+            LOG1("PICTURE DONE, stay CaptureSubState CONTINUOUS_SHOOTING");
+        } else {
+            LOG1("CaptureSubState %s -> IDLE",sCaptureSubstateStrings[mCaptureSubState]);
+            mCaptureSubState = STATE_CAPTURE_IDLE;
+        }
     } else {
         LOGW("Received a picture Done during invalid state %d; buf id:%d, ptr=%p", mState, msg->snapshotBuf.id, msg->snapshotBuf.buff);
     }

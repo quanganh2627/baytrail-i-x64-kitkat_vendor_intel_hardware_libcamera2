@@ -135,6 +135,8 @@ public:
     int pollCapture(int timeout);
 
     status_t requestJpegCapture();
+    status_t startJpegModeContinuousShooting();
+    status_t stopJpegModeContinuousShooting();
 
     bool dataAvailable();
 

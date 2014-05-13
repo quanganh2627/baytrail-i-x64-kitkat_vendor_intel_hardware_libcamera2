@@ -4694,6 +4694,40 @@ status_t AtomISP::requestJpegCapture()
     return requestContCapture(1, 0, 0);
 }
 
+status_t AtomISP::startJpegModeContinuousShooting()
+{
+    LOG1("@%s", __FUNCTION__);
+
+    if (!mContinuousJpegCaptureEnabled) {
+        LOGE("Jpeg continuous shooting can take only in continuous jpeg capture mode!");
+        return INVALID_OPERATION;
+    }
+
+    struct atomisp_ext_isp_ctrl m10mo_ctrl;
+    CLEAR(m10mo_ctrl);
+    m10mo_ctrl.id = EXT_ISP_BURST_CAPTURE_CTRL;
+    m10mo_ctrl.data = EXT_ISP_BURST_CAPTURE_CTRL_START;
+    return mMainDevice->xioctl(ATOMISP_IOC_EXT_ISP_CTRL, &m10mo_ctrl);
+}
+
+status_t AtomISP::stopJpegModeContinuousShooting()
+{
+    LOG1("@%s", __FUNCTION__);
+
+    if (!mContinuousJpegCaptureEnabled) {
+        LOGE("Jpeg continuous shooting can take only in continuous jpeg capture mode!");
+        return INVALID_OPERATION;
+    }
+
+    struct atomisp_ext_isp_ctrl m10mo_ctrl;
+    CLEAR(m10mo_ctrl);
+    m10mo_ctrl.id = EXT_ISP_BURST_CAPTURE_CTRL;
+    m10mo_ctrl.data = EXT_ISP_BURST_CAPTURE_CTRL_STOP;
+    status_t status = mMainDevice->xioctl(ATOMISP_IOC_EXT_ISP_CTRL, &m10mo_ctrl);
+
+    return status;
+}
+
 ////////////////////////////////////////////////////////////////////
 //                          PRIVATE METHODS
 ////////////////////////////////////////////////////////////////////

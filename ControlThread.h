@@ -348,6 +348,7 @@ private:
         STATE_CAPTURE_ENCODING_DONE, // when encoding done callback is received
         STATE_CAPTURE_PICTURE_DONE,  // when picture done callback is received
         STATE_CAPTURE_IDLE,          // when preview is started again
+        STATE_CAPTURE_CONTINUOUS_SHOOTING,  // when pictures is captured continuously
         STATE_CAPTURE_LAST           // Fake state used to calculate number of states keep always last
     };
 
@@ -655,6 +656,8 @@ private:
     status_t captureULLPic();
     status_t captureJpegPic();
     status_t captureExtIspHDRLLSPic();
+    status_t startJpegPicContinuousShooting();
+    status_t stopJpegPicContinuousShooting();
     // snapshot during video functions
     status_t initSdv(bool offline);
     status_t deinitSdv(bool offline);
@@ -763,6 +766,8 @@ private:
 
     bool mDvsEnable;
     bool mDualVideo;
+
+    bool mJpegContinuousShootingRunning;
 
     Mutex mParamCacheLock;
     char* mParamCache;
