@@ -45,15 +45,8 @@ int SensorHWExtIsp::setAfMode(int mode)
         return -1;
 
     int ret = -1;
-    // For external ISP, use the extended ioctl() framework
-    struct atomisp_ext_isp_ctrl cmd;
-    cmd.id = EXT_ISP_FOCUS_MODE_CTRL;
-    cmd.data = mode;
-
-    ret = mDevice->xioctl(ATOMISP_IOC_EXT_ISP_CTRL, &cmd);
-
+    ret = extIspIoctl(EXT_ISP_FOCUS_MODE_CTRL, mode);
     return ret;
-
 }
 
 int SensorHWExtIsp::getAfMode(int *mode)
@@ -63,11 +56,9 @@ int SensorHWExtIsp::getAfMode(int *mode)
     if (PlatformData::isFixedFocusCamera(mCameraId))
         return -1;
 
-    struct atomisp_ext_isp_ctrl cmd;
-    cmd.id = EXT_ISP_GET_AF_MODE_CTRL;
-
-    int retval = mDevice->xioctl(ATOMISP_IOC_EXT_ISP_CTRL, &cmd);
-    *mode = (int)cmd.data;
+    int data = -1;
+    int retval =  extIspIoctl(EXT_ISP_GET_AF_MODE_CTRL, data);
+    *mode = data;
 
     return retval;
 }
@@ -80,11 +71,9 @@ int SensorHWExtIsp::setAfEnabled(bool enable)
         return -1;
 
     // start running the AF
-    struct atomisp_ext_isp_ctrl cmd;
-    cmd.id = EXT_ISP_FOCUS_EXECUTION_CTRL;
-    cmd.data = enable ? EXT_ISP_FOCUS_SEARCH : EXT_ISP_FOCUS_STOP;
+    int data = enable ? EXT_ISP_FOCUS_SEARCH : EXT_ISP_FOCUS_STOP;
 
-    int retval = mDevice->xioctl(ATOMISP_IOC_EXT_ISP_CTRL, &cmd);
+    int retval = extIspIoctl(EXT_ISP_FOCUS_EXECUTION_CTRL, data);
     return retval;
 }
 
@@ -103,16 +92,12 @@ int SensorHWExtIsp::setAfWindows(const CameraWindow *windows, int numWindows)
 
     // TODO: Support multiple windows?
 
-    struct atomisp_ext_isp_ctrl cmd;
-    cmd.id = EXT_ISP_TOUCH_POSX_CTRL;
-    cmd.data = windows[0].x_left;
-
-    retX = mDevice->xioctl(ATOMISP_IOC_EXT_ISP_CTRL, &cmd);
-
-    cmd.id = EXT_ISP_TOUCH_POSY_CTRL;
-    cmd.data = windows[0].y_top;
-
-    retY = mDevice->xioctl(ATOMISP_IOC_EXT_ISP_CTRL, &cmd);
+    // Accroding to m10mo spec, the touch AF coordinate is the upper
+    // left corner of the touch area. Thus, using only that point here.
+    int x = windows[0].x_left;
+    int y = windows[0].y_top;
+    retX = extIspIoctl(EXT_ISP_TOUCH_POSX_CTRL, x);
+    retY = extIspIoctl(EXT_ISP_TOUCH_POSY_CTRL, y);
 
     if (retX != NO_ERROR || retY != NO_ERROR) {
         LOGW("Failed setting AF windows, retvals %d, %d", retX, retY);
