@@ -963,11 +963,8 @@ int SensorHW::setAfEnabled(bool enable)
 int SensorHW::setAfWindows(const CameraWindow *windows, int numWindows)
 {
     LOG1("@%s", __FUNCTION__);
-
-    if (!PlatformData::isFixedFocusCamera(mCameraId))
-        return -1;
-
-    return NO_ERROR;
+    // Not supported
+    return -1;
 }
 
 int SensorHW::set3ALock(int aaaLock)
