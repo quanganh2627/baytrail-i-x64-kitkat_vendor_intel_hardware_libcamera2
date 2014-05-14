@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2011 The Android Open Source Project
+ * Copyright (c) 2012-2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,7 +15,7 @@
  * limitations under the License.
  */
 
-#define LOG_TAG "AtomAcc"
+#define LOG_TAG "Camera_AtomAcc"
 
 #include "AtomAcc.h"
 #include "ICameraHwControls.h"

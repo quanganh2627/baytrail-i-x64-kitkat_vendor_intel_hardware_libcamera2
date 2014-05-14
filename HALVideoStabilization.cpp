@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#define LOG_TAG "HAL_VS"
+#define LOG_TAG "Camera_HAL_VS"
 
 #include "HALVideoStabilization.h"
 #include "LogHelper.h"
