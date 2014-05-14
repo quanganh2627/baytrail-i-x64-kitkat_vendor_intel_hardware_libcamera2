@@ -157,7 +157,7 @@ AeMode AtomSoc3A::getAeMode()
 status_t AtomSoc3A::setEv(float bias)
 {
     status_t status = NO_ERROR;
-    int evValue = (int)bias;
+    int evValue = (1000*bias);
     LOG1("@%s: bias: %f, EV value: %d", __FUNCTION__, bias, evValue);
 
     int ret = mSensorCI->setExposureBias(evValue);
@@ -180,7 +180,7 @@ status_t AtomSoc3A::getEv(float *bias)
         LOGE("Error getting EV from the driver");
         status = UNKNOWN_ERROR;
     }
-    *bias = (float)evValue;
+    *bias = ((float)evValue)/1000;
 
     return status;
 }
