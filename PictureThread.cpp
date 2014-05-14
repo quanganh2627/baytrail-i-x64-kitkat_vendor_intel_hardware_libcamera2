@@ -212,7 +212,7 @@ status_t PictureThread::encode(MetaData &metaData, AtomBuffer *snapshotBuf, Atom
     return mMessageQueue.send(&msg);
 }
 
-void PictureThread::getDefaultParameters(CameraParameters *params)
+    void PictureThread::getDefaultParameters(CameraParameters *params, int cameraId)
 {
     LOG1("@%s", __FUNCTION__);
     if (!params) {
@@ -224,8 +224,10 @@ void PictureThread::getDefaultParameters(CameraParameters *params)
     params->setPictureFormat(CameraParameters::PIXEL_FORMAT_JPEG);
     params->set(CameraParameters::KEY_SUPPORTED_PICTURE_FORMATS,
             CameraParameters::PIXEL_FORMAT_JPEG);
-    params->set(CameraParameters::KEY_JPEG_QUALITY, "80");
-    params->set(CameraParameters::KEY_JPEG_THUMBNAIL_QUALITY, "50");
+    mPictureQuality = PlatformData::defaultJpegQuality(cameraId);
+    params->set(CameraParameters::KEY_JPEG_QUALITY, mPictureQuality);
+    mThumbnailQuality = PlatformData::defaultJpegThumbnailQuality(cameraId);
+    params->set(CameraParameters::KEY_JPEG_THUMBNAIL_QUALITY, mThumbnailQuality);
 }
 
 status_t PictureThread::initialize(const CameraParameters &params, int zoomRatio)

@@ -289,6 +289,20 @@ const char* PlatformData::supportedSnapshotSizes(int cameraId)
     return getInstance()->mCameras[getActiveCamIdx(cameraId)].supportedSnapshotSizes;
 }
 
+int PlatformData::defaultJpegQuality(int cameraId) {
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return -1;
+    }
+    return getInstance()->mCameras[cameraId].defaultJpegQuality;
+}
+
+int PlatformData::defaultJpegThumbnailQuality(int cameraId) {
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return -1;
+    }
+    return getInstance()->mCameras[cameraId].defaultJpegThumbnailQuality;
+}
+
 bool PlatformData::supportsFileInject(void)
 {
     return getInstance()->mFileInject;

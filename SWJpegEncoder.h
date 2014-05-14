@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012 The Android Open Source Project
- * Copyright (c) 2012 Intel Corporation. All Rights Reserved.
+ * Copyright (c) 2012-2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -174,7 +174,7 @@ private:
      */
     class Codec {
     public:
-        Codec();
+        Codec(int quality);
         ~Codec();
 
         void init(void);
@@ -206,7 +206,6 @@ private:
         struct jpeg_error_mgr mJErr;
         int mJpegQuality;
         static const unsigned int SUPPORTED_FORMAT = JCS_YCbCr;
-        static const int DEFAULT_JPEG_QUALITY = 90;
 
         int setupJpegDestMgr(j_compress_ptr cInfo, JSAMPLE *jpegBuf, int jpegBufSize);
         // the below three functions are for the dest buffer manager.

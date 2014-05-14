@@ -872,6 +872,24 @@ class PlatformData {
     static const char* supportedSnapshotSizes(int cameraId);
 
     /**
+     * Returns Jpeg compression quality default value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return quality, The range is 1 to 100, with 100 being the best.
+     *         -1 on error (invalid cameraId)
+     */
+    static int defaultJpegQuality(int cameraId);
+
+    /**
+     * Returns EXIF thumbnail compression quality default value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return quality, The range is 1 to 100, with 100 being the best.
+     *         -1 on error (invalid cameraId)
+     */
+    static int defaultJpegThumbnailQuality(int cameraId);
+
+    /**
      * Returns the name of the product
      * This is meant to be used in the EXIF metadata
      *
@@ -1197,6 +1215,8 @@ protected:
             flipping = PlatformData::SENSOR_FLIP_NA;
             dvs = true;
             supportedSnapshotSizes = "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920,3264x1836,3264x2448";
+            defaultJpegQuality = 80;
+            defaultJpegThumbnailQuality = 50;
             mPreviewViaOverlay = false;
             overlayRelativeRotation = 90;
             continuousCapture = false;
@@ -1355,6 +1375,8 @@ protected:
         int flipping;
         bool dvs;
         String8 supportedSnapshotSizes;
+        int defaultJpegQuality;
+        int defaultJpegThumbnailQuality;
         bool mPreviewViaOverlay;
         int overlayRelativeRotation;  /*<! Relative rotation between the native scan order of the
                                            camera and the display attached to the overlay */

@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2011 The Android Open Source Project
- * Copyright (c) 2012 Intel Corporation. All Rights Reserved.
+ * Copyright (c) 2012-2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -122,7 +122,7 @@ int SWJpegEncoder::swEncode(const InputBuffer &in, const OutputBuffer &out)
 {
     LOG1("@%s, line:%d, use the libjpeg to do sw jpeg encoding", __FUNCTION__, __LINE__);
     int status = 0;
-    Codec encoder;
+    Codec encoder(out.quality);
 
     encoder.init();
     encoder.setJpegQuality(out.quality);
@@ -424,7 +424,7 @@ int SWJpegEncoder::CodecWorkerThread::swEncode(void)
 {
     LOG1("@%s, line:%d, in CodecWorkerThread", __FUNCTION__, __LINE__);
     int status = 0;
-    Codec encoder;
+    Codec encoder(mCfg.quality);
 
     encoder.init();
     encoder.setJpegQuality(mCfg.quality);
@@ -448,8 +448,8 @@ exit:
     return (status ? -1 : 0);
 }
 
-SWJpegEncoder::Codec::Codec() :
-    mJpegQuality(DEFAULT_JPEG_QUALITY)
+SWJpegEncoder::Codec::Codec(int quality) :
+    mJpegQuality(CLIP(quality, 100, 1))
 {
     LOG1("@%s", __FUNCTION__);
 }

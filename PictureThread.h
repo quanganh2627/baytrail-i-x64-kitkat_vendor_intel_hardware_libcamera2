@@ -77,7 +77,7 @@ public:
 
     status_t encode(MetaData &metaData, AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf = NULL);
 
-    void getDefaultParameters(CameraParameters *params);
+    void getDefaultParameters(CameraParameters *params, int cameraId);
     status_t initialize(const CameraParameters &params, int zoomRatio);
     status_t allocSnapshotBuffers(const AtomBuffer& formatDescriptor,
                                 int sharedBuffersNum,
