@@ -1090,6 +1090,14 @@ class PlatformData {
     static float horizontalFOV(int cameraId, int width, int height);
 
     /**
+     * Retrns focal length of depth mode
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return int focal length
+     */
+    static int defaultDepthFocalLength(int cameraId);
+
+    /**
      * supported DVS sizes
      *
      * \param cameraId identifier passed to android.hardware.Camera.open()
@@ -1371,6 +1379,7 @@ protected:
 
             useMultiStreamsForSoC = false;
             mPreviewFourcc = V4L2_PIX_FMT_NV12;
+            defaultDepthFocalLength = 0;
         }
 
         String8 sensorName;
@@ -1532,6 +1541,8 @@ protected:
 
         // the preview format setting for seperate sensors
         int mPreviewFourcc;
+
+        int defaultDepthFocalLength;
     };
 
     // note: Android NDK does not yet support C++11 and

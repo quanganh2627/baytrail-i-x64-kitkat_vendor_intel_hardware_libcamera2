@@ -148,6 +148,8 @@ public:
     virtual status_t setSaturation(char saturation) { return INVALID_OPERATION; }
     virtual status_t setSharpness(char sharpness) { return INVALID_OPERATION; }
     virtual status_t setContrast(char contrast) { return INVALID_OPERATION; }
+
+    virtual void setManualFocusParameters(ia_aiq_manual_focus_parameters focusParameters) { }
 private:
     int mCameraId;
     IHWIspControl * mISP;

@@ -1456,6 +1456,14 @@ float PlatformData::horizontalFOV(int cameraId, int width, int height)
     return retVal;
 }
 
+int PlatformData::defaultDepthFocalLength(int cameraId)
+{
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return 0;
+    }
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].defaultDepthFocalLength;
+}
+
 const char* PlatformData::supportedDvsSizes(int cameraId)
 {
     if (!validCameraId(cameraId, __FUNCTION__)) {

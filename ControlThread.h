@@ -531,7 +531,7 @@ private:
     status_t processParamDvs(const CameraParameters *oldParams, CameraParameters *newParams);
     status_t processParamDualVideo(const CameraParameters *oldParams,
             CameraParameters *newParams, bool &restartPreview);
-    status_t processParamDualCameraMode(const CameraParameters *oldParams,
+    status_t processParamDualCameraMode(CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamBurst(const CameraParameters *oldParams,
                 CameraParameters *newParams);
@@ -744,6 +744,8 @@ private:
                                     in case burst multi shot capture is called and forces flash to be off.*/
     String8 mSavedFlashMode;        /*<! Save single shot current flash mode,
                                     in case burst multi shot capture is called and forces flash to be off.*/
+
+    String8 mSavedFocusMode;    /*<! Save current focus mode before changing focus mode for depth mode. */
 
     bool mFaceDetectionActive;
     bool mIspExtensionsEnabled;     /*<! Flag that signals whether the caller wants to run a 3rd party ISP extension*/

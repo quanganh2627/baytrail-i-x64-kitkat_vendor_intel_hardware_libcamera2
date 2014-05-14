@@ -455,6 +455,9 @@ status_t ControlThread::init()
     mSavedFlashSupported = PlatformData::supportedFlashModes(mCameraId);
     mSavedFlashMode = PlatformData::defaultFlashMode(mCameraId);
 
+    // default focus mode
+    mSavedFocusMode = PlatformData::defaultFocusMode(mCameraId);
+
     // Set property to inform system what camera is in use
     char facing[PROPERTY_VALUE_MAX];
     snprintf(facing, PROPERTY_VALUE_MAX, "%d", mCameraId);
@@ -4970,15 +4973,69 @@ status_t ControlThread::processParamDualVideo(const CameraParameters *oldParams,
     return status;
 }
 
-status_t ControlThread::processParamDualCameraMode(const CameraParameters *oldParams,
+status_t ControlThread::processParamDualCameraMode(CameraParameters *oldParams,
         CameraParameters *newParams)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams, IntelCameraParameters::KEY_DUAL_CAMERA_MODE);
-    if (!newVal.isEmpty())
-        PlatformData::useExtendedCamera((newVal == IntelCameraParameters::DUAL_CAMERA_MODE_DEPTH) ? true : false);
+
+    if (!newVal.isEmpty()) {
+        if (newVal == IntelCameraParameters::DUAL_CAMERA_MODE_DEPTH) {
+            PlatformData::useExtendedCamera(true);
+
+            // For Kevlar project, we expect to use the same focal length for both SBS camera
+            // and main back camera in depth mode. We will force to set afMode to CAM_AF_MODE_MANUAL
+            // to AtomAIQ, and set default depth focal length to driver.
+            if (!PlatformData::isFixedFocusCamera(mCameraId)
+               && PlatformData::supportExtendedCamera()) {
+                const char* str = newParams->get(CameraParameters::KEY_FOCUS_MODE);
+                if (str) {
+                    LOG2("current focus mode = %s", str);
+                    mSavedFocusMode = String8(str);
+                }
+
+                newParams->set(CameraParameters::KEY_FOCUS_MODE, "infinity");
+                newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "infinity");
+
+                // set focus mode to fixed too in old parameter and let focus don't set again.
+                oldParams->set(CameraParameters::KEY_FOCUS_MODE, "infinity");
+
+                int defaultFocusLength = PlatformData::defaultDepthFocalLength(mCameraId);
+                // set AF mode to CAM_AF_MODE_MANUAL
+                if (m3AControls && (defaultFocusLength != 0)) {
+                    m3AControls->setAfMode(CAM_AF_MODE_MANUAL);
+                    ia_aiq_manual_focus_parameters focusParameters;
+                    focusParameters.manual_focus_action = ia_aiq_manual_focus_action_set_distance;
+                    focusParameters.manual_focus_distance = defaultFocusLength;
+                    m3AControls->setManualFocusParameters(focusParameters);
+                    LOG2("defaultFocusLength = %d", defaultFocusLength);
+                }
+            }
+        } else {
+            PlatformData::useExtendedCamera(false);
+
+            if (!PlatformData::isFixedFocusCamera(mCameraId)
+               && PlatformData::supportExtendedCamera()) {
+
+                if (m3AControls) {
+                    ia_aiq_manual_focus_parameters focusParameters;
+                    focusParameters.manual_focus_action = ia_aiq_manual_focus_action_none;
+                    focusParameters.manual_focus_distance = 0;
+                    m3AControls->setManualFocusParameters(focusParameters);
+                }
+
+                LOG2("restore focus mode = %s", mSavedFocusMode.string());
+                newParams->set(CameraParameters::KEY_FOCUS_MODE, mSavedFocusMode.string());
+                newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, PlatformData::supportedFocusModes(mCameraId));
+
+                // remove focus parameter in old parameter to force updating focus mode.
+                oldParams->remove(CameraParameters::KEY_FOCUS_MODE);
+            }
+        }
+    }
+
     return status;
 }
 

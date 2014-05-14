@@ -263,6 +263,7 @@ public:
                                      ia_mkn_dnid mkn_name_id,
                                      const void *record,
                                      unsigned short record_size) = 0;
+    virtual void setManualFocusParameters(ia_aiq_manual_focus_parameters focusParameters) = 0;
 };
 
 }

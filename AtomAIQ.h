@@ -416,6 +416,9 @@ public:
     status_t setSharpness(char sharpness);
     status_t setContrast(char contrast);
 
+    // set manual focus length
+    void setManualFocusParameters(ia_aiq_manual_focus_parameters focusParameters);
+
 // private members
 private:
     IHWIspControl *mISP;

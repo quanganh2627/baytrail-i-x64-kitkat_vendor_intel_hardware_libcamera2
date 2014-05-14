@@ -1945,6 +1945,15 @@ void AtomAIQ::resetAFParams()
     mAfState.previous_sof = 0;
 }
 
+void AtomAIQ::setManualFocusParameters(ia_aiq_manual_focus_parameters focusParameters)
+{
+    LOG2("@%s", __FUNCTION__);
+    if (mAfMode == CAM_AF_MODE_MANUAL) {
+        mAfInputParameters.manual_focus_parameters->manual_focus_action = focusParameters.manual_focus_action;
+        mAfInputParameters.manual_focus_parameters->manual_focus_distance = focusParameters.manual_focus_distance;
+    }
+}
+
 status_t AtomAIQ::runAfMain()
 {
     LOG2("@%s", __FUNCTION__);

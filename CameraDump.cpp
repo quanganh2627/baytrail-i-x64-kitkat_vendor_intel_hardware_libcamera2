@@ -100,9 +100,6 @@ void CameraDump::setDumpDataFlag(void)
             return ;
         }
 
-        // TODO: when the test stage finishes and formal API done, this debug interface could be removed
-        PlatformData::useExtendedCamera((DumpProp & CAMERA_DEBUG_USE_EXTENDED_CAMERA) ? true : false);
-
         if (DumpProp & CAMERA_DEBUG_DUMP_RAW)
             sRawDataFormat = RAW_BAYER;
 
