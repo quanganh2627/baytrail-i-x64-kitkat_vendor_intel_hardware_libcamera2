@@ -122,4 +122,18 @@ int SensorHWExtIsp::setAfWindows(const CameraWindow *windows, int numWindows)
     return NO_ERROR;
 }
 
+/**
+ * Helper function for sending the extension xioctl()
+ */
+int SensorHWExtIsp::extIspIoctl(int id, int &data)
+{
+    struct atomisp_ext_isp_ctrl cmd;
+    CLEAR(cmd);
+
+    cmd.id = id;
+    cmd.data = data;
+
+    return mDevice->xioctl(ATOMISP_IOC_EXT_ISP_CTRL, &cmd);
+}
+
 } // namespace android

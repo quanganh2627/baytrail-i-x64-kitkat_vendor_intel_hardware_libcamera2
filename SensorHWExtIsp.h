@@ -37,6 +37,10 @@ private:
     SensorHWExtIsp(const SensorHWExtIsp &other);
     SensorHWExtIsp& operator=(const SensorHWExtIsp &other);
 
+// Private functions:
+private:
+    int extIspIoctl(int id, int &data);
+
 };
 
 } // namespace android
