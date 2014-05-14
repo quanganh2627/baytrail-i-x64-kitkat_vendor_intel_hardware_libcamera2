@@ -76,7 +76,7 @@ public:
     void focusMove(bool start);
     void panoramaDisplUpdate(camera_panorama_metadata_t &metadata);
     void panoramaSnapshot(const AtomBuffer &livePreview);
-    void extispFrame(const AtomBuffer &yuvBuf);
+    void extispFrame(const AtomBuffer &yuvBuf, int offset, int size);
     status_t requestULLPicture(int id);
     status_t ullTriggered(int id);
     status_t postviewRendered();
@@ -152,6 +152,12 @@ private:
 
     struct MessageFrame {
         AtomBuffer frame;
+    };
+
+    struct MessageExtIspFrame {
+        AtomBuffer frame;
+        int offset;
+        int size;
     };
 
     struct MessageVideo {
@@ -259,7 +265,7 @@ private:
         MessageError error;
 
         // MESSAGE_ID_EXTISP_FRAME
-        MessageFrame extIspFrame;
+        MessageExtIspFrame extIspFrame;
 
         // MESSAGE_ID_ACC_NOTIFY
         // MESSAGE_ID_ACC_BUFFER
@@ -299,7 +305,7 @@ private:
     status_t handleMessageLowBattery();
     status_t handleMessageRawFrameDone(MessageFrame *msg);
     status_t handleMessagePostviewFrameDone(MessageFrame *msg);
-    status_t handleMessageExtIspFrame(MessageFrame *msg);
+    status_t handleMessageExtIspFrame(MessageExtIspFrame *msg);
     status_t handleMessageAccManagerPointer(MessageAccManager *msg);
     status_t handleMessageAccManagerFinished();
     status_t handleMessageAccManagerPreviewBuffer(MessageAccManager *msg);

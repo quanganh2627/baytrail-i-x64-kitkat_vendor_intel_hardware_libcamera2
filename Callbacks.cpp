@@ -21,6 +21,7 @@
 #include "intel_camera_extensions.h"
 #include "PerformanceTraces.h"
 #include "cutils/atomic.h"
+#include "CamHeapMem.h"
 
 namespace android {
 
@@ -136,13 +137,20 @@ void Callbacks::compressedFrameDone(AtomBuffer *buff)
     }
 }
 
-void Callbacks::extIspFrameDone(AtomBuffer *buff)
+void Callbacks::extIspFrameDone(AtomBuffer *buff, int offset, int size)
 {
     LOG1("@%s", __FUNCTION__);
     // we don't obey the flags for this, as several callbacks are wanted
     if (mDataCB != NULL) {
         LOG1("Sending message: CAMERA_MSG_COMPRESSED_IMAGE, buff id = %d, size = %zu", buff->id, buff->buff->size);
+        sp<CameraHeapMemory> mem(static_cast<CameraHeapMemory *>(buff->buff->handle));
+        sp<MemoryBase> memBase = mem->mBuffers[0];
+        sp<CameraMemoryBase> newMemoryBase = new CameraMemoryBase(mem->mBuffers[0], offset, size);
+        // send with the offset and size of the new memory base object
+        mem->mBuffers[0] = newMemoryBase;
         mDataCB(CAMERA_MSG_COMPRESSED_IMAGE, buff->buff, 0, NULL, mUserToken);
+        // restore old memory base object
+        mem->mBuffers[0] = memBase;
     }
 }
 

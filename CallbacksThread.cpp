@@ -795,21 +795,23 @@ status_t CallbacksThread::handleMessageRawFrameDone(MessageFrame *msg)
     return status;
 }
 
-void CallbacksThread::extispFrame(const AtomBuffer &yuvBuf)
+void CallbacksThread::extispFrame(const AtomBuffer &yuvBuf, int offset, int size)
 {
     LOG1("@%s",__FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_EXTISP_FRAME;
     msg.data.extIspFrame.frame = yuvBuf;
+    msg.data.extIspFrame.size = size;
+    msg.data.extIspFrame.offset = offset;
 
     mMessageQueue.send(&msg);
 }
 
-status_t CallbacksThread::handleMessageExtIspFrame(MessageFrame *msg)
+status_t CallbacksThread::handleMessageExtIspFrame(MessageExtIspFrame *msg)
 {
     LOG1("@%s",__FUNCTION__);
     status_t status = NO_ERROR;
-    mCallbacks->extIspFrameDone(&msg->frame);
+    mCallbacks->extIspFrameDone(&msg->frame, msg->offset, msg->size);
     msg->frame.owner->returnBuffer(&msg->frame);
     return status;
 }

@@ -4355,20 +4355,6 @@ status_t ControlThread::captureExtIspHDRLLSPic()
     for (int i = 0; i < MAX_FRAME_GRABS; i++) {
         mISP->getSnapshot(&buffer, NULL);
         buffer.owner = mISP;
-
-        /* temporary logging */
-        char array[16];
-        unsigned char *meta = ((unsigned char*)buffer.dataPtr)+0x800;
-        strncpy(array, (char*) meta, 15);
-        array[15] = 0;
-        uint32_t yuvFrameIdDebug  = *(uint32_t*)(meta+0x17);
-        yuvFrameIdDebug = be32toh(yuvFrameIdDebug);
-        meta += 15;
-
-        LOG2("@%s JPEGINFO '%s'(%d) %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx", __FUNCTION__, array, yuvFrameIdDebug,
-             meta[0] , meta[1], meta[2], meta[3], meta[4], meta[5], meta[6], meta[7], meta[8] , meta[9], meta[10], meta[11], meta[12], meta[13], meta[14], meta[15]);
-        /** temporary logging end **/
-
         hdrinfo = ((char*)buffer.dataPtr) + HDR_INFO_START;
         if (strncmp((char*) &hdrinfo[HDR_INFO_START_MARKER_ADDR], HDR_INFO_START_MARKER, sizeof(HDR_INFO_START_MARKER) - 1) == 0) {
 
@@ -4378,7 +4364,7 @@ status_t ControlThread::captureExtIspHDRLLSPic()
             if ((hdrinfo[HDR_INFO_MODE_ADDR] == HDR_INFO_MODE_HDR && frameIndex == 0x02) ||
                 (hdrinfo[HDR_INFO_MODE_ADDR] == HDR_INFO_MODE_LLS && frameIndex == 0x04)) {
                 // restart preview (these can be left out if preview needs to stay stopped)
-                mHwcg.mIspCI->setHDR(2);
+                mHwcg.mIspCI->setHDR(2); // works for LLS also
                 mISP->startObserver(OBSERVE_PREVIEW_STREAM);
                 succesfull = true;
                 break; // out of for-loop
@@ -4388,9 +4374,9 @@ status_t ControlThread::captureExtIspHDRLLSPic()
     }
 
     if (!succesfull) {
-        LOGE("Failed to capture HDR picture from extisp.");
+        LOGE("Failed to capture HDR/LLS picture from extisp.");
         // restart preview
-        mHwcg.mIspCI->setHDR(2);
+        mHwcg.mIspCI->setHDR(2); // works for LLS also
         mISP->startObserver(OBSERVE_PREVIEW_STREAM);
         return UNKNOWN_ERROR;
     }
@@ -4398,7 +4384,13 @@ status_t ControlThread::captureExtIspHDRLLSPic()
     // now, the yuvBuffers are properly captured in the array "yuvBuffers"
     int frameCount = (hdrinfo[HDR_INFO_MODE_ADDR] == HDR_INFO_MODE_HDR) ? 3 : 5;
     for (int i = 0; i < frameCount; i++) {
-        mCallbacksThread->extispFrame(yuvBuffers[i]);
+        // yuv422 is 2Bpp
+        int width, height;
+        mParameters.getPictureSize(&width, &height);
+        int size = width * height * 2;
+        int offset = YUV422_DATA_START;
+        LOG1("Sending yuv422 frame with offset %d and size %d", offset, size);
+        mCallbacksThread->extispFrame(yuvBuffers[i], offset, size);
     }
 
     LOG1("@%s: HDR/LLS DONE!", __FUNCTION__);

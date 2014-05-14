@@ -19,6 +19,7 @@
 
 #include <binder/MemoryBase.h>
 #include <binder/MemoryHeapBase.h>
+#include "LogHelper.h"
 
 namespace android {
 
@@ -50,13 +51,41 @@ public:
                                          mBufSize);
     }
 
-    virtual ~CameraHeapMemory() {}
+    virtual ~CameraHeapMemory() { LOG1("@%s", __FUNCTION__); }
 
     size_t mBufSize;
     uint_t mNumBufs;
     sp<MemoryHeapBase> mHeap;
     sp<MemoryBase> *mBuffers;
     camera_memory_t handle;
+};
+
+/**
+ * Class for overriding the offset and size of camera heap memory allocations
+ * during callbacks. Give the original MemoryBase from CameraHeapMemory mBuffers
+ * to the constructor of this class with the new offset and desired size.
+ */
+class CameraMemoryBase : public MemoryBase
+{
+public:
+    CameraMemoryBase(const sp<MemoryBase> &base, ssize_t offset, size_t size)
+        : MemoryBase(base->getMemory(NULL, NULL), offset, size), mSize(size), mOffset(offset), mBase(base) {}
+    virtual ~CameraMemoryBase() {  LOG1("@%s", __FUNCTION__); }
+    virtual sp<IMemoryHeap> getMemory(ssize_t* offset, size_t* size) const {
+        if (offset) *offset = mOffset;
+        if (size)   *size = mSize;
+        return mBase->getMemory(NULL, NULL);
+    }
+    sp<MemoryBase> getMemoryBase() { return mBase; }
+
+protected:
+    size_t getSize() const { return mSize; }
+    ssize_t getOffset() const { return mOffset; }
+
+private:
+    size_t          mSize;
+    ssize_t         mOffset;
+    sp<MemoryBase>  mBase;
 };
 
 } // namespace android
