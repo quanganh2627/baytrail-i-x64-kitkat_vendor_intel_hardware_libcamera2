@@ -223,8 +223,8 @@ public:
     virtual int setAfWindows(const CameraWindow *windows, int numWindows) = 0;
     virtual int set3ALock(int aaaLock) = 0;
     virtual int get3ALock(int * aaaLock) = 0;
-    virtual int setAeFlashMode(v4l2_flash_led_mode mode) = 0;
-    virtual int getAeFlashMode(v4l2_flash_led_mode * mode) = 0;
+    virtual int setAeFlashMode(int mode) = 0;
+    virtual int getAeFlashMode(int *mode) = 0;
 
     virtual void getMotorData(sensorPrivateData *sensor_data) = 0;
     virtual int getRawFormat() = 0;

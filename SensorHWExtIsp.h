@@ -33,6 +33,9 @@ public:
     virtual int setAfEnabled(bool enable);
     virtual int setAfWindows(const CameraWindow *windows, int numWindows);
 
+    virtual int setAeFlashMode(int mode);
+
+// Prevent copy constructor and assignment
 private:
     SensorHWExtIsp(const SensorHWExtIsp &other);
     SensorHWExtIsp& operator=(const SensorHWExtIsp &other);

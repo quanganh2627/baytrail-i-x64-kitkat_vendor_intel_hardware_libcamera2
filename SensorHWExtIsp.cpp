@@ -107,6 +107,23 @@ int SensorHWExtIsp::setAfWindows(const CameraWindow *windows, int numWindows)
     return NO_ERROR;
 }
 
+int SensorHWExtIsp::setAeFlashMode(int mode)
+{
+    LOG2("@%s: %d", __FUNCTION__, mode);
+    int ret = 0;
+
+    // use our custom control for external ISP, as standard
+    // V4L2 value range lacks "auto" mode.
+    // TODO: can we use existing V4L2 std control instead? Would not need this hack then...
+    ret = extIspIoctl(EXT_ISP_FLASH_MODE_CTRL, mode);
+    if (ret != 0) {
+        LOGW("Failed setting flash mode, ret: %d", ret);
+        return UNKNOWN_ERROR;
+    }
+
+    return ret;
+}
+
 /**
  * Helper function for sending the extension xioctl()
  */

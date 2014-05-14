@@ -983,13 +983,14 @@ int SensorHW::get3ALock(int * aaaLock)
 }
 
 
-int SensorHW::setAeFlashMode(v4l2_flash_led_mode mode)
+int SensorHW::setAeFlashMode(int mode)
 {
     LOG2("@%s: %d", __FUNCTION__, mode);
-    return mDevice->setControl(V4L2_CID_FLASH_LED_MODE, mode, "Flash mode");
+    int ctl = V4L2_CID_FLASH_LED_MODE;
+    return mDevice->setControl(ctl, mode, "Flash mode");
 }
 
-int SensorHW::getAeFlashMode(v4l2_flash_led_mode * mode)
+int SensorHW::getAeFlashMode(int *mode)
 {
     LOG2("@%s", __FUNCTION__);
     return mDevice->getControl(V4L2_CID_FLASH_LED_MODE, (int*)mode);

@@ -80,8 +80,8 @@ public:
     virtual int setAfWindows(const CameraWindow *windows, int numWindows);
     virtual int set3ALock(int aaaLock);
     virtual int get3ALock(int * aaaLock);
-    virtual int setAeFlashMode(v4l2_flash_led_mode mode);
-    virtual int getAeFlashMode(v4l2_flash_led_mode * mode);
+    virtual int setAeFlashMode(int mode);
+    virtual int getAeFlashMode(int *mode);
     virtual int getRawFormat();
 
     virtual unsigned int getExposureDelay();

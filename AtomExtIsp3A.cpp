@@ -29,6 +29,7 @@ AtomExtIsp3A::AtomExtIsp3A(int cameraId, HWControlGroup &hwcg)
     ,mFlashCI(hwcg.mFlashCI)
     ,mLensCI(hwcg.mLensCI)
     ,mDrvAfMode(-1)
+    ,mDrvFlashMode(-1)
     ,mFaceDetectionActive(false)
 {
 
@@ -241,6 +242,99 @@ status_t AtomExtIsp3A::stopStillAf()
     // NOTE: Intentionally empty implementation to make this
     // a no-op, at least for now.
     return NO_ERROR;
+}
+
+status_t AtomExtIsp3A::setAeFlashMode(FlashMode mode)
+{
+    LOG1("@%s: %d", __FUNCTION__, mode);
+    status_t status = NO_ERROR;
+
+    if (!strcmp(PlatformData::supportedFlashModes(mCameraId), "")) {
+        LOG1("@%s: not supported by current camera", __FUNCTION__);
+        return INVALID_OPERATION;
+    }
+
+    int modeTmp = EXT_ISP_FLASH_MODE_OFF;
+    int currFlashMode = getAeFlashMode();
+
+    // Current flash mode already the same as requested:
+    if (currFlashMode == mode)
+        return NO_ERROR;
+
+    switch (mode) {
+        case CAM_AE_FLASH_MODE_OFF:
+            modeTmp = EXT_ISP_FLASH_MODE_OFF;
+            break;
+        case CAM_AE_FLASH_MODE_ON:
+            modeTmp = EXT_ISP_FLASH_MODE_ON;
+            break;
+        case CAM_AE_FLASH_MODE_AUTO:
+            modeTmp = EXT_ISP_FLASH_MODE_AUTO;
+            break;
+        case CAM_AE_FLASH_MODE_TORCH:
+            modeTmp = EXT_ISP_LED_TORCH_ON;
+            break;
+        default:
+            LOGW("Unsupported Flash mode (%d), using OFF", mode);
+            modeTmp = EXT_ISP_FLASH_MODE_OFF;
+            break;
+    }
+
+    int ret = 0;
+
+    // Set torch off, if it is currently on, and something else is requested:
+    // NOTE: EXT_ISP_LED_TORCH_OFF is only used for setting torch off,
+    // no need to remember the state in mDrvFlashMode
+    if (mode != currFlashMode && currFlashMode == CAM_AE_FLASH_MODE_TORCH)
+        ret = mSensorCI->setAeFlashMode(EXT_ISP_LED_TORCH_OFF);
+
+    if (ret != 0) {
+        LOGE("Error setting torch to \"off\"");
+        return UNKNOWN_ERROR;
+    }
+
+    // Set the requested flash mode:
+    ret = mSensorCI->setAeFlashMode(modeTmp);
+    if (ret != 0) {
+        LOGD("Error setting Flash mode (%d) in the driver", modeTmp);
+        status = UNKNOWN_ERROR;
+    } else {
+        mDrvFlashMode = modeTmp;
+    }
+
+    return status;
+}
+
+FlashMode AtomExtIsp3A::getAeFlashMode()
+{
+    LOG1("@%s", __FUNCTION__);
+    FlashMode mode = CAM_AE_FLASH_MODE_OFF;
+
+    if (!strcmp(PlatformData::supportedFlashModes(mCameraId), "")) {
+        LOG1("@%s: not supported by current camera", __FUNCTION__);
+        return mode;
+    }
+
+    switch (mDrvFlashMode) {
+        case EXT_ISP_FLASH_MODE_OFF:
+            mode = CAM_AE_FLASH_MODE_OFF;
+            break;
+        case EXT_ISP_FLASH_MODE_ON:
+            mode = CAM_AE_FLASH_MODE_ON;
+            break;
+        case EXT_ISP_FLASH_MODE_AUTO:
+            mode = CAM_AE_FLASH_MODE_AUTO;
+            break;
+        case EXT_ISP_LED_TORCH_ON:
+            mode = CAM_AE_FLASH_MODE_TORCH;
+            break;
+        default:
+            LOGW("Unsupported Flash mode (%d), using OFF", mode);
+            mode = CAM_AE_FLASH_MODE_OFF;
+            break;
+    }
+
+    return mode;
 }
 
 void AtomExtIsp3A::setFaceDetection(bool enabled)
