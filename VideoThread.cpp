@@ -89,7 +89,8 @@ bool VideoThread::atomIspNotify(IAtomIspObserver::Message *msg, const ObserverSt
             return false;
         }
 
-        if (mIsp->getMode() == MODE_VIDEO || mIsp->getMode() == MODE_CONTINUOUS_VIDEO) {
+        if (mIsp->getMode() == MODE_VIDEO || mIsp->getMode() == MODE_CONTINUOUS_VIDEO ||
+            mIsp->getMode() == MODE_CONTINUOUS_JPEG_VIDEO) {
             bool skipFrame = mIsp->checkSkipFrameRecording(msg->data.frameBuffer.buff.frameCounter);
 
             Message local_msg;

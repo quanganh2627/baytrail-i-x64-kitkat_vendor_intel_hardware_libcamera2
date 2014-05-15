@@ -26,7 +26,7 @@ public:
     explicit HALVideoStabilization() {}
     virtual ~HALVideoStabilization() {}
 
-    static void getEnvelopeSize(int previewWidth, int previewHeight, int &envelopeWidth, int &envelopeHeight);
+    static void getEnvelopeSize(int previewWidth, int previewHeight, int &envelopeWidth, int &envelopeHeight, int &bpl);
 
     void process(const AtomBuffer *inBuf, AtomBuffer *outBuf);
 // prevent copy constructor and assignment operator

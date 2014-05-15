@@ -2039,15 +2039,10 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         // set halVideoStabilization on if it is configured and settings allow
         int previewWidth, previewHeight;
         mParameters.getPreviewSize(&previewWidth, &previewHeight);
-        if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_SOC &&
-            PlatformData::useHALVS(mCameraId)) {
-            mHALVideoStabilization = true; //temporarily always on for SOC
-        } else {
-            mHALVideoStabilization = PlatformData::useHALVS(mCameraId) &&
-                                     width == previewWidth &&
-                                     height == previewHeight &&
-                                     mDvsEnable;
-        }
+        mHALVideoStabilization = PlatformData::useHALVS(mCameraId) &&
+                                 width == previewWidth &&
+                                 height == previewHeight &&
+                                 mDvsEnable;
 
         mISP->setHALVideoStabilization(mHALVideoStabilization);
 
@@ -2072,7 +2067,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
             sdvParam == CameraParameters::TRUE && // user doesn't request to disable sdv by parameter
             fps <= DEFAULT_RECORDING_FPS && // not high speed mode
             isFullSizeSdvSupportedVideoSize(width, height, previewWidth, previewHeight) && // video size limitation
-            !mHALVideoStabilization;
+            !PlatformData::supportsContinuousJpegCapture(mCameraId); // SDV JPEG comes inside ext-isp stream
 
         mode = mFullSizeSdv ? MODE_CONTINUOUS_VIDEO : MODE_VIDEO;
         LOG1("Starting preview in %s mode", mode == MODE_VIDEO? "video":"continuous video");
@@ -2081,8 +2076,12 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         if (mHALVideoStabilization) {
             mode = MODE_CONTINUOUS_JPEG;
             status = mHwcg.mIspCI->setDVS(false); // disable isp stabilization, use hal version
-        } else
+        } else {
+            if(PlatformData::supportsContinuousJpegCapture(mCameraId))
+                mode = MODE_CONTINUOUS_JPEG_VIDEO;
+
             status = mHwcg.mIspCI->setDVS(mDvsEnable);
+        }
 
         if (status != NO_ERROR) {
             LOGW("@%s: Failed to set DVS %s", __FUNCTION__, mDvsEnable ? "enabled" : "disabled");
@@ -2112,7 +2111,8 @@ status_t ControlThread::startPreviewCore(bool videoMode)
             LOGE("failed to init continuous capture");
             return BAD_VALUE;
         }
-    } else if (state == STATE_JPEG_CAPTURE || (videoMode && mode == MODE_CONTINUOUS_JPEG)) {
+    } else if (state == STATE_JPEG_CAPTURE ||
+              (videoMode && (mode == MODE_CONTINUOUS_JPEG || mode == MODE_CONTINUOUS_JPEG_VIDEO))) {
         if (initContinuousJpegCapture() != NO_ERROR) {
             LOGE("failed to init continuous jpeg capture");
             return BAD_VALUE;
@@ -2309,7 +2309,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     if (videoMode && !mHALVideoStabilization)
         mISP->attachObserver(mVideoThread.get(), OBSERVE_PREVIEW_STREAM);
     mISP->attachObserver(mPreviewThread.get(), OBSERVE_PREVIEW_STREAM);
-    if (state == STATE_JPEG_CAPTURE || mHALVideoStabilization) {
+    if (state == STATE_JPEG_CAPTURE || (videoMode && (mode == MODE_CONTINUOUS_JPEG || mode == MODE_CONTINUOUS_JPEG_VIDEO))) {
         mISP->attachObserver(mPictureThread.get(), OBSERVE_PREVIEW_STREAM);
     }
 
@@ -2350,7 +2350,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         LOGE("Error starting ISP!");
         mPreviewThread->returnPreviewBuffers();
         mISP->detachObserver(mPreviewThread.get(), OBSERVE_PREVIEW_STREAM);
-        if (state == STATE_JPEG_CAPTURE || mHALVideoStabilization)
+        if (state == STATE_JPEG_CAPTURE || (videoMode && (mode == MODE_CONTINUOUS_JPEG || mode == MODE_CONTINUOUS_JPEG_VIDEO)))
             mISP->detachObserver(mPictureThread.get(), OBSERVE_PREVIEW_STREAM);
         mISP->detachObserver(this, OBSERVE_PREVIEW_STREAM);
         if (videoMode)
@@ -2445,7 +2445,8 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
 
     mISP->detachObserver(mPreviewThread.get(), OBSERVE_PREVIEW_STREAM);
 
-    if (oldState == STATE_JPEG_CAPTURE || mHALVideoStabilization) {
+    if (oldState == STATE_JPEG_CAPTURE || mHALVideoStabilization ||
+        ((oldState == STATE_PREVIEW_VIDEO || oldState == STATE_RECORDING) && PlatformData::supportsContinuousJpegCapture(mCameraId))) {
         mISP->detachObserver(mPictureThread.get(), OBSERVE_PREVIEW_STREAM);
     }
 
@@ -3607,7 +3608,7 @@ bool ControlThread::selectSdvSize(int &width, int &height)
     mParameters.getVideoSize(&vidWidth, &vidHeight);
     vidAspect = static_cast<float>(vidWidth) / static_cast<float>(vidHeight);
 
-    //find proper picture size in suported SDV list
+    //find proper picture size in supported SDV list
     parseSizesList(PlatformData::supportedSdvSizes(mCameraId), supportedSizes);
     for (unsigned int i = 0 ; i < supportedSizes.size() ; i++) {
         picAspect = static_cast<float>(supportedSizes[i].width) / static_cast<float>(supportedSizes[i].height);
@@ -3617,6 +3618,16 @@ bool ControlThread::selectSdvSize(int &width, int &height)
             LOG1("@%s prefer picture size:%dx%d", __FUNCTION__, width, height);
             return true;
         }
+    }
+
+    // todo remove this block when ext-isp has 2:1 capture size(s) available
+    if (PlatformData::supportsContinuousJpegCapture(mCameraId) &&
+        vidWidth == 720 && vidHeight == 480 && supportedSizes.size() > 0) {
+        // since there is no proper 2:1 capture yet, we will have to just pick
+        // one for the ext-isp case
+        width = supportedSizes[0].width;
+        height = supportedSizes[0].height;
+        return true;
     }
 
     LOGW("failed to select a proper size for video snapshot");

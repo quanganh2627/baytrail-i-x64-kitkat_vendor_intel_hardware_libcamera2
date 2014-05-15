@@ -1092,11 +1092,7 @@ status_t AtomISP::configure(AtomMode mode)
         status = configurePreview();
         break;
     case MODE_VIDEO:
-        if (mHALVideoStabilization) {
-            // todo unused, remove?
-            status = configureHALVSVideo();
-        } else
-            status = configureRecording();
+        status = configureRecording();
         break;
     case MODE_CAPTURE:
         status = configureCapture();
@@ -1109,6 +1105,9 @@ status_t AtomISP::configure(AtomMode mode)
         break;
     case MODE_CONTINUOUS_JPEG:
         status = configureContinuousJpegCapture();
+        break;
+    case MODE_CONTINUOUS_JPEG_VIDEO:
+        status = configureContinuousJpegVideo();
         break;
     default:
         status = UNKNOWN_ERROR;
@@ -1150,6 +1149,12 @@ status_t AtomISP::allocateBuffers(AtomMode mode)
         if ((status = allocatePreviewBuffers()) != NO_ERROR)
             mPreviewDevice->stop();
         break;
+    case MODE_CONTINUOUS_JPEG_VIDEO:
+        if ((status = allocateSnapshotBuffers()) != NO_ERROR) {
+            stopRecording();
+            return status;
+        }
+        // intentional fall-through without break
     case MODE_CONTINUOUS_VIDEO:
     case MODE_VIDEO:
         if (!mHALVideoStabilization) // no need to allocate in halVS mode which uses preview bufs for recording
@@ -1214,6 +1219,9 @@ status_t AtomISP::start()
     case MODE_CONTINUOUS_JPEG:
     case MODE_PREVIEW:
         status = startPreview();
+        break;
+    case MODE_CONTINUOUS_JPEG_VIDEO:
+        status = startRecording();
         break;
     case MODE_VIDEO:
     case MODE_CONTINUOUS_VIDEO:
@@ -1301,6 +1309,7 @@ status_t AtomISP::stop()
         break;
 
     case MODE_VIDEO:
+    case MODE_CONTINUOUS_JPEG_VIDEO:
         status = stopRecording();
         break;
 
@@ -1599,7 +1608,7 @@ status_t AtomISP::startRecording()
     status_t status = NO_ERROR;
 
     if (!mHALVideoStabilization) {
-        if (mHALSDVEnabled && mUseMultiStreamsForSoC) {
+        if ((mHALSDVEnabled && mUseMultiStreamsForSoC) || mMode == MODE_CONTINUOUS_JPEG_VIDEO) {
             ret = mMainDevice->start(mConfig.num_snapshot_buffers, mInitialSkips);
             if (ret < 0) {
                 LOGE("start capture on first device failed!");
@@ -1668,6 +1677,11 @@ status_t AtomISP::stopRecording()
     freePreviewBuffers();
     mPreviewDevice->close();
     mRecordingDevice->close();
+
+    if (mMode == MODE_CONTINUOUS_JPEG_VIDEO) {
+        mMainDevice->stop();
+        freeSnapshotBuffers();
+    }
 
     if (mHALSDVEnabled && mUseMultiStreamsForSoC) {
         mMainDevice->stop();
@@ -2446,72 +2460,42 @@ errorFreeBuf:
     return status;
 }
 
-// todo unused, remove?
-status_t AtomISP::configureHALVSVideo()
+status_t AtomISP::configureContinuousJpegVideo()
 {
     LOG1("@%s", __FUNCTION__);
-    if(mSensorType == SENSOR_TYPE_RAW) {
-        int ret;
-        float capture_fps;
-        status_t status = NO_ERROR;
+    status_t status(OK);
+    int ret(0);
 
-        // continuous mode does not support low_light mode capture
-        setLowLight(false);
-        updateCaptureParams();
+    mContinuousJpegCaptureEnabled = true;
 
-        ret = configureContinuousMode(true);
-        if (ret != NO_ERROR) {
-            LOGE("setting continuous mode failed");
-            return ret;
-        }
+    // configure the main device
+    mConfig.snapshot.fourcc = V4L2_PIX_FMT_CONTINUOUS_JPEG;
+    mConfig.snapshot.bpl = SGXandDisplayBpl(mConfig.snapshot.fourcc, mConfig.snapshot.width);
+    mConfig.snapshot.size = frameSize(mConfig.snapshot.fourcc, mConfig.snapshot.width, mConfig.snapshot.height);
+    LOG1("@%s configured main %dx%d bpl %d size %d", __FUNCTION__, mConfig.snapshot.width, mConfig.snapshot.height, mConfig.snapshot.bpl,  mConfig.snapshot.size);
 
-        ret = configureContinuousRingBuffer();
-        if (ret != NO_ERROR) {
-            LOGE("setting continuous capture params failed");
-            return ret;
-        }
-
-        ret = configureDevice(
-                mMainDevice.get(),
-                CI_MODE_PREVIEW,
-                &(mConfig.snapshot),
-                isDumpRawImageReady());
-        if (ret < 0) {
-            LOGE("configure first device failed!");
-            status = UNKNOWN_ERROR;
-            goto errorFreeBuf;
-        }
-        // save the capture fps
-        capture_fps = mConfig.fps;
-
-        status = configurePreview();
-        if (status != NO_ERROR) {
-            return status;
-        }
-
-        // need to resend the current zoom value
-        if (mDvs && mCssMajorVersion == 2)
-            mDvs->setZoom(mConfig.zoom);
-
-        atomisp_set_zoom(mConfig.zoom);
-
-        // restore the actual capture fps value
-        mConfig.fps = capture_fps;
-
-        return status;
-
-    errorCloseSecond:
-        if (isPostviewInitialized()) {
-            mPostViewDevice->close();
-        }
-    errorFreeBuf:
-        freeSnapshotBuffers();
-        freePostviewBuffers();
-
-        return status;
-    } else {
-        return configurePreview();
+    ret = configureDevice(
+        mMainDevice.get(),
+        CI_MODE_PREVIEW,
+        &(mConfig.snapshot),
+        isDumpRawImageReady());
+    if (ret < 0) {
+        LOGE("@%s, configure main device failed!", __FUNCTION__);
+        return UNKNOWN_ERROR;
     }
+
+    status = configureRecording();
+    if (status != OK) {
+        return status;
+    }
+
+    mConfig.num_snapshot = NUM_OF_JPEG_CAPTURE_SNAPSHOT_BUF;
+    mConfig.num_snapshot_buffers = NUM_OF_JPEG_CAPTURE_SNAPSHOT_BUF;
+    mUsingClientSnapshotBuffers = false;
+
+
+
+    return status;
 }
 
 status_t AtomISP::configureContinuous()
@@ -2838,7 +2822,7 @@ status_t AtomISP::startOfflineCapture(ContinuousCaptureConfig &config)
     if (mHALZSLEnabled || mHALSDVEnabled)
         return OK;
 
-    if (!inContinuousMode() || mMode == MODE_CONTINUOUS_JPEG) {
+    if (!inContinuousMode() || mMode == MODE_CONTINUOUS_JPEG || mMode == MODE_CONTINUOUS_JPEG_VIDEO) {
         LOGE("@%s: invalid mode %d", __FUNCTION__, mMode);
         return INVALID_OPERATION;
     }
@@ -2881,7 +2865,7 @@ status_t AtomISP::startOfflineCapture(ContinuousCaptureConfig &config)
 status_t AtomISP::stopOfflineCapture()
 {
     LOG1("@%s", __FUNCTION__);
-    if (!inContinuousMode() || mMode == MODE_CONTINUOUS_JPEG) {
+    if (!inContinuousMode() || mMode == MODE_CONTINUOUS_JPEG || mMode == MODE_CONTINUOUS_JPEG_VIDEO) {
         LOGE("@%s: invalid mode %d", __FUNCTION__, mMode);
         return INVALID_OPERATION;
     }
@@ -2973,7 +2957,8 @@ status_t AtomISP::rawBufferCapture(int expId)
 
 bool AtomISP::isOfflineCaptureRunning() const
 {
-    if (inContinuousMode() && mMode != MODE_CONTINUOUS_JPEG && mMainDevice->isStarted())
+    if (inContinuousMode() && mMode != MODE_CONTINUOUS_JPEG &&
+        mMode != MODE_CONTINUOUS_JPEG_VIDEO && mMainDevice->isStarted())
         return true;
 
     return false;
@@ -3088,9 +3073,7 @@ status_t AtomISP::setPreviewFrameFormat(int width, int height, int bpl, int four
 
     // add the envelope size for the hal videostabilization, if it is enabled
     if (mHALVideoStabilization) {
-        double oldWidth = width;
-        HALVideoStabilization::getEnvelopeSize(width, height, width, height);
-        bpl = bpl * (width / oldWidth);
+        HALVideoStabilization::getEnvelopeSize(width, height, width, height, bpl);
     }
 
     mConfig.preview.width = width;
@@ -3714,12 +3697,12 @@ status_t AtomISP::setSkipFramesForVideoZoom()
 inline bool AtomISP::inContinuousMode() const
 {
     return mMode == MODE_CONTINUOUS_VIDEO || mMode == MODE_CONTINUOUS_CAPTURE ||
-           mMode == MODE_CONTINUOUS_JPEG;
+           mMode == MODE_CONTINUOUS_JPEG || mMode == MODE_CONTINUOUS_JPEG_VIDEO;
 }
 
 inline bool AtomISP::inVideoMode() const
 {
-    return mMode == MODE_CONTINUOUS_VIDEO || mMode == MODE_VIDEO;
+    return mMode == MODE_CONTINUOUS_VIDEO || mMode == MODE_VIDEO || mMode == MODE_CONTINUOUS_JPEG_VIDEO;
 }
 
 bool AtomISP::dvsEnabled()
@@ -4493,7 +4476,7 @@ void AtomISP::returnBuffer(AtomBuffer* buff)
 
         case ATOM_BUFFER_SNAPSHOT:
             buff->owner = 0;
-            if (mMode != MODE_CONTINUOUS_JPEG) {
+            if (mMode != MODE_CONTINUOUS_JPEG && mMode != MODE_CONTINUOUS_JPEG_VIDEO) {
                 LOGE("Capture frame return on wrong mode");
                 break;
             }
@@ -6014,6 +5997,7 @@ int AtomISP::dumpFrameInfo(AtomMode mode)
                                              "ContinuousCapture",
                                              "ContinuousVideo",
                                              "ContinuousJPEG",
+                                             "ContinuousJPEGVideo",
                                              "Unknown mode"};
 
         // Sanity check

@@ -1545,6 +1545,14 @@ status_t PreviewThread::handleSetPreviewWindow(MessageSetPreviewWindow *msg)
                             GRALLOC_USAGE_HW_TEXTURE;
             }
 
+            // in the rather rare case when preview buffers are used for video
+            // recording, the encoder needs to know that we use strides
+            // dividable by 64. GRALLOC_USAGE_HW_CAMERA_READ and
+            // GRALLOC_USAGE_HW_CAMERA_WRITE will do the trick, so we set
+            // GRALLOC_USAGE_HW_CAMERA_WRITE. The problematic resolution is 720x480.
+            // ref: vendor/intel/hardware/PRIVATE/libmix/videoencoder/VideoEncoderUtils.cpp function "GetGfxBufferInfo"
+            usage |= GRALLOC_USAGE_HW_CAMERA_WRITE;
+
             LOG1("Setting new preview window %p (%dx%d)", mPreviewWindow,w,h);
             mPreviewWindow->set_usage(mPreviewWindow, usage);
             /**

@@ -24,14 +24,16 @@
 
 namespace android {
 
-void HALVideoStabilization::getEnvelopeSize(int previewWidth, int previewHeight, int &envelopeWidth, int &envelopeHeight)
+void HALVideoStabilization::getEnvelopeSize(int previewWidth, int previewHeight, int &envelopeWidth, int &envelopeHeight, int &bpl)
 {
     LOG1("@%s", __FUNCTION__);
     envelopeWidth = (previewWidth * ENVELOPE_MULTIPLIER) / ENVELOPE_DIVIDER;
     envelopeHeight = (previewHeight * ENVELOPE_MULTIPLIER) / ENVELOPE_DIVIDER;
 
-    LOG1("@%s: selected envelope size %dx%d for preview %dx%d", __FUNCTION__,
-         envelopeWidth, envelopeHeight, previewWidth, previewHeight);
+    bpl = ALIGN64(envelopeWidth);
+
+    LOG1("@%s: selected envelope size %dx%d for preview %dx%d bpl %d", __FUNCTION__,
+         envelopeWidth, envelopeHeight, previewWidth, previewHeight, bpl);
 }
 
 void HALVideoStabilization::process(const AtomBuffer *inBuf, AtomBuffer *outBuf)
@@ -50,7 +52,7 @@ void HALVideoStabilization::process(const AtomBuffer *inBuf, AtomBuffer *outBuf)
     uint16_t leftCrop(getU16fromFrame(nv12meta, NV12_META_LEFT_OFFSET_ADDR));
     uint16_t topCrop(getU16fromFrame(nv12meta, NV12_META_TOP_OFFSET_ADDR));
 
-    int rightCrop = inBuf->width - outBuf->width - leftCrop;
+    int rightCrop = inBuf->bpl - outBuf->bpl - leftCrop;
     int bottomCrop = inBuf->height - outBuf->height - topCrop;
     ImageScaler::cropNV12orNV21Image(inBuf, outBuf, leftCrop, rightCrop, topCrop, bottomCrop);
 }

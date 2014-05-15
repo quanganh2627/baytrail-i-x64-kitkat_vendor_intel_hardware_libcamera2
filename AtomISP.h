@@ -420,7 +420,7 @@ private:
     status_t configureContinuousJpegCapture();
     status_t configureContinuousSOC();
     status_t configureContinuousVideo();
-    status_t configureHALVSVideo();
+    status_t configureContinuousJpegVideo();
     status_t startCapture();
     status_t stopCapture();
     status_t stopContinuousPreview();

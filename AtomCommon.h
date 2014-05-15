@@ -114,8 +114,9 @@ enum AtomMode {
     MODE_CONTINUOUS_CAPTURE = 3,
     MODE_CONTINUOUS_VIDEO = 4,
     MODE_CONTINUOUS_JPEG = 5,
+    MODE_CONTINUOUS_JPEG_VIDEO = 6,
     // Keep this last!
-    MODE_MAX = 6
+    MODE_MAX = 7
 };
 
 /*!\enum FrameBufferStatus
