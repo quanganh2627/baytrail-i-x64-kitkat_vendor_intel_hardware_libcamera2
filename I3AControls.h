@@ -96,8 +96,8 @@ enum MeteringMode
 /* ISO control mode setting */
 enum IsoMode {
     CAM_AE_ISO_MODE_NOT_SET = -1,
-    CAM_AE_ISO_MODE_AUTO,   /* Automatic */
-    CAM_AE_ISO_MODE_MANUAL  /* Manual */
+    CAM_AE_ISO_MODE_MANUAL, /* Manual */
+    CAM_AE_ISO_MODE_AUTO    /* Automatic */
 };
 
 enum AfMode
