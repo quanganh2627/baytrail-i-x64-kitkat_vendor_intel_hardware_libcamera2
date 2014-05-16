@@ -478,10 +478,17 @@ status_t AtomSoc3A::getManualIso(int *iso)
     return status;
 }
 
-status_t AtomSoc3A::setIsoMode(IsoMode mode) {
-    /*ISO mode not supported for SOC sensor yet.*/
-    LOG1("@%s", __FUNCTION__);
-    status_t status = INVALID_OPERATION;
+status_t AtomSoc3A::setIsoMode(IsoMode mode)
+{
+    LOG1("@%s: ISO mode: %d", __FUNCTION__, mode);
+    status_t status = NO_ERROR;
+
+    int ret = mSensorCI->setIsoMode(mode);
+    if (ret != 0) {
+        LOGD("Error setting ISO mode in the driver");
+        status = UNKNOWN_ERROR;
+    }
+
     return status;
 }
 

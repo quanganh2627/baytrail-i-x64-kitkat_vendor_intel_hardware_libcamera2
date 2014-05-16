@@ -850,6 +850,12 @@ int SensorHW::getIso(int * iso)
     return mDevice->getControl(V4L2_CID_ISO_SENSITIVITY, iso);
 }
 
+int SensorHW::setIsoMode(int mode)
+{
+    LOG2("@%s: ISO: %d", __FUNCTION__, mode);
+    return mDevice->setControl(V4L2_CID_ISO_SENSITIVITY_AUTO, mode, "iso mode");
+}
+
 int SensorHW::setAeMeteringMode(v4l2_exposure_metering mode)
 {
     LOG2("@%s: %d", __FUNCTION__, mode);

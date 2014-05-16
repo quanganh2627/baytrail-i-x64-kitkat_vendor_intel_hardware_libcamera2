@@ -69,6 +69,7 @@ public:
     virtual int getWhiteBalance(v4l2_auto_n_preset_white_balance * mode);
     virtual int setIso(int iso);
     virtual int getIso(int * iso);
+    virtual int setIsoMode(int mode);
     virtual int setAeMeteringMode(v4l2_exposure_metering mode);
     virtual int getAeMeteringMode(v4l2_exposure_metering * mode);
     virtual int setAeFlickerMode(v4l2_power_line_frequency mode);
