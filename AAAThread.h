@@ -53,7 +53,7 @@ class AAAThread : public Thread, public IAtomIspObserver {
 
 // constructor destructor
 public:
-    AAAThread(ICallbackAAA *aaaDone, UltraLowLight *ull, I3AControls *aaaControls, sp<CallbacksThread> callbacksThread);
+    AAAThread(ICallbackAAA *aaaDone, UltraLowLight *ull, I3AControls *aaaControls, sp<CallbacksThread> callbacksThread, bool extIsp = false);
     virtual ~AAAThread();
 
     enum FlashStage {
@@ -150,9 +150,7 @@ private:
 
     // for MESSAGE_ID_NEW_FRAME
     struct MessageNewFrame {
-        FrameBufferStatus status;
-        struct timeval capture_timestamp;
-        unsigned int    sequence_number;
+        const AtomBuffer *buff;
     };
 
     // for MESSAGE_ID_SWITCH_MODE_AND_RATE
@@ -195,6 +193,9 @@ private:
 
     // Miscellaneous helper methods
     void updateULLTrigger(void);
+    // External ISP "normal AF" status handler
+    status_t handleAutoFocusExtIsp(const AtomBuffer *buff);
+    AfStatus parseAfMeta(const AtomBuffer *buff);
 
     // flash sequence handler
     bool handleFlashSequence(FrameBufferStatus frameStatus);
@@ -234,6 +235,7 @@ private:
     unsigned int mSkipForEv; // for flash sequence
     bool mSensorEmbeddedMetaDataEnabled;
     int32_t mTrigger3A;
+    bool mExtIsp;
     IAtomIspObserver::Message mCachedStatsEventMsg;
 
 }; // class AAAThread

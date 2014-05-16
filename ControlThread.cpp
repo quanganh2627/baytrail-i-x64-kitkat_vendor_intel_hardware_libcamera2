@@ -196,6 +196,7 @@ status_t ControlThread::init()
     LOG1("@%s: cameraId = %d", __FUNCTION__, mCameraId);
 
     status_t status = NO_ERROR;
+    bool extIsp = PlatformData::supportsContinuousJpegCapture(mCameraId);
     CameraDump::setDumpDataFlag();
 
     AtomISP * isp = NULL;
@@ -296,7 +297,7 @@ status_t ControlThread::init()
     }
 
     // we implement ICallbackAAA interface
-    m3AThread = new AAAThread(this, mULL, m3AControls, mCallbacksThread);
+    m3AThread = new AAAThread(this, mULL, m3AControls, mCallbacksThread, extIsp);
     if (m3AThread == NULL) {
         LOGE("error creating 3AThread");
         goto bail;
@@ -2140,7 +2141,11 @@ status_t ControlThread::startPreviewCore(bool videoMode)
             LOGE("Failed switching 3A at %.2f fps", mHwcg.mSensorCI->getFramerate());
 
         mISP->attachObserver(m3AThread.get(), OBSERVE_3A_STAT_READY);
+    } else if (PlatformData::supportsContinuousJpegCapture(mCameraId)) {
+        // For ext-isp, let's listen to frame events for auto-focus handling.
+        mISP->attachObserver(m3AThread.get(), OBSERVE_PREVIEW_STREAM);
     }
+
 
     // Update focus areas for the proper window size
     if (!mFaceDetectionActive && !mFocusAreas.isEmpty()) {
@@ -2235,7 +2240,10 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         mISP->detachObserver(this, OBSERVE_PREVIEW_STREAM);
         if (videoMode)
             mISP->detachObserver(mVideoThread.get(), OBSERVE_PREVIEW_STREAM);
+
         if (m3AControls->isIntel3A()) {
+            mISP->detachObserver(m3AThread.get(), OBSERVE_3A_STAT_READY);
+        } else if (PlatformData::supportsContinuousJpegCapture(mCameraId)) {
             mISP->detachObserver(m3AThread.get(), OBSERVE_PREVIEW_STREAM);
         }
     }
@@ -2324,6 +2332,8 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
         // might be a non-RAW sensor, or enabling failed on startPreviewCore().
         // It is OK to detach; if the observer is not attached, detachObserver()
         // returns BAD_VALUE.
+    } else if (PlatformData::supportsContinuousJpegCapture(mCameraId)) {
+        mISP->detachObserver(m3AThread.get(), OBSERVE_PREVIEW_STREAM);
     }
     mISP->detachObserver(this, OBSERVE_PREVIEW_STREAM);
 
@@ -4657,6 +4667,7 @@ status_t ControlThread::handleMessageAutoFocus()
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     PERFORMANCE_TRACES_BREAKDOWN_STEP("In");
+
     status = m3AThread->autoFocus();
 
     return status;

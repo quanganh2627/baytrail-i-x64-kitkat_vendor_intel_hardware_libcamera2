@@ -89,6 +89,22 @@ const size_t NV12_META_EXPOSURE_TIME_DENOMINATOR_ADDR = 0X2C;
 const size_t NV12_META_FLASH_ADDR = 0x3C;
 const size_t NV12_META_AV_ADDR = 0x228;
 const size_t NV12_META_AF_STATE_ADDR = 0x846;
+
+enum AfState {
+    // NOTE: These are big-endian in m10mo metadata, so we have convert
+    // values to host format. Usage example: be16toh(value) == AF_INVALID
+    // AF states
+    AF_INVALID = 0x1000,
+    AF_FOCUSING = 0x2000,
+    AF_SUCCESS = 0x3000,
+    AF_FAIL = 0x4000,
+    // CAF states
+    CAF_RESTART_CHECK = 0x010,
+    CAF_FOCUSING = 0x0200,
+    CAF_SUCCESS = 0x0300,
+    CAF_FAIL = 0x0400
+};
+
 const size_t NV12_META_END_MARKER_ADDR = 0xFF4;
 const size_t NV12_META_TOP_OFFSET_ADDR  = 0x13E;
 const size_t NV12_META_LEFT_OFFSET_ADDR = 0x13C;

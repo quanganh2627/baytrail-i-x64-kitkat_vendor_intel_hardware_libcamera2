@@ -39,6 +39,12 @@ AtomExtIsp3A::~AtomExtIsp3A()
 
 }
 
+// TODO: Rename this to something more meaningful
+// Looks like setAfEnabled() is a legacy from AcuteLogic times
+// and this is no-op for Intel AIQ. The concepts in AF are somewhat overlapping.
+// Now startStillAf() is something that actually starts an "AF sequence" and setAfEnabled()
+// "starts AF" in general: running of CAF algorithms etc., so maybe more meaningful names would
+// be appropriate in I3AControls interface for these functions.
 status_t AtomExtIsp3A::setAfEnabled(bool en)
 {
     LOG1("@%s: en: %d", __FUNCTION__, en);
@@ -216,8 +222,26 @@ status_t AtomExtIsp3A::setAfWindows(CameraWindow *windows, size_t numWindows, co
     return NO_ERROR;
 }
 
+status_t AtomExtIsp3A::startStillAf()
+{
+    LOG1("@%s", __FUNCTION__);
+    // NOTE: Intentionally empty implementation to make this
+    // a no-op, at least for now.
+    return NO_ERROR;
 
+    // TODO: Fix the usage of setAfEnabled() and startStillAf() to be
+    // more clear in the I3AControls subclasses. Now the usage is a bit
+    // mixed and overlapping
 
+}
+
+status_t AtomExtIsp3A::stopStillAf()
+{
+    LOG1("@%s", __FUNCTION__);
+    // NOTE: Intentionally empty implementation to make this
+    // a no-op, at least for now.
+    return NO_ERROR;
+}
 
 void AtomExtIsp3A::setFaceDetection(bool enabled)
 {

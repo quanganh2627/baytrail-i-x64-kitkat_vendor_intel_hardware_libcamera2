@@ -36,7 +36,11 @@ public:
 
     virtual status_t setAfWindows(CameraWindow *windows, size_t numWindows, const AAAWindowInfo *convWindow = NULL);
 
+    virtual status_t startStillAf();
+    virtual status_t stopStillAf();
+
     virtual void setFaceDetection(bool enabled);
+    // -- end AtomSoc3A overrides
 
 // prevent copy constructor and assignment operator
 private:
