@@ -117,6 +117,7 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService, Callbacks *callb
     ,mColorEffect(V4L2_COLORFX_NONE)
     ,mScaler(scalerService)
     ,mObserverManager()
+    ,mHALVideoStabilization(false)
     ,mNoiseReductionEdgeEnhancement(true)
     ,mFlashIsOn(false)
 {
