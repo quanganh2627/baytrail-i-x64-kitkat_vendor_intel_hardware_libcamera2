@@ -382,7 +382,10 @@ private:
 private:
     status_t initDevice();
 
+    void computeZoomRatiosLinear();
+    void computeZoomRatiosFactor();
     status_t computeZoomRatios();
+
     status_t initCameraInput();
     void initFileInject();
     void initFrameConfig();

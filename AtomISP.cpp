@@ -56,6 +56,11 @@
 #define ATOMISP_MIN_CONTINUOUS_BUF_NUM_CSS2X 5 // Min buffer len supported by CSS2.x
 namespace android {
 
+// TODO CJC: get from cpf or kernel driver
+const int ZOOM_LINEAR_RATIO_STEP(10); // 0.1
+const int ZOOM_LINEAR_MIN_DRIVE(1);
+const int ZOOM_LINEAR_MAX_DRIVE(31);
+
 ////////////////////////////////////////////////////////////////////
 //                          STATIC DATA
 ////////////////////////////////////////////////////////////////////
@@ -3547,7 +3552,13 @@ int AtomISP::atomisp_set_zoom (int zoom)
     LOG1("@%s : value %d", __FUNCTION__, zoom);
     int ret = 0;
 
-    if (!mHALZSLEnabled && !mHALSDVEnabled) { // fix for driver zoom bug, prevent setting in HAL ZSL mode
+    if (PlatformData::supportsContinuousJpegCapture(mCameraId)) {
+        struct atomisp_ext_isp_ctrl m10mo_ctrl;
+        CLEAR(m10mo_ctrl);
+        m10mo_ctrl.id = EXT_ISP_ZOOM_CTRL;
+        m10mo_ctrl.data = mZoomDriveTable[zoom];
+        mMainDevice->xioctl(ATOMISP_IOC_EXT_ISP_CTRL, &m10mo_ctrl);
+    } else if (!mHALZSLEnabled && !mHALSDVEnabled) { // fix for driver zoom bug, prevent setting in HAL ZSL mode
         int zoom_driver(mZoomDriveTable[zoom]);
         LOG1("set zoom %d to driver with %d", zoom, zoom_driver);
         ret = mMainDevice->setControl (V4L2_CID_ZOOM_ABSOLUTE, zoom_driver, "zoom");
@@ -4733,21 +4744,26 @@ status_t AtomISP::stopJpegModeContinuousShooting()
 //                          PRIVATE METHODS
 ////////////////////////////////////////////////////////////////////
 
-/**
- * Compute zoom ratios
- *
- * Compute zoom ratios support by ISP and store them to tables.
- * After compute string format is generated and stored for camera parameters.
- *
- * Calculation is based on following formula:
- * ratio = MaxZoomFactor / (MaxZoomFactor - ZoomDrive)
- */
-status_t AtomISP::computeZoomRatios()
+void AtomISP::computeZoomRatiosLinear()
 {
     LOG1("@%s", __FUNCTION__);
+
+    mZoomRatioTable.clear();
+    mZoomDriveTable.clear();
+    mZoomRatioTable.setCapacity(ZOOM_LINEAR_MAX_DRIVE - ZOOM_LINEAR_MIN_DRIVE);
+    mZoomDriveTable.setCapacity(ZOOM_LINEAR_MAX_DRIVE - ZOOM_LINEAR_MIN_DRIVE);
+
+    int ratio(100); // first ratio always 1x
+    for (int drive = ZOOM_LINEAR_MIN_DRIVE; drive <= ZOOM_LINEAR_MAX_DRIVE; ++drive) {
+        mZoomRatioTable.push(ratio);
+        mZoomDriveTable.push(drive);
+        ratio += ZOOM_LINEAR_RATIO_STEP;
+    }
+}
+
+void AtomISP::computeZoomRatiosFactor() {
     int maxZoomFactor(PlatformData::getMaxZoomFactor());
     int zoomFactor(maxZoomFactor);
-    int stringSize(0);
     int ratio((maxZoomFactor * ZOOM_RATIO + zoomFactor / 2) / zoomFactor);
     int preRatio(0);
     int preZoomFactor(0);
@@ -4770,20 +4786,46 @@ status_t AtomISP::computeZoomRatios()
             mZoomDriveTable.push(maxZoomFactor - zoomFactor);
             preRatio = ratio;
             preZoomFactor = zoomFactor;
-
-            // calculate stringSize needed also include comma char
-            stringSize += 4;
-            ratio = ratio / 1000;
-            while (ratio) {
-                stringSize += 1;
-                ratio = ratio / 10;
-            }
         }
 
         zoomFactor = zoomFactor - 1;
         if (zoomFactor == 0)
             break;
         ratio = (maxZoomFactor * ZOOM_RATIO + zoomFactor / 2) / zoomFactor;
+    }
+}
+
+
+/**
+ * Compute zoom ratios
+ *
+ * Compute zoom ratios support by ISP and store them to tables.
+ * After compute string format is generated and stored for camera parameters.
+ *
+ * Calculation is based on following formula:
+ * ratio = MaxZoomFactor / (MaxZoomFactor - ZoomDrive)
+ */
+status_t AtomISP::computeZoomRatios()
+{
+    LOG1("@%s", __FUNCTION__);
+    int stringSize(0);
+    int ratio(0);
+
+    if (PlatformData::supportsContinuousJpegCapture(mCameraId)) {
+        computeZoomRatiosLinear();
+    } else {
+        computeZoomRatiosFactor();
+    }
+
+    // calculate stringSize needed also include comma char
+    for (Vector<int>::iterator it = mZoomRatioTable.begin(); it != mZoomRatioTable.end(); ++it) {
+        ratio = *it;
+        stringSize += 4;
+        ratio = ratio / 1000;
+        while (ratio) {
+            stringSize += 1;
+            ratio = ratio / 10;
+        }
     }
 
     LOG1("@%s: %d zoom ratios (string size = %d)", __FUNCTION__, mZoomRatioTable.size(), stringSize);
@@ -4810,7 +4852,6 @@ status_t AtomISP::computeZoomRatios()
     LOG2("@%s: zoom ratios list: %s", __FUNCTION__, mZoomRatios);
     return NO_ERROR;
 }
-
 
 status_t AtomISP::allocateHALZSLBuffers()
 {
