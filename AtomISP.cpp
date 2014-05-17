@@ -54,6 +54,7 @@
 #define ATOMISP_GETFRAME_STARVING_WAIT 33000 // Time to usleep between retry's when stream is starving from buffers.
 #define ATOMISP_MIN_CONTINUOUS_BUF_SIZE 3 // Min buffer len supported by CSS
 #define ATOMISP_MIN_CONTINUOUS_BUF_NUM_CSS2X 5 // Min buffer len supported by CSS2.x
+#define ATOMISP_RAW_BUF_NUM_FOR_INFINITE_CAP 7 // Min raw buffer number when numberCapture set to -1
 namespace android {
 
 // TODO CJC: get from cpf or kernel driver
@@ -601,6 +602,17 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     else
         intel_params->set(IntelCameraParameters::KEY_SUPPORTED_DUAL_CAMERA_MODE, "normal,depth");
     intel_params->set(IntelCameraParameters::KEY_DUAL_CAMERA_MODE, "normal");
+
+    /**
+     * Continuous shooting
+     */
+    if(mSensorType == SENSOR_TYPE_RAW) {
+        intel_params->set(IntelCameraParameters::KEY_CONTINUOUS_SHOOTING_SUPPORTED, CameraParameters::TRUE);
+        intel_params->set(IntelCameraParameters::KEY_CONTINUOUS_SHOOTING, CameraParameters::FALSE);
+    } else {
+        intel_params->set(IntelCameraParameters::KEY_CONTINUOUS_SHOOTING_SUPPORTED, CameraParameters::FALSE);
+        intel_params->set(IntelCameraParameters::KEY_CONTINUOUS_SHOOTING, CameraParameters::FALSE);
+    }
 
     /**
      * HIGH SPEED
@@ -1767,7 +1779,7 @@ status_t AtomISP::configureContinuousRingBuffer()
     if (lookback > captures && !mContCaptConfig.rawBufferLock)
         numBuffers += lookback;
     else
-        numBuffers += captures;
+        numBuffers += abs(captures); // maybe negative
 
     if (mCssMajorVersion >= 2) {
     // for css2.x, the minimum raw ring buffers number is ATOMISP_MIN_CONTINUOUS_BUF_NUM_CSS2X
@@ -1777,6 +1789,9 @@ status_t AtomISP::configureContinuousRingBuffer()
 
         if (numBuffers < ATOMISP_MIN_CONTINUOUS_BUF_NUM_CSS2X)
             numBuffers = ATOMISP_MIN_CONTINUOUS_BUF_NUM_CSS2X;
+
+        if (captures == -1)
+            numBuffers = ATOMISP_RAW_BUF_NUM_FOR_INFINITE_CAP;
     }
 
     if (numBuffers > PlatformData::maxContinuousRawRingBufferSize(mCameraId))

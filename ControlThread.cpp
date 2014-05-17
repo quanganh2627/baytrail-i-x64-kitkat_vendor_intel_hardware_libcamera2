@@ -94,6 +94,9 @@ const int MIN_PREVIEW_FPS = 11;
 // TODO: This value should be gotten from sensor dynamically, instead of hardcoding:
 const int MAX_PREVIEW_FPS = 30;
 
+// default snapshot buffer number for continuous shooting
+const int DEFAULT_BUF_NUM_FOR_CONT_SHOOTING = 4;
+
 // number pictures for smart stabilization capture
 const int NUM_PICS_FOR_SS = 5;
 
@@ -169,6 +172,9 @@ ControlThread::ControlThread(int cameraId) :
     ,mNextExpID(EXP_ID_INVALID)
     ,mNumCaptures(0)
     ,mNumSounds(0)
+    ,mContShootingState(CONT_SHOOTING_NONE)
+    ,mContShootingEnabled(false)
+    ,mContinuousPicsReady(0)
 {
     // DO NOT PUT ANY ALLOCATION CODE IN THIS METHOD!!!
     // Put all init code in the init() method.
@@ -1078,7 +1084,7 @@ void ControlThread::atPostviewPresent() {
 
 void ControlThread::encodingDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
 {
-    LOG2("@%s: snapshotBuf = %p, postviewBuf = %p, id = %d",
+    LOG1("@%s: snapshotBuf = %p, postviewBuf = %p, id = %d",
                 __FUNCTION__,
                 snapshotBuf->dataPtr,
                 postviewBuf->dataPtr,
@@ -1207,6 +1213,7 @@ status_t ControlThread::handleContinuousPreviewBackgrounding()
 
 status_t ControlThread::handleContinuousPreviewForegrounding()
 {
+    LOG1("@%s", __FUNCTION__);
     PreviewThread::PreviewState previewState;
 
     if (mState != STATE_CONTINUOUS_CAPTURE && mState != STATE_JPEG_CAPTURE)
@@ -1214,10 +1221,11 @@ status_t ControlThread::handleContinuousPreviewForegrounding()
 
     previewState = mPreviewThread->getPreviewState();
     // already in continuous-state, startPreview case
-    if (mISP->isOfflineCaptureRunning()) {
+    if (mISP->isOfflineCaptureRunning() && mContShootingState == CONT_SHOOTING_NONE) {
         mISP->stopOfflineCapture();
         LOG1("Capture stopped, resuming continuous viewfinder");
     }
+
     if (previewState == PreviewThread::STATE_STOPPED) {
         // just re-configure previewThread
         int cb_fourcc, width, height, bpl;
@@ -1315,6 +1323,12 @@ status_t ControlThread::configureContinuousRingBuffer()
 
     if (mSmartStabilization)
         cfg.numCaptures = NUM_PICS_FOR_SS;
+
+    // for continuous shooting, unlimited number of capture
+    if (mContShootingEnabled) {
+        cfg.numCaptures = -1;
+        cfg.capturePriority = false;
+    }
 
     cfg.offset = -(mISP->shutterLagZeroAlign());
     cfg.skip = 0;
@@ -1794,6 +1808,10 @@ ControlThread::ShootingMode ControlThread::selectShootingMode()
         case STATE_CONTINUOUS_CAPTURE:
             if (isBurstRunning())
                 ret = SHOOTING_MODE_ZSL_BURST;
+            else if (mContShootingState != CONT_SHOOTING_NONE) {
+                ret = SHOOTING_MODE_CONTINUOUS;
+                break;
+            }
             else if (mSmartStabilization) {
                 ret = SHOOTING_MODE_SMARTSTABILIZATION;
                 break;
@@ -2498,11 +2516,12 @@ status_t ControlThread::startOfflineCapture()
     assert(mState == STATE_CONTINUOUS_CAPTURE);
 
     ContinuousCaptureConfig cfg;
-    cfg.numCaptures = 1;
     cfg.offset = -(mISP->shutterLagZeroAlign());
     cfg.skip = 0;
-    if (mBurstLength > 0)
+    if (mBurstLength > 1)
         cfg.numCaptures = mBurstLength;
+    else if (mContShootingState == CONT_SHOOTING_PREPARED)
+        cfg.numCaptures = -1; // continuous shooting
     else
         cfg.numCaptures = 1;
     continuousConfigApplyLimits(cfg);
@@ -3075,6 +3094,10 @@ status_t ControlThread::handleMessageTakePicture() {
             status = captureStillPic();
             break;
 
+        case SHOOTING_MODE_CONTINUOUS:
+            status = captureContinuous(true);
+            break;
+
         case SHOOTING_MODE_ZSL_BURST:
             status = captureFixedBurstPic(true);
             break;
@@ -3154,7 +3177,7 @@ status_t ControlThread::getFlashExposedSnapshot(AtomBuffer *snapshotBuffer, Atom
             break;
         }
 
-        mISP->putSnapshot(snapshotBuffer, postviewBuffer);;
+        mISP->putSnapshot(snapshotBuffer, postviewBuffer);
     }
 
     return status;
@@ -3353,6 +3376,30 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
     return status;
 }
 
+void ControlThread::recycleUnusedBufferInISP()
+{
+    AtomBuffer buf;
+    LOGI("@%s buffers in ISP %d,%d", __FUNCTION__, mSnapshotBuffersInISP.size(), mPostviewBuffersInISP.size());
+    if (mSnapshotBuffersInISP.size() != mPostviewBuffersInISP.size()) {
+        LOGW("@%s buffer number snapshot(%d) != postview(%d), find the bug", __FUNCTION__,
+                mSnapshotBuffersInISP.size(), mPostviewBuffersInISP.size());
+    }
+
+    // get all unused buffers back.
+    while (mSnapshotBuffersInISP.size()) {
+        buf = mSnapshotBuffersInISP.top();
+        mAvailableSnapshotBuffers.push(buf);
+        mSnapshotBuffersInISP.pop();
+        LOG1("%s unused snapshot buffer %p back to available queue", __FUNCTION__, buf.dataPtr);
+    }
+    while (mPostviewBuffersInISP.size()) {
+        buf = mPostviewBuffersInISP.top();
+        mAvailablePostviewBuffers.push(buf);
+        mPostviewBuffersInISP.pop();
+        LOG1("%s unused postview buffer %p back to available queue", __FUNCTION__, buf.dataPtr);
+    }
+}
+
 void ControlThread::stopOfflineCapture()
 {
     LOG1("@%s: ", __FUNCTION__);
@@ -3360,6 +3407,7 @@ void ControlThread::stopOfflineCapture()
             mISP->isOfflineCaptureRunning()) {
         mISP->stopOfflineCapture();
         resetOfflineCaptureControl();
+        recycleUnusedBufferInISP();
     }
 }
 
@@ -3706,6 +3754,32 @@ void ControlThread::handleOfflineCaptureControl(AtomBuffer *buff)
             LOGE("Error in unlocking raw buffer :%d", mCurrentExpID);
         }
     }
+}
+
+status_t ControlThread::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    status = mISP->getSnapshot(snapshotBuf, postviewBuf);
+    if (status == NO_ERROR) {
+        rmBufferInQueue(snapshotBuf, &mSnapshotBuffersInISP);
+        rmBufferInQueue(postviewBuf, &mPostviewBuffersInISP);
+    }
+    LOG1("@%s ok", __FUNCTION__);
+    return status;
+}
+
+status_t ControlThread::putSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    status = mISP->putSnapshot(snapshotBuf, postviewBuf);
+    if (status == NO_ERROR) {
+        mSnapshotBuffersInISP.push(*snapshotBuf);
+        mPostviewBuffersInISP.push(*postviewBuf);
+    }
+    LOG1("@%s ok", __FUNCTION__);
+    return status;
 }
 
 status_t ControlThread::captureStillPic()
@@ -4161,6 +4235,147 @@ void ControlThread::requestTakePicture()
 bool ControlThread::compressedFrameQueueFull()
 {
     return mCallbacksThread->getQueuedBuffersNum() > MAX_JPEG_BUFFERS;
+}
+
+/**
+ * Prepare for continuous shooting
+ */
+status_t ControlThread::prepareContinuous()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    if (mState != STATE_CONTINUOUS_CAPTURE || !mContShootingEnabled) {
+        LOGE("Invalid calling for preparing continuous capture in stat:%d enabled:%d",
+                mState, mContShootingEnabled);
+        return INVALID_OPERATION;
+    }
+
+    // Configure PictureThread
+    mPictureThread->initialize(mParameters, mHwcg.mIspCI->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
+    stopFaceDetection();
+
+    mContShootingState = CONT_SHOOTING_PREPARED;
+    mContinuousPicsReady = 0;
+    return status;
+}
+
+/**
+ * This method is used to restore all snapshot buffers forcibly according to allocated list
+ * It can only be used after cancelPictureThread(). Not recommanded to call it otherwhere
+ *
+ * CallbacksThread::flushPictures is not reliable to recycal all snapshot buffers because its
+ * FLUSH cmd is asynchronous. mBuffers in it would be neglected just due to this.
+ */
+void ControlThread::forceRestoreSnapshotPostviewBuffers()
+{
+    if (mAvailableSnapshotBuffers.size() == mAllocatedSnapshotBuffers.size())
+        return;
+
+    Vector<AtomBuffer>::iterator it = mAllocatedSnapshotBuffers.begin();
+    for (;it != mAllocatedSnapshotBuffers.end(); ++it) {
+        if (!findBufferByData(it, &mAvailableSnapshotBuffers)) {
+            LOG1("@%s snapshot buffer id:%d", __FUNCTION__, it->id);
+            mAvailableSnapshotBuffers.push(*it);
+        }
+    }
+
+    it = mAllocatedPostviewBuffers.begin();
+    for (;it != mAllocatedPostviewBuffers.end(); ++it) {
+        if (!findBufferByData(it, &mAvailablePostviewBuffers)) {
+            LOG1("@%s postview buffer id:%d", __FUNCTION__, it->id);
+            mAvailablePostviewBuffers.push(*it);
+        }
+    }
+}
+
+/**
+ * Prepare for continuous shooting
+ */
+status_t ControlThread::finalizeContinuous()
+{
+    mContShootingState = CONT_SHOOTING_NONE;
+    stopOfflineCapture();
+    cancelPictureThread();
+    forceRestoreSnapshotPostviewBuffers();
+    mContinuousPicsReady = 0;
+    return NO_ERROR;
+}
+
+bool ControlThread::holdOnContinuous()
+{
+    static const int MAX_NUM_PICTRUE_WAITING = 2;
+    return mContinuousPicsReady >= MAX_NUM_PICTRUE_WAITING;
+}
+
+/**
+ * Starts continuous shooting.
+ */
+status_t ControlThread::captureContinuous(bool clientRequest = false)
+{
+    LOG1("@%s client request:%d ", __FUNCTION__, clientRequest);
+    status_t status = NO_ERROR;
+
+    AtomBuffer snapshotBuffer
+            = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
+    AtomBuffer postviewBuffer
+            = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
+
+    assert(mState == STATE_CONTINUOUS_CAPTURE);
+    PERFORMANCE_TRACES_SHOT2SHOT_TAKE_PICTURE_HANDLE();
+
+    if (clientRequest) {
+        mCallbacksThread->requestTakePicture(true, true);
+        mContinuousPicsReady--;
+
+        // Check whether more frames are needed
+        if (compressedFrameQueueFull())
+            return NO_ERROR;
+    }
+
+    if (holdOnContinuous() > 2) {
+        LOG1("@%s enough buffer :%d ready", __FUNCTION__, mContinuousPicsReady);
+        return NO_ERROR;
+    }
+
+    if (!mISP->isOfflineCaptureRunning()) {
+        // css will be truly start when user trigger the first capture.
+        status = continuousStartStillCapture(false);
+        if (status != NO_ERROR) {
+            LOGE("Error %d in preparing continuous capture", status);
+            return status;
+        }
+
+        mContShootingState = CONT_SHOOTING_STARTED;
+
+        status = waitForCaptureStart();
+        if (status != NO_ERROR) {
+            LOGE("Error while waiting for capture to start");
+            stopOfflineCapture();
+            return status;
+        }
+    }
+
+    if (clientRequest)
+        mCallbacksThread->shutterSound();
+
+    // Get the snapshot
+    status = getSnapshot(&snapshotBuffer, &postviewBuffer);
+    if (status != NO_ERROR) {
+        LOGE("%s Error in grabbing snapshot!", __FUNCTION__);
+        stopOfflineCapture();
+        return status;
+    }
+    PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("ISPGotFrame", snapshotBuffer.frameCounter);
+
+    // Do jpeg encoding
+    PictureThread::MetaData picMetaData;
+    fillPicMetaData(picMetaData, false);
+    LOG1("TEST-TRACE: starting picture encode: Time: %lld", systemTime());
+    status = mPictureThread->encode(picMetaData, &snapshotBuffer, &postviewBuffer);
+    mContinuousPicsReady++;
+
+    return status;
 }
 
 /**
@@ -4958,6 +5173,15 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
                         LOG1("Recycle snapshot buffer:%p postview buffer:%p", msg->snapshotBuf.dataPtr, msg->postviewBuf.dataPtr);
                     }
                     mBurstBufsToReturn--;
+                } else if (mContShootingState == CONT_SHOOTING_STARTED) {
+                    status = putSnapshot(&msg->snapshotBuf, &msg->postviewBuf);
+                    if (status != NO_ERROR) {
+                        LOGE("Error %d in putting snapshot buffer:%p postviewBuf:%p for continuous shooting", status,
+                                msg->snapshotBuf.dataPtr, msg->postviewBuf.dataPtr);
+                    } else {
+                        LOG1("Recycle snapshot buffer:%p postview buffer:%p  for continuous shooting",
+                                msg->snapshotBuf.dataPtr, msg->postviewBuf.dataPtr);
+                    }
                 } else {
                     mAvailableSnapshotBuffers.push(msg->snapshotBuf);
                     if (findBufferByData(&msg->postviewBuf, &mAllocatedPostviewBuffers) != NULL &&
@@ -5050,6 +5274,23 @@ AtomBuffer* ControlThread::findBufferByData(AtomBuffer *buf,Vector<AtomBuffer> *
             return it;
     }
 
+    return NULL;
+}
+
+/**
+ * Utility method to remove the buffers in vectors of AtomBuffers
+ * the comparison is done based on the value of the data pointer
+ * return NULL if the buffe is not found
+ */
+AtomBuffer* ControlThread::rmBufferInQueue(AtomBuffer *buf,Vector<AtomBuffer> *aVector)
+{
+    Vector<AtomBuffer>::iterator it = aVector->begin();
+    for (;it != aVector->end(); ++it) {
+        if (buf->dataPtr == it->dataPtr)
+            return aVector->erase(it);
+    }
+
+    LOGW("@%s buff:%p not found", __FUNCTION__, buf->dataPtr);
     return NULL;
 }
 
@@ -5173,6 +5414,20 @@ status_t ControlThread::processParamDualCameraMode(CameraParameters *oldParams,
                 oldParams->remove(CameraParameters::KEY_FOCUS_MODE);
             }
         }
+    }
+    return status;
+}
+
+status_t ControlThread::processParamContinuousShooting(const CameraParameters *oldParams,
+        CameraParameters *newParams, bool &restartNeeded)
+{
+    LOG1("@%s restartNeeded:%d", __FUNCTION__, restartNeeded);
+    status_t status = NO_ERROR;
+
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams, IntelCameraParameters::KEY_CONTINUOUS_SHOOTING);
+    if (!newVal.isEmpty()) {
+        mContShootingEnabled = (newVal == CameraParameters::TRUE);
+        restartNeeded = true;
     }
 
     return status;
@@ -5420,6 +5675,10 @@ int ControlThread::getNeededSnapshotBufNum(bool videoMode)
     // continuous shooting need one more buffer reserved
     if (mISP->getContinuousCaptureNumber() > mUllBurstLength) { // timenudge
         contShootingLimit = mISP->getContinuousCaptureNumber();
+    } else if (mContShootingState !=  CONT_SHOOTING_NONE) { // in continuous shooting
+        contShootingLimit = DEFAULT_BUF_NUM_FOR_CONT_SHOOTING;
+    } else if (mULL->isActive()) {
+        contShootingLimit = mULL->getULLBurstLength() + 1;
     } else {
         contShootingLimit = mISP->getContinuousCaptureNumber() + 1;
     }
@@ -7373,6 +7632,8 @@ status_t ControlThread::processStaticParameters(CameraParameters *oldParams,
 
     status = processParamDualCameraMode(oldParams,newParams);
 
+    status = processParamContinuousShooting(oldParams,newParams, restartNeeded);
+
     status = processParamDvs(oldParams,newParams);
 
     status = processParamSDV(oldParams,newParams, &restartNeeded);
@@ -7721,6 +7982,12 @@ status_t ControlThread::handleMessageCommand(MessageCommand* msg)
         break;
     case CAMERA_CMD_STOP_FACE_DETECTION:
         status = stopFaceDetection();
+        break;
+    case CAMERA_CMD_START_CONTINUOUS_SHOOTING:
+        status = prepareContinuous();
+        break;
+    case CAMERA_CMD_STOP_CONTINUOUS_SHOOTING:
+        status = finalizeContinuous();
         break;
     case CAMERA_CMD_START_SCENE_DETECTION:
         status = startSmartSceneDetection();
@@ -8326,9 +8593,13 @@ status_t ControlThread::setExternalSnapshotBuffers(int fourcc, int width, int he
     }
 
     numberOfSnapshots = MAX(1,mBurstLength);
-    numToSet = MIN(numberOfSnapshots, mAvailableSnapshotBuffers.size());
-    if (numToSet < numberOfSnapshots)
-        mBurstBufsToReturn = numberOfSnapshots - numToSet;
+    if (mContShootingState != CONT_SHOOTING_NONE && mState == STATE_CONTINUOUS_CAPTURE) {
+        numToSet = mAvailableSnapshotBuffers.size();
+    } else {
+        numToSet = MIN(numberOfSnapshots, mAvailableSnapshotBuffers.size());
+        if (numToSet < numberOfSnapshots)
+            mBurstBufsToReturn = numberOfSnapshots - numToSet;
+    }
 
     LOG1("@%s number of snapshots %d: numToSet:%d return for burst:%d Available %d Allocated: %d ",
             __FUNCTION__, numberOfSnapshots, numToSet, mBurstBufsToReturn,
@@ -8343,6 +8614,19 @@ status_t ControlThread::setExternalSnapshotBuffers(int fourcc, int width, int he
                 width, height);
         return UNKNOWN_ERROR;
     }
+
+    if (mContShootingState != CONT_SHOOTING_NONE && mState == STATE_CONTINUOUS_CAPTURE) {
+        // save all the buffer in ISP
+        mSnapshotBuffersInISP.clear();
+        mPostviewBuffersInISP.clear();
+        size_t index = mAvailableSnapshotBuffers.size() - 1;
+        for (size_t i = 0 ; i < numToSet ; i++) {
+            mSnapshotBuffersInISP.push(mAvailableSnapshotBuffers.itemAt(index));
+            mPostviewBuffersInISP.push(mAvailablePostviewBuffers.itemAt(index));
+            index--;
+        }
+    }
+
     bool cached = false;
     status = mISP->setSnapshotBuffers(&mAvailableSnapshotBuffers, numToSet, cached);
     status = mISP->setPostviewBuffers(&mAvailablePostviewBuffers, numToSet, cached);
@@ -8869,9 +9153,12 @@ bool ControlThread::threadLoop()
                 status = waitForAndExecuteMessage();
             } else {
                 // make sure ISP has data before we ask for some
-                if (burstMoreCapturesNeeded())
+                if (burstMoreCapturesNeeded()) {
                     status = captureFixedBurstPic();
-                else
+                } else if (mContShootingState == CONT_SHOOTING_STARTED && !holdOnContinuous()) {
+                    LOG1("@%s continuous shooting for next", __FUNCTION__);
+                    captureContinuous(false);
+                } else
                     status = waitForAndExecuteMessage();
             }
             break;

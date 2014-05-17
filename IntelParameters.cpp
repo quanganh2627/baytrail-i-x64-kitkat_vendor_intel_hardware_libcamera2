@@ -60,6 +60,10 @@ namespace android {
     const char IntelCameraParameters::KEY_SDV[] = "sdv";
     const char IntelCameraParameters::KEY_SDV_SUPPORTED[] = "sdv-supported";
 
+    // continuous shooting
+    const char IntelCameraParameters::KEY_CONTINUOUS_SHOOTING[] = "continuous-shooting";
+    const char IntelCameraParameters::KEY_CONTINUOUS_SHOOTING_SUPPORTED[] = "continuous-shooting-supported";
+
     // 3A related
     const char IntelCameraParameters::KEY_AE_MODE[] = "ae-mode";
     const char IntelCameraParameters::KEY_SUPPORTED_AE_MODES[] = "ae-mode-values";

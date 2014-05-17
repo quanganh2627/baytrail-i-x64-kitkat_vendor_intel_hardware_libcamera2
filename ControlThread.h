@@ -367,7 +367,17 @@ private:
         SHOOTING_MODE_ULL,          /*!< Ultra LowLight */
         SHOOTING_MODE_JPEG,         /*!< Continuous JPEG capture */
         SHOOTING_MODE_EXTISP_HDR_LLS, /*!< ext-isp HDR/LLS capture */
+        SHOOTING_MODE_CONTINUOUS,   /*!< Continuous shooting */
         SHOOTING_MODE_SMARTSTABILIZATION, /*!< Smart Stabilization capture */
+    };
+
+    /**
+     * \enum ContinuousShootingStatus
+     */
+    enum ContinuousShootingState {
+        CONT_SHOOTING_NONE      = 0x1,  /*!< initial value*/
+        CONT_SHOOTING_PREPARED  = 0x2,  /*!< prepared for the first capture*/
+        CONT_SHOOTING_STARTED   = 0x4,  /*!< shooting started, usually after the first catpure*/
     };
 
     struct HdrImaging {
@@ -435,6 +445,8 @@ private:
     status_t initContinuousCapture();
     void releaseContinuousCapture(bool flushPictures);
     status_t startOfflineCapture();
+    status_t getSnapshot(AtomBuffer *snapshot, AtomBuffer *postview);
+    status_t putSnapshot(AtomBuffer *snapshot, AtomBuffer *postview);
     State selectPreviewMode(const CameraParameters &params);
     ShootingMode selectShootingMode();
     status_t handleContinuousPreviewBackgrounding();
@@ -503,6 +515,7 @@ private:
     status_t waitForAndExecuteMessage();
 
     AtomBuffer* findBufferByData(AtomBuffer *buf,Vector<AtomBuffer> *aVector);
+    AtomBuffer* rmBufferInQueue(AtomBuffer *buf,Vector<AtomBuffer> *aVector);
 
     status_t skipFrames(size_t numFrames);
     status_t initBracketing();
@@ -537,6 +550,8 @@ private:
             CameraParameters *newParams, bool &restartPreview);
     status_t processParamDualCameraMode(CameraParameters *oldParams,
             CameraParameters *newParams);
+    status_t processParamContinuousShooting(const CameraParameters *oldParams,
+                CameraParameters *newParams, bool &restartPreview);
     status_t processParamBurst(const CameraParameters *oldParams,
                 CameraParameters *newParams);
     status_t processParamFlash(const CameraParameters *oldParams,
@@ -639,6 +654,7 @@ private:
 
     status_t stopCapture();
     void     stopOfflineCapture();
+    void     recycleUnusedBufferInISP();
     status_t waitForCaptureStart();
 
     // HDR helper functions
@@ -646,9 +662,12 @@ private:
     status_t hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* postviewBuffer);
     status_t hdrCompose();
     void     hdrRelease();
+
+    // snapshot buffer management
     int      getNeededSnapshotBufNum(bool videoMode);
     status_t allocateSnapshotAndPostviewBuffers(bool videoMode);
     status_t setExternalSnapshotBuffers(int fourcc, int width, int heigth);
+    void     forceRestoreSnapshotPostviewBuffers();
 
     // Capture Flow helpers
     status_t getFlashExposedSnapshot(AtomBuffer *snaphotBuffer, AtomBuffer *postviewBuffer);
@@ -672,6 +691,12 @@ private:
     status_t captureSmartStabilizationPic();
     status_t startJpegPicContinuousShooting();
     status_t stopJpegPicContinuousShooting();
+
+    // for continuous shooting
+    bool     holdOnContinuous();
+    status_t prepareContinuous();
+    status_t captureContinuous(bool clientRequest);
+    status_t finalizeContinuous();
     // snapshot during video functions
     status_t initSdv(bool offline);
     status_t deinitSdv(bool offline);
@@ -822,9 +847,11 @@ private:
 
     Vector<AtomBuffer> mAllocatedSnapshotBuffers; /*!< Current set of allocated snapshot buffers */
     Vector<AtomBuffer> mAvailableSnapshotBuffers; /*!< Current set of available snapshot buffers */
+    Vector<AtomBuffer> mSnapshotBuffersInISP;     /*!< Current set of snapshot buffers in ISP*/
 
     Vector<AtomBuffer> mAllocatedPostviewBuffers; /*!< Current set of allocated postview buffers */
     Vector<AtomBuffer> mAvailablePostviewBuffers; /*!< Current set of available postview buffers */
+    Vector<AtomBuffer> mPostviewBuffersInISP;     /*!< Current set of postview buffers in ISP*/
 
     bool mSaveMirrored;
     bool mHALVideoStabilization;    /*!< HAL video stabilization being used (implies also single-output video) */
@@ -841,6 +868,11 @@ private:
     unsigned int mNextExpID;        /*!< next expected buffer exposure ID */
     int mNumCaptures;               /*!< control the the number of capture */
     int mNumSounds;                 /*!< shutter sound times,trigger shutter sound by EOF/preview buffer event*/
+
+    // continuous capture
+    ContinuousShootingState mContShootingState; /*!< continuous shooting state */
+    bool mContShootingEnabled;                  /*!< app controls to enable of disable continuous shooting mode*/
+    int mContinuousPicsReady;                   /*!< number buffer ready*/
 
     /*----------- Debugging helpers --------------------*/
     static const char* sCaptureSubstateStrings[STATE_CAPTURE_LAST];

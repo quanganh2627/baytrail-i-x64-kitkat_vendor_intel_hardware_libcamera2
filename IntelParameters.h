@@ -266,6 +266,10 @@ namespace android {
     static const char KEY_SDV[];
     static const char KEY_SDV_SUPPORTED[];
 
+    // continuous shooting
+    static const char KEY_CONTINUOUS_SHOOTING[];
+    static const char KEY_CONTINUOUS_SHOOTING_SUPPORTED[];
+
     // Others
     static const char REC_BUFFER_SHARING_SESSION_ID[];
 
