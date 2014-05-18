@@ -367,6 +367,7 @@ private:
         SHOOTING_MODE_ULL,          /*!< Ultra LowLight */
         SHOOTING_MODE_JPEG,         /*!< Continuous JPEG capture */
         SHOOTING_MODE_EXTISP_HDR_LLS, /*!< ext-isp HDR/LLS capture */
+        SHOOTING_MODE_SMARTSTABILIZATION, /*!< Smart Stabilization capture */
     };
 
     struct HdrImaging {
@@ -664,6 +665,7 @@ private:
     status_t captureULLPic();
     status_t captureJpegPic();
     status_t captureExtIspHDRLLSPic();
+    status_t captureSmartStabilizationPic();
     status_t startJpegPicContinuousShooting();
     status_t stopJpegPicContinuousShooting();
     // snapshot during video functions
@@ -770,6 +772,7 @@ private:
                                 exp:mBurstLength is 9, mAllocatedSnapshotBuffers is 5,
                                 mBurstBufsToReturn should be 4*/
     int mUllBurstLength;     /*<! Burst length for ULL*/
+    bool mSmartStabilization; /*<! Smart stabilization for front camera */
     HdrImaging mHdr;
     ExtIsp mExtIsp;
     FlashStage mAELockFlashStage;

@@ -211,6 +211,27 @@ status_t CallbacksThread::rawFrameDone(AtomBuffer* snapshotBuf)
     return mMessageQueue.send(&msg);
 }
 
+status_t CallbacksThread::smartStabilizationFrameDone(const AtomBuffer &yuvBuf)
+{
+    LOG1("@%s",__FUNCTION__);
+    status_t status;
+    Message msg;
+    msg.id = MESSAGE_ID_SS_FRAME_DONE;
+    msg.data.smartStabilizationFrame.frame = yuvBuf;
+
+    status = mMessageQueue.send(&msg);
+    return status;
+}
+
+status_t CallbacksThread::handleMessageSSFrameDone(MessageFrame *msg)
+{
+    LOG1("@%s",__FUNCTION__);
+
+    mCallbacks->smartStabilizationFrameDone(&msg->frame);
+
+    return NO_ERROR;
+}
+
 status_t CallbacksThread::postviewFrameDone(AtomBuffer* postviewBuf)
 {
     LOG1("@%s", __FUNCTION__);
@@ -962,6 +983,10 @@ status_t CallbacksThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_RAW_FRAME_DONE:
             status = handleMessageRawFrameDone(&msg.data.rawFrame);
+            break;
+
+        case MESSAGE_ID_SS_FRAME_DONE:
+            status = handleMessageSSFrameDone(&msg.data.smartStabilizationFrame);
             break;
 
         case MESSAGE_ID_POSTVIEW_FRAME_DONE:

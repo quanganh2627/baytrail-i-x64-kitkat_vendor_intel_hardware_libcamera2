@@ -56,6 +56,7 @@ public:
     void previewFrameDone(AtomBuffer *buff);
     void videoFrameDone(AtomBuffer *buff, nsecs_t timstamp);
     void compressedFrameDone(AtomBuffer *buff);
+    void smartStabilizationFrameDone(AtomBuffer *buff);
     void extIspFrameDone(AtomBuffer *buff, int offset, int size);
     void postviewFrameDone(AtomBuffer *buff);
     void rawFrameDone(AtomBuffer *buff);

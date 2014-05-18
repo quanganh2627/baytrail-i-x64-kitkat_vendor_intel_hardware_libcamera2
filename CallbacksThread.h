@@ -83,6 +83,7 @@ public:
     status_t sendError(int id);
     status_t lowBattery();
     status_t rawFrameDone(AtomBuffer* snapshotBuf);
+    status_t smartStabilizationFrameDone(const AtomBuffer &yuvbuf);
     status_t postviewFrameDone(AtomBuffer* postviewBuf);
     status_t accManagerPointer(int isp_ptr, int idx);
     status_t accManagerFinished();
@@ -124,6 +125,7 @@ private:
         MESSAGE_ID_LOW_BATTERY,
 
         MESSAGE_ID_RAW_FRAME_DONE,
+        MESSAGE_ID_SS_FRAME_DONE,
         MESSAGE_ID_POSTVIEW_FRAME_DONE,
 
         // AccManager Callbacks
@@ -224,6 +226,9 @@ private:
         //MESSAGE_ID_RAW_FRAME_DONE
         MessageFrame rawFrame;
 
+        //MESSAGE_ID_SS_FRAME_DONE
+        MessageFrame smartStabilizationFrame;
+
         //MESSAGE_ID_POSTVIEW_FRAME_DONE
         MessageFrame postviewFrame;
 
@@ -304,6 +309,7 @@ private:
     status_t handleMessageSendError(MessageError *msg);
     status_t handleMessageLowBattery();
     status_t handleMessageRawFrameDone(MessageFrame *msg);
+    status_t handleMessageSSFrameDone(MessageFrame *msg);
     status_t handleMessagePostviewFrameDone(MessageFrame *msg);
     status_t handleMessageExtIspFrame(MessageExtIspFrame *msg);
     status_t handleMessageAccManagerPointer(MessageAccManager *msg);

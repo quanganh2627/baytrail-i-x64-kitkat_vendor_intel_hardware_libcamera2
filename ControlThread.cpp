@@ -94,6 +94,9 @@ const int MIN_PREVIEW_FPS = 11;
 // TODO: This value should be gotten from sensor dynamically, instead of hardcoding:
 const int MAX_PREVIEW_FPS = 30;
 
+// number pictures for smart stabilization capture
+const int NUM_PICS_FOR_SS = 5;
+
 const char* ControlThread::sCaptureSubstateStrings[]= {
       "INIT",
       "STARTED",
@@ -141,6 +144,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mBurstCaptureDoneNum(-1)
     ,mBurstBufsToReturn(0)
     ,mUllBurstLength(UltraLowLight::MAX_INPUT_BUFFERS)
+    ,mSmartStabilization(false)
     ,mAELockFlashStage(CAM_FLASH_STAGE_NONE)
     ,mPublicShutter(-1)
     ,mDvsEnable(false)
@@ -1306,6 +1310,9 @@ status_t ControlThread::configureContinuousRingBuffer()
     else
         cfg.numCaptures = ((mHwcg.mIspCI->getCssMajorVersion() == 2) && (mHwcg.mIspCI->getCssMinorVersion() == 0))? 2 : 1;
 
+    if (mSmartStabilization)
+        cfg.numCaptures = NUM_PICS_FOR_SS;
+
     cfg.offset = -(mISP->shutterLagZeroAlign());
     cfg.skip = 0;
     continuousConfigApplyLimits(cfg);
@@ -1784,6 +1791,10 @@ ControlThread::ShootingMode ControlThread::selectShootingMode()
         case STATE_CONTINUOUS_CAPTURE:
             if (isBurstRunning())
                 ret = SHOOTING_MODE_ZSL_BURST;
+            else if (mSmartStabilization) {
+                ret = SHOOTING_MODE_SMARTSTABILIZATION;
+                break;
+            }
             else
                 ret = SHOOTING_MODE_ZSL;
             // Trigger ULL in single capture only when user did not force flash
@@ -3067,6 +3078,10 @@ status_t ControlThread::handleMessageTakePicture() {
 
         case SHOOTING_MODE_EXTISP_HDR_LLS:
             status = captureExtIspHDRLLSPic();
+            break;
+
+        case SHOOTING_MODE_SMARTSTABILIZATION:
+            status = captureSmartStabilizationPic();
             break;
 
         default:
@@ -4469,6 +4484,78 @@ status_t ControlThread::captureJpegPic()
 
     return NO_ERROR;
 }
+
+/**
+ * Capture pictures with smart stabilization
+ */
+status_t ControlThread::captureSmartStabilizationPic()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    AtomBuffer snapshotBuffer
+        = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
+    AtomBuffer postviewBuffer
+        = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
+
+    bool syncJpegCbWithPostview =false;
+    bool requestPostviewCallback = false;
+    bool requestRawCallback = false;
+    int cachedBurstLength, cachedBurstStart;
+
+    //cache burst related parameters
+    cachedBurstLength = mBurstLength;
+    cachedBurstStart = mBurstStart;
+
+    // Notify CallbacksThread that a picture was requested, so grab one from queue
+    mCallbacksThread->requestTakePicture(requestPostviewCallback, requestRawCallback, syncJpegCbWithPostview);
+
+    stopFaceDetection();
+
+    // Initialize the burst control variables for the ULL burst
+    mBurstLength = NUM_PICS_FOR_SS;
+    mBurstStart = 0;
+    if (mState == STATE_CONTINUOUS_CAPTURE) {
+        status = continuousStartStillCapture(false);
+
+        // Configure PictureThread
+        mPictureThread->initialize(mParameters, mHwcg.mIspCI->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
+
+        status = waitForCaptureStart();
+        if (status != NO_ERROR) {
+            LOGE("Error while waiting for capture to start");
+            mCallbacksThread->sendError(CAMERA_ERROR_UNKNOWN);
+            goto exit;
+        }
+    }
+
+    // Send request to play the Shutter Sound
+    mCallbacksThread->shutterSound();
+
+    // now fetch the buffers from snapshot device
+    AtomBuffer yuvBuffers[NUM_PICS_FOR_SS];
+    CLEAR(yuvBuffers);
+    for (int i = 0; i < NUM_PICS_FOR_SS; i++) {
+        status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer);
+        if (status != NO_ERROR) {
+            LOGE("Error in grabbing snapshot!");
+            mCallbacksThread->sendError(CAMERA_ERROR_UNKNOWN);
+            goto exit;
+        }
+
+        //snapshotBuffer.owner = mISP;
+        yuvBuffers[i] = snapshotBuffer;
+        mCallbacksThread->smartStabilizationFrameDone(yuvBuffers[i]);
+    }
+
+    stopOfflineCapture();
+
+exit:
+    // Restore the Burst related control variables
+    mBurstLength = cachedBurstLength;
+    mBurstStart = cachedBurstStart;
+    return status;
+}
+
 
 /**
  * Start capture pictures until stop cancelpicture or stopJpegPicContinuousShooting
@@ -7665,6 +7752,10 @@ status_t ControlThread::handleMessageCommand(MessageCommand* msg)
         mHwcg.mIspCI->setLLS(msg->arg1);
         mExtIsp.LLS = (msg->arg1 == 1);
         break;
+    case CAMERA_CMD_FRONT_SS:
+        mSmartStabilization = (msg->arg1 == 1);
+        break;
+
     default:
         break;
     }
