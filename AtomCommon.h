@@ -258,6 +258,17 @@ struct AtomFormatBridge {
     bool bayer;
 };
 
+// Tuple for sensor name and port.
+struct SensorNameAndPort {
+    String8 name;
+    enum {
+        PRIMARY = 0,
+        SECONDARY,
+        TERTIARY,
+        UNKNOWN_PORT,
+    } ispPort;
+};
+
 extern const struct AtomFormatBridge sV4l2PixelFormatBridge[];
 const struct AtomFormatBridge* getAtomFormatBridge(unsigned int fourcc);
 

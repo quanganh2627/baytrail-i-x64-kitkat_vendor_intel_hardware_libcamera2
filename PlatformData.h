@@ -1609,7 +1609,7 @@ protected:
     int mFaceCallbackDivider;
 
 private:
-    static status_t getSensorNames(Vector<String8>& sensorNames);
+    static status_t getSensorInfo(Vector<SensorNameAndPort>& sensorInfo);
 };
 
 } /* namespace android */

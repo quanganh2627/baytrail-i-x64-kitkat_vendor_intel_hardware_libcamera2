@@ -40,14 +40,13 @@ HalConf PlatformData::HalConfig;
 // Max width and height string length, like "1920x1080".
 const int MAX_WIDTH_HEIGHT_STRING_LENGTH = 25;
 
-status_t PlatformBase::getSensorNames(Vector<String8>& names)
+status_t PlatformBase::getSensorInfo(Vector<SensorNameAndPort>& sensorInfo)
 {
     LOG2("@%s", __FUNCTION__);
 
     status_t ret = NO_ERROR;
     int i = 0;
-    int newIndex = 0;
-    String8 sensorName;
+    SensorNameAndPort sensor;
     ssize_t idx;
     struct v4l2_input input;
     atomisp_camera_port ispPort;
@@ -58,44 +57,38 @@ status_t PlatformBase::getSensorNames(Vector<String8>& names)
         return NO_INIT;
     }
 
-    names.resize(ATOMISP_CAMERA_NR_PORTS); // Reserve space for reordering.
     while (ret == NO_ERROR) {
         idx = -1;
         CLEAR(input);
         input.index = i;
 
         if (NO_ERROR == (ret = mainDevice->enumerateInputs(&input))) {
-            sensorName.clear();
             idx = String8((const char*)input.name).find(" ");
+            sensor.name.clear();
             if (idx == -1)
-                sensorName.append((const char*)input.name);
+                sensor.name.append((const char*)input.name);
             else
-                sensorName.append((const char*)input.name, idx);
+                sensor.name.append((const char*)input.name, idx);
 
-            // Make sure sensors are ordered.
-            // First three slots are reserved for primary, secondary, and
-            // tertiary cameras respectively. Rest are pushed at the end.
+            // Need to save ISP port. This is used for matching CameraId.
             ispPort = (atomisp_camera_port)input.reserved[1];
             switch (ispPort) {
             case ATOMISP_CAMERA_PORT_PRIMARY:
-                newIndex = 0;
+                sensor.ispPort = SensorNameAndPort::PRIMARY;
                 break;
             case ATOMISP_CAMERA_PORT_SECONDARY:
-                newIndex = 1;
+                sensor.ispPort = SensorNameAndPort::SECONDARY;
                 break;
             case ATOMISP_CAMERA_PORT_TERTIARY:
-                newIndex = 2;
+                sensor.ispPort = SensorNameAndPort::TERTIARY;
                 break;
             default:
-                newIndex = -1;
+                sensor.ispPort = SensorNameAndPort::UNKNOWN_PORT;
                 break;
             }
 
-            if ( newIndex == -1 )
-                newIndex = names.add(sensorName);
-            else
-                names.replaceAt(sensorName, newIndex);
-            LOG1("@%s: %s at index %d (was %d)", __FUNCTION__, sensorName.string(), newIndex, i);
+            sensorInfo.push(sensor);
+            LOG1("@%s: %s at index %d (port %d)", __FUNCTION__, sensor.name.string(), i, sensor.ispPort);
             i++;
         }
     }
@@ -106,13 +99,6 @@ status_t PlatformBase::getSensorNames(Vector<String8>& names)
         LOGE("@%s: Device input enumeration failed for sensor index %d (err = %d)", __FUNCTION__, i,  ret);
     }
 
-    // It is possible there is no primary (or secondary) sensor.
-    // Remove empty items from the array.
-    for (i = names.size() - 1; i >= 0; --i) {
-        if (names[i].isEmpty())
-            names.removeAt(i);
-    }
-
     mainDevice->close();
     return ret;
 }
@@ -121,11 +107,11 @@ PlatformBase* PlatformData::getInstance(void)
 {
     if (mInstance == 0) {
         // Get the sensor names from driver
-        Vector<String8> sensorNames;
-        if (NO_ERROR != PlatformBase::getSensorNames(sensorNames))
+        Vector<SensorNameAndPort> sensorInfo;
+        if (NO_ERROR != PlatformBase::getSensorInfo(sensorInfo))
             mInstance = new CameraProfiles();
         else
-            mInstance = new CameraProfiles(sensorNames);
+            mInstance = new CameraProfiles(sensorInfo);
 
         // add an extra camera which is copied from the first one as a fake camera
         // for file injection
@@ -1559,6 +1545,7 @@ bool PlatformData::useMultiStreamsForSoC(int cameraId)
 
 void PlatformData::useExtendedCamera(bool val)
 {
+    LOG1("@useExtendedCamera val = %d", val);
     getInstance()->mUseExtendedCamera = val;
 }
 
