@@ -304,6 +304,11 @@ int PlatformData::shutterLagCompensationMs(void)
     return getInstance()->mShutterLagCompensationMs;
 }
 
+int PlatformData::getMaxISPTimeoutCount(void)
+{
+    return getInstance()->mMaxISPTimeoutCount;
+}
+
 bool PlatformData::renderPreviewViaOverlay(int cameraId)
 {
     if (!validCameraId(cameraId, __FUNCTION__)) {

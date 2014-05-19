@@ -1103,6 +1103,14 @@ class PlatformData {
     static int defaultDepthFocalLength(int cameraId);
 
     /**
+     * This value is configured by product. When continuous ISP timeout count
+     * reach the max ISP timeout count, Camera HAL will try to recover preview.
+     *
+     * \return max ISP timeout count
+     */
+    static int getMaxISPTimeoutCount(void);
+
+    /**
      * supported DVS sizes
      *
      * \param cameraId identifier passed to android.hardware.Camera.open()
@@ -1215,6 +1223,7 @@ public:
         ,mSensorExposureLag(2)
         ,mUseIntelULL(false)
         ,mFaceCallbackDivider(1)
+        ,mMaxISPTimeoutCount(60)
     {}
 
 protected:
@@ -1613,6 +1622,8 @@ protected:
     // Used for reducing the frequency of face callbacks
     int mFaceCallbackDivider;
 
+    // Max ISP timeout count
+    int mMaxISPTimeoutCount;
 private:
     static status_t getSensorInfo(Vector<SensorNameAndPort>& sensorInfo);
 };

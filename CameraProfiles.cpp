@@ -160,6 +160,8 @@ void CameraProfiles::handleCommon(CameraProfiles *profiles, const char *name, co
         PlatformBase::mUseIntelULL = ((strcmp(atts[1], "IntelULL") == 0) ? true : false);
     } else if (strcmp(name, "faceCallbackDivider") == 0) {
         PlatformBase::mFaceCallbackDivider = atoi(atts[1]);
+    } else if (strcmp(name, "maxISPTimeoutCount") == 0) {
+        PlatformBase::mMaxISPTimeoutCount = atoi(atts[1]);
     }
 }
 

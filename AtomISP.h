@@ -494,7 +494,7 @@ private:
     {
     public:
         PreviewStreamSource(const char*name, AtomISP *aisp)
-            :mName(name), mISP(aisp) { };
+            :mName(name), mISP(aisp), mISPTimeoutCount(0) { };
 
         // IObserverSubject override
         virtual const char* getName() { return mName.string(); };
@@ -503,6 +503,7 @@ private:
     private:
         String8  mName;
         AtomISP *mISP;
+        int mISPTimeoutCount;
     } mPreviewStreamSource;
 
     class AAAStatSource: public IObserverSubject

@@ -735,6 +735,14 @@ status_t ControlThread::errorPreview()
     return mMessageQueue.send(&msg);
 }
 
+status_t ControlThread::recoverPreview()
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_TIMEOUT;
+    return mMessageQueue.send(&msg);
+}
+
 status_t ControlThread::startRecording()
 {
     LOG1("@%s", __FUNCTION__);
@@ -2597,7 +2605,9 @@ status_t ControlThread::handleMessageErrorPreview()
     if (mState != STATE_STOPPED && mState != STATE_CAPTURE) {
         status = stopPreviewCore(true);
         mISP->deInitDevice();
-        LOGE("Preview was stopped due error in stream, trying to recover (timeout 5s)...");
+        LOGE("Preview was stopped due error in stream, trying to recover...");
+        // try to recover preview
+        recoverPreview();
     } else {
         LOGE("Preview stream error unhandled, unexpected state (%d)", mState);
     }
@@ -2606,7 +2616,7 @@ status_t ControlThread::handleMessageErrorPreview()
 }
 
 /**
- * Handler for MessageQueue::receive timeout (5s)
+ * Handler for MessageQueue::receive timeout
  *
  * Initially checks whether we were stopped because of an error in
  * preview and tries to recover the preview state.
@@ -2624,6 +2634,11 @@ status_t ControlThread::handleMessageTimeout()
             status = startPreviewCore(videoMode);
             if (status)
                 LOGE("%s: Restart Preview failed", __FUNCTION__);
+        }
+        if (status != NO_ERROR) {
+            // When recover preview failed, just send out error to app
+            LOGW("When recover preview failed, send error to application.");
+            mCallbacksThread->sendError(CAMERA_ERROR_SERVER_DIED);
         }
     } else {
         LOG2("%s: nothing to do", __FUNCTION__);

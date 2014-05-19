@@ -114,6 +114,7 @@ public:
     status_t errorPreview();
     status_t startRecording();
     status_t stopRecording();
+    status_t recoverPreview();
 
     void sendCommand( int32_t cmd, int32_t arg1, int32_t arg2);
 

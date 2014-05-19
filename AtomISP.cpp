@@ -6602,6 +6602,9 @@ status_t AtomISP::PreviewStreamSource::observe(IAtomIspObserver::Message *msg)
     // set retry count to 60
     if (mISP->isFileInjectionEnabled())
         retry_count = 40;
+
+    int maxTimeoutCount = PlatformData::getMaxISPTimeoutCount();
+
 try_again:
     ret = mISP->mPreviewDevice->poll(ATOMISP_PREVIEW_POLL_TIMEOUT);
     if (ret > 0) {
@@ -6611,16 +6614,25 @@ try_again:
             msg->id = IAtomIspObserver::MESSAGE_ID_ERROR;
             status = UNKNOWN_ERROR;
         } else {
+            if (msg->data.frameBuffer.buff.status != FRAME_STATUS_CORRUPTED) {
+                // Initialized timeout count when get normal preview frame
+                mISPTimeoutCount = 0;
+            }
             msg->data.frameBuffer.buff.owner = mISP;
             msg->id = IAtomIspObserver::MESSAGE_ID_FRAME;
-            if (mISP->checkSkipFrame(msg->data.frameBuffer.buff.frameCounter, mISP->mConfig.preview_fps) ||
-                mISP->checkSkipFrameForVideoZoom())
+            if (mISP->checkSkipFrame(msg->data.frameBuffer.buff.frameCounter, mISP->mConfig.preview_fps)
+                || mISP->checkSkipFrameForVideoZoom())
                 msg->data.frameBuffer.buff.status = FRAME_STATUS_SKIPPED;
         }
     } else {
         LOGE("@%s v4l2_poll for preview device failed! (%s)", __FUNCTION__, (ret==0)?"timeout":"error");
         msg->id = IAtomIspObserver::MESSAGE_ID_ERROR;
-        status = (ret==0)?TIMED_OUT:UNKNOWN_ERROR;
+        status = ret ? UNKNOWN_ERROR : TIMED_OUT;
+        // If ISP timeout count is larger than max count, send out error message.
+        ++mISPTimeoutCount;
+        if (ret == 0 && mISPTimeoutCount >= maxTimeoutCount) {
+            return status;
+        }
     }
 
     if (status != NO_ERROR) {
