@@ -506,7 +506,6 @@ status_t CameraProfiles::initSensorList()
                 for (int i = 0; (i = drvInfo.mSensorName.find(" ")) > 0; drvInfo.mSensorName.setTo(drvInfo.mSensorName, i));
 				drvInfo.mCameraProfileName = String8::format(mProfilePathName,drvInfo.mSensorName.string());
 				LOGD("@%s,drvInfo.mProfileName:%s",__func__,drvInfo.mCameraProfileName.string());
-				sprintf(medProPath,"%s_%s",medProPath,drvInfo.mSensorName.string());
 
 				RegisteredDrivers.push(drvInfo);
 
@@ -514,11 +513,17 @@ status_t CameraProfiles::initSensorList()
         }
     } while (!ret);
 
+    for (size_t i = 0; i < RegisteredDrivers.size(); i++) {
+        sprintf(medProPath, "%s|/etc/media_profiles_%s.xml", medProPath, RegisteredDrivers[i].mSensorName.string());
+    }
+
 	if(medProPath[0]){
-		char pathName[128];
-		sprintf(pathName,"/etc/media_profiles%s.xml",medProPath);
-		property_set("media.settings.xml",pathName);
-		LOGD("@%s,MediaProfilePath:%s\n",__func__,pathName);
+        if('|' ==  medProPath[0]) {
+            sprintf(medProPath, "%s", &medProPath[1]);
+        }
+
+		property_set("media.settings.xml", medProPath);
+		LOGD("@%s,media.settings.xml property:%s\n",__func__, medProPath);
 	}
 
     return ret;
