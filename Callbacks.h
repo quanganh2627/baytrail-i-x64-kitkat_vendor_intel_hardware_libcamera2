@@ -67,7 +67,7 @@ public:
 
     void allocateMemory(AtomBuffer *buff, int size);
     void allocateMemory(camera_memory_t **buff, size_t size);
-    void facesDetected(camera_frame_metadata_t &face_metadata);
+    void facesDetected(camera_frame_metadata_t *face_metadata);
     void sceneDetected(camera_scene_detection_metadata &metadata);
     void panoramaDisplUpdate(camera_panorama_metadata &metadata);
     void panoramaSnapshot(const AtomBuffer &livePreview);

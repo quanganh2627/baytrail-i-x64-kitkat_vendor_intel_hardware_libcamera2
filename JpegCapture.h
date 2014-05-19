@@ -19,6 +19,7 @@
 
 #include <stdint.h>
 #include <endian.h>
+#include <system/camera.h>
 
 #define V4L2_PIX_FMT_CONTINUOUS_JPEG V4L2_PIX_FMT_JPEG
 
@@ -113,6 +114,7 @@ const size_t NV12_META_LEFT_OFFSET_ADDR = 0x13C;
 const size_t NV12_META_FD_ONOFF_ADDR = 0x70;
 const size_t NV12_META_FD_COUNT_ADDR = 0x72;
 const size_t NV12_META_FIRST_FACE_ADDR = 0x74;
+const size_t NV12_META_NEED_LLS_ADDR = 0x2B8;
 
 const uint16_t NV12_META_MAX_FACE_COUNT = 16;
 
@@ -130,9 +132,15 @@ const size_t JPEG_META_FRAME_COUNT_ADDR = 0x13;
 // make sure these don't collide with intel extensions
 enum {
     CAMERA_CMD_EXTISP_HDR        = 1014,
-    CAMERA_CMD_EXTISP_LLS        = 1351,
+    CAMERA_CMD_EXTISP_LLS        = 1264,
     CAMERA_CMD_FRONT_SS          = 0x4F1,  /* TODO, SS did not confirmed the name and value of Smart Stabilization. Please change them when SS give the final confirmation. */
-    CAMERA_CMD_EXTISP_KIDS_MODE  = 0x4F2
+    CAMERA_CMD_EXTISP_KIDS_MODE  = 0x4F2,
+    CAMERA_CMD_AUTO_LOW_LIGHT    = 1351
+};
+
+struct extended_frame_metadata_t {
+    camera_frame_metadata_t cameraFrameMetadata;
+    int32_t needLLS;
 };
 
 static uint32_t getU32fromFrame(uint8_t* framePtr, size_t addr) {

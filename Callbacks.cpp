@@ -219,7 +219,7 @@ void Callbacks::cameraError(int err)
     }
 }
 
-void Callbacks::facesDetected(camera_frame_metadata_t &face_metadata)
+void Callbacks::facesDetected(camera_frame_metadata_t *face_metadata)
 {
     /* If the Call back is enabled for meta data and face detection is
     * active, inform about faces.*/
@@ -231,7 +231,7 @@ void Callbacks::facesDetected(camera_frame_metadata_t &face_metadata)
         mDataCB(CAMERA_MSG_PREVIEW_METADATA,
              mDummyByte,
              0,
-             &face_metadata,
+             face_metadata,
              mUserToken);
     }
 }

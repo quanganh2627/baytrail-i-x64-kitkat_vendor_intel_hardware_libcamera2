@@ -7779,6 +7779,9 @@ status_t ControlThread::handleMessageCommand(MessageCommand* msg)
     case CAMERA_CMD_EXTISP_KIDS_MODE:
         status = handleKidsMode(msg->arg1);
         break;
+    case CAMERA_CMD_AUTO_LOW_LIGHT:
+        mPostProcThread->setAutoLowLightReporting(msg->arg1 == 1);
+        break;
     case CAMERA_CMD_FRONT_SS:
         mSmartStabilization = (msg->arg1 == 1);
         break;

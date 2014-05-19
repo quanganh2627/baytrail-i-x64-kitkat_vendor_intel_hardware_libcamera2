@@ -30,7 +30,7 @@ public:
      * @param face_metadata pointer to face metadata. NULL pointer resets the
      * listener to initial state.
      */
-    virtual void facesDetected(camera_frame_metadata_t *face_metadata) = 0;
+    virtual void facesDetected(extended_frame_metadata_t *face_metadata) = 0;
 };
 
 }

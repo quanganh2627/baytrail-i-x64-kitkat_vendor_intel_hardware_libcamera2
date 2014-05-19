@@ -58,6 +58,7 @@ public:
     void getDefaultParameters(CameraParameters *params, CameraParameters *intel_parameters, int cameraId);
     void flushFrames();
     status_t setZoom(int zoomRatio);
+    void setAutoLowLightReporting(bool value);
 // Thread overrides
 public:
     status_t requestExitAndWait();
@@ -141,6 +142,7 @@ private:
         MESSAGE_ID_UNLOAD_ISP_EXTENSIONS,
         MESSAGE_ID_SET_ZOOM,
         MESSAGE_ID_SET_ROTATION,
+        MESSAGE_ID_SET_AUTO_LOW_LIGHT,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -221,6 +223,7 @@ private:
     status_t handleMessageUnloadIspExtensions();
     status_t handleMessageSetZoom(MessageConfig &msg);
     status_t handleMessageSetRotation(MessageConfig &msg);
+    status_t handleMessageSetAutoLowLight(MessageConfig &msg);
 
     status_t handleExtIspFaceDetection(AtomBuffer *auxBuf);
 
@@ -246,6 +249,7 @@ private:
     int mCameraOrientation;
     bool mIsBackCamera;
     int mCameraId;
+    bool mAutoLowLightReporting;
 }; // class PostProcThread
 
 }; // namespace android

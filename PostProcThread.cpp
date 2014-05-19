@@ -48,6 +48,7 @@ PostProcThread::PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *
     ,mCameraOrientation(0)
     ,mIsBackCamera(false)
     ,mCameraId(cameraId)
+    ,mAutoLowLightReporting(false)
 {
     LOG1("@%s", __FUNCTION__);
 
@@ -142,7 +143,8 @@ void PostProcThread::previewBufferCallback(AtomBuffer *buff, ICallbackPreview::C
         return;
     }
 
-    if (mFaceDetectionRunning || mPanoramaThread->getState() == PANORAMA_DETECTING_OVERLAP) {
+    if (mAutoLowLightReporting || mFaceDetectionRunning ||
+        mPanoramaThread->getState() == PANORAMA_DETECTING_OVERLAP) {
         if (sendFrame(buff) < 0) {
            buff->owner->returnBuffer(buff);
         }
@@ -596,6 +598,21 @@ int PostProcThread::sendFrame(AtomBuffer *img)
         return -1;
 }
 
+void PostProcThread::setAutoLowLightReporting(bool value)
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.data.config.value = value ? 1 : 0;
+    mMessageQueue.send(&msg);
+}
+
+status_t PostProcThread::handleMessageSetAutoLowLight(MessageConfig &msg)
+{
+    LOG1("@%s", __FUNCTION__);
+    mAutoLowLightReporting = (msg.value == 1);
+    return OK;
+}
+
 bool PostProcThread::threadLoop()
 {
     LOG2("@%s", __FUNCTION__);
@@ -681,6 +698,9 @@ status_t PostProcThread::waitForAndExecuteMessage()
         case MESSAGE_ID_SET_ROTATION:
             status = handleMessageSetRotation(msg.data.config);
             break;
+        case MESSAGE_ID_SET_AUTO_LOW_LIGHT:
+            status = handleMessageSetAutoLowLight(msg.data.config);
+            break;
         default:
             status = INVALID_OPERATION;
             break;
@@ -760,6 +780,7 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
 
         camera_face_t faces[num_faces];
         camera_frame_metadata_t face_metadata;
+        extended_frame_metadata_t extended_face_metadata;
 
         ia_face_state faceState;
         faceState.faces = new ia_face[num_faces];
@@ -770,6 +791,7 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
 
         face_metadata.number_of_faces = mFaceDetector->getFaces(faces, frameData.width, frameData.height);
         face_metadata.faces = faces;
+        extended_face_metadata.cameraFrameMetadata = face_metadata;
         mFaceDetector->getFaceState(&faceState, frameData.width, frameData.height, mZoomRatio);
 
         // Find recognized faces from the data (ID is positive), and pick the first one:
@@ -803,8 +825,11 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
             mPostProcDoneCallback->facesDetected(&faceState);
         }
 
+        // TODO passing real auto LLS information from 3A results
+        extended_face_metadata.needLLS = false;
+
         // .. and towards the application
-        mpListener->facesDetected(&face_metadata);
+        mpListener->facesDetected(&extended_face_metadata);
 
         delete[] faceState.faces;
         faceState.faces = NULL;
@@ -827,7 +852,8 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
                 mSmartShutter.captureForced = false;
             }
         }
-    } else if (mFaceDetectionRunning && PlatformData::supportsContinuousJpegCapture(mCameraId)) {
+    } else if ((mFaceDetectionRunning || mAutoLowLightReporting) &&
+               PlatformData::supportsContinuousJpegCapture(mCameraId)) {
         status = handleExtIspFaceDetection(frame.img.auxBuf);
     }
 
@@ -852,22 +878,27 @@ status_t PostProcThread::handleExtIspFaceDetection(AtomBuffer *auxBuf)
     }
 
     unsigned char *nv12meta = ((unsigned char*)auxBuf->dataPtr) + NV12_META_START;
-    uint16_t fdState = getU16fromFrame(nv12meta, NV12_META_FD_ONOFF_ADDR);
-    if (fdState != 1) {
-        LOGW("Face detection is OFF in metadata, despite mFaceDetectionRunning being true. FD bailing out.");
-        return UNKNOWN_ERROR;
-    }
+    uint16_t numFaces = 0;
+    if (mFaceDetectionRunning) {
+        uint16_t fdState = getU16fromFrame(nv12meta, NV12_META_FD_ONOFF_ADDR);
+        if (fdState != 1) {
+            LOGW("Face detection is OFF in metadata, despite mFaceDetectionRunning being true. FD bailing out.");
+            return UNKNOWN_ERROR;
+        }
 
-    uint16_t numFaces = getU16fromFrame(nv12meta, NV12_META_FD_COUNT_ADDR);
-    if (numFaces > NV12_META_MAX_FACE_COUNT) {
-        LOGE("Face count bigger than 16 in metadata, considering metadata corrupted. FD bailing out.");
-        return UNKNOWN_ERROR;
+        numFaces = getU16fromFrame(nv12meta, NV12_META_FD_COUNT_ADDR);
+        if (numFaces > NV12_META_MAX_FACE_COUNT) {
+            LOGE("Face count bigger than 16 in metadata, considering metadata corrupted. FD bailing out.");
+            return UNKNOWN_ERROR;
+        }
     }
 
     camera_face_t faces[numFaces];
     camera_frame_metadata_t face_metadata;
+    extended_frame_metadata_t extended_face_metadata;
     face_metadata.faces = faces;
     face_metadata.number_of_faces = numFaces;
+    extended_face_metadata.cameraFrameMetadata = face_metadata;
 
     for (int i = 0, addr = 0; i < numFaces; i++) {
         // unsupported fields
@@ -890,8 +921,12 @@ status_t PostProcThread::handleExtIspFaceDetection(AtomBuffer *auxBuf)
         // skip the angle
         addr += 2;
     }
+
+    // get the needLLS
+    extended_face_metadata.needLLS = getU16fromFrame(nv12meta, NV12_META_NEED_LLS_ADDR);
+
     // send face info towards the application
-    mpListener->facesDetected(&face_metadata);
+    mpListener->facesDetected(&extended_face_metadata);
 
     return OK;
 }

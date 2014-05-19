@@ -57,7 +57,7 @@ public:
 
 // IFaceDetectionListener overrides
 public:
-    virtual void facesDetected(camera_frame_metadata_t *face_metadata);
+    virtual void facesDetected(extended_frame_metadata_t *face_metadata);
 
 // public methods
 public:
@@ -168,7 +168,7 @@ private:
     };
 
     struct MessageFaces {
-        camera_frame_metadata_t meta_data;
+        extended_frame_metadata_t meta_data;
     };
 
     struct MessageAutoFocusActive {
@@ -339,7 +339,9 @@ private:
     unsigned mULLid;
     bool mFocusActive;
     bool mWaitRendering;
+    Mutex mFaceReportingLock;
     int mLastReportedNumberOfFaces;
+    bool mLastReportedNeedLLS;
     int mFaceCbCount;
     int mFaceCbFreqDivider;
     Message mPostponedJpegReady;
@@ -351,7 +353,7 @@ private:
      * JPEG, RAW and POSTIVEW callbacks are sent to the camera client.
      */
     Vector<MessageCompressed> mBuffers;
-    camera_frame_metadata_t mFaceMetadata;
+    extended_frame_metadata_t mFaceMetadata;
     int mCameraId;
 
 // public data

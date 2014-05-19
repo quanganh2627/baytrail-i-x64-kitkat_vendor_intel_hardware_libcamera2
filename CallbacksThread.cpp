@@ -40,14 +40,15 @@ CallbacksThread::CallbacksThread(Callbacks *callbacks, ICallbackPicture *picture
     ,mFocusActive(false)
     ,mWaitRendering(false)
     ,mLastReportedNumberOfFaces(0)
+    ,mLastReportedNeedLLS(0)
     ,mFaceCbCount(0)
     ,mFaceCbFreqDivider(1)
     ,mPictureDoneCallback(pictureDone)
 {
     LOG1("@%s", __FUNCTION__);
-    mFaceMetadata.faces = new camera_face_t[MAX_FACES_DETECTABLE];
-    memset(mFaceMetadata.faces, 0, MAX_FACES_DETECTABLE * sizeof(camera_face_t));
-    mFaceMetadata.number_of_faces = 0;
+    mFaceMetadata.cameraFrameMetadata.faces = new camera_face_t[MAX_FACES_DETECTABLE];
+    memset(mFaceMetadata.cameraFrameMetadata.faces, 0, MAX_FACES_DETECTABLE * sizeof(camera_face_t));
+    mFaceMetadata.cameraFrameMetadata.number_of_faces = 0;
     mPostponedJpegReady.id = (MessageId) -1;
 
     // Trying to slighly optimize here, instead of calling this for each face callback
@@ -57,8 +58,8 @@ CallbacksThread::CallbacksThread(Callbacks *callbacks, ICallbackPicture *picture
 CallbacksThread::~CallbacksThread()
 {
     LOG1("@%s", __FUNCTION__);
-    delete [] mFaceMetadata.faces;
-    mFaceMetadata.faces = NULL;
+    delete [] mFaceMetadata.cameraFrameMetadata.faces;
+    mFaceMetadata.cameraFrameMetadata.faces = NULL;
 }
 
 status_t CallbacksThread::shutterSound()
@@ -400,33 +401,41 @@ status_t CallbacksThread::handleMessageSendError(MessageError *msg)
     return NO_ERROR;
 }
 
-void CallbacksThread::facesDetected(camera_frame_metadata_t *face_metadata)
+void CallbacksThread::facesDetected(extended_frame_metadata_t *extended_face_metadata)
 {
-    LOG2("@%s: face_metadata ptr = %p", __FUNCTION__, face_metadata);
+    LOG2("@%s: face_metadata ptr = %p", __FUNCTION__, extended_face_metadata);
+
+    Mutex::Autolock lock(mFaceReportingLock); // protecting member variable accesses during the filtering below
 
     // Null face data -> reset IFaceDetectionListener
-    if (face_metadata == NULL) {
+    if (extended_face_metadata == NULL) {
         mLastReportedNumberOfFaces = 0;
         mFaceCbCount = 0;
         return;
     }
+    camera_frame_metadata_t *face_metadata = &extended_face_metadata->cameraFrameMetadata;
 
-    // Count the callbacks to adjust sending frequency.
-    // We want to do this to relieve the application face indicator rendering load,
-    // as it seems to get heavy when large number of faces are presented.
-    // TODO: Dynamic adjustment of frequency, depending on number of faces
-    ++mFaceCbCount; // Ok to wrap around
+    // needLLS needs to be sent always when it changes, so don't adjust sending frequency, if it changes
+    if (mLastReportedNeedLLS != extended_face_metadata->needLLS) {
+        mLastReportedNeedLLS = extended_face_metadata->needLLS;
+    } else {
+        // Count the callbacks to adjust sending frequency.
+        // We want to do this to relieve the application face indicator rendering load,
+        // as it seems to get heavy when large number of faces are presented.
+        // TODO: Dynamic adjustment of frequency, depending on number of faces
+        ++mFaceCbCount; // Ok to wrap around
 
-    if (face_metadata->number_of_faces > 0 || mLastReportedNumberOfFaces != 0) {
-        mLastReportedNumberOfFaces = face_metadata->number_of_faces;
-        // Not the time to send cb -> do nothing
-        if (!(mFaceCbCount % mFaceCbFreqDivider == 0 || mLastReportedNumberOfFaces == 0)) {
+        if (face_metadata->number_of_faces > 0 || mLastReportedNumberOfFaces != 0) {
+            mLastReportedNumberOfFaces = face_metadata->number_of_faces;
+            // Not the time to send cb -> do nothing
+            if (!(mFaceCbCount % mFaceCbFreqDivider == 0 || mLastReportedNumberOfFaces == 0)) {
+                return;
+            }
+        } else if (face_metadata->number_of_faces == 0 && mLastReportedNumberOfFaces == 0) {
+            // For subsequent zero faces, after the first zero-face cb sent to application
+            // -> do nothing
             return;
         }
-    } else if (face_metadata->number_of_faces == 0 && mLastReportedNumberOfFaces == 0) {
-        // For subsequent zero faces, after the first zero-face cb sent to application
-        // -> do nothing
-        return;
     }
 
     int num_faces;
@@ -441,8 +450,10 @@ void CallbacksThread::facesDetected(camera_frame_metadata_t *face_metadata)
     if (num_faces > 0)
         PerformanceTraces::FaceLock::stop(num_faces);
 
-    mFaceMetadata.number_of_faces = num_faces;
-    memcpy(mFaceMetadata.faces, face_metadata->faces, mFaceMetadata.number_of_faces * sizeof(camera_face_t));
+    mFaceMetadata.cameraFrameMetadata.number_of_faces = num_faces;
+    mFaceMetadata.needLLS = extended_face_metadata->needLLS;
+    memcpy(mFaceMetadata.cameraFrameMetadata.faces, face_metadata->faces,
+           mFaceMetadata.cameraFrameMetadata.number_of_faces * sizeof(camera_face_t));
 
     Message msg;
     msg.id = MESSAGE_ID_FACES;
@@ -753,8 +764,9 @@ status_t CallbacksThread::handleMessageFlush()
 status_t CallbacksThread::handleMessageFaces(MessageFaces *msg)
 {
     LOG2("@%s", __FUNCTION__);
+    Mutex::Autolock lock(mFaceReportingLock); // the ::facesDetected function may write to the face array, so protect with lock
     if (!mFocusActive)
-        mCallbacks->facesDetected(msg->meta_data);
+        mCallbacks->facesDetected((camera_frame_metadata_t *)&msg->meta_data);
     else
         LOG1("Faces metadata dropped during focusing.");
     return NO_ERROR;
