@@ -460,6 +460,9 @@ status_t PictureThread::handleMessageCapture(MessageCapture *msg)
     uint32_t thumbnailFrameId(getU32fromFrame(jpeginfo, JPEG_INFO_THUMBNAIL_FRAME_ID_ADDR));
     uint32_t nv12metaFrameCount(getU32fromFrame(nv12meta, NV12_META_FRAME_COUNT_ADDR));
 
+    uint16_t qValue(getU16fromFrame(jpeginfo, JPEG_INFO_Q_VALUE_ADDR));
+    uint32_t jpegSizeQValue(getU32fromFrame(jpeginfo, JPEG_INFO_JPEG_SIZE_Q_VALUE_ADDR));
+
     LOG2("@%s: yuvFrameId = %d, thumbnailFrameId = %d, nv12metaFrameCount = %d", __FUNCTION__, yuvFrameId, thumbnailFrameId , nv12metaFrameCount);
 
     switch (jpeginfo[JPEG_INFO_MODE_ADDR]) {
@@ -472,6 +475,7 @@ status_t PictureThread::handleMessageCapture(MessageCapture *msg)
 
     case JPEG_FRAME_TYPE_FULL:
         LOG1("@%s: full jpeg", __FUNCTION__);
+        LOG2("@%s: qValue = %d, jpegSizeQValue = %d", __FUNCTION__,  qValue, jpegSizeQValue);
         assembleJpeg(&msg->captureBuf, NULL);
         // return the buffer to isp -> putSnapshot
         msg->captureBuf.owner->returnBuffer(&msg->captureBuf);
@@ -480,6 +484,7 @@ status_t PictureThread::handleMessageCapture(MessageCapture *msg)
 
     case JPEG_FRAME_TYPE_SPLIT:
         LOG1("@%s: split jpeg", __FUNCTION__);
+        LOG2("@%s: qValue = %d, jpegSizeQValue = %d", __FUNCTION__,  qValue, jpegSizeQValue);
         switch (jpeginfo[JPEG_INFO_COUNT_ADDR]) {
         case 0x00:
             LOG1("@%s: split jpeg first part", __FUNCTION__);

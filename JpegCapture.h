@@ -57,6 +57,8 @@ const size_t JPEG_INFO_SIZE_ADDR = 0x13;
 const size_t JPEG_INFO_YUV_FRAME_ID_ADDR = 0x17;
 const size_t JPEG_INFO_THUMBNAIL_FRAME_ID_ADDR = 0x1B;
 const size_t JPEG_INFO_END_MARKER_ADDR = 0x1F;
+const size_t JPEG_INFO_Q_VALUE_ADDR = 0x30;
+const size_t JPEG_INFO_JPEG_SIZE_Q_VALUE_ADDR = 0x32;
 
 // HDR INFO addresses
 const size_t HDR_INFO_START_MARKER_ADDR = 0x0;
