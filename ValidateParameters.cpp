@@ -600,6 +600,14 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
         return BAD_VALUE;
     }
 
+    // intelligent mode
+    const char* intelligentMode = params->get(IntelCameraParameters::KEY_INTELLIGENT_MODE);
+    const char* intelligentModes = params->get(IntelCameraParameters::KEY_SUPPORTED_INTELLIGENT_MODE);
+    if (!validateString(intelligentMode, intelligentModes)) {
+        LOGE("bad intelligent mode: %s", intelligentMode);
+        return BAD_VALUE;
+    }
+
     return NO_ERROR;
 }
 

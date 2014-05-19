@@ -1202,6 +1202,13 @@ status_t PreviewThread::handlePreviewCallback(AtomBuffer &srcBuff)
             src_bpl = transfer_bpl;
         }
 
+        if (PlatformData::getIntelligentMode(mCameraId)) {
+            char *pDst = (char *)mPreviewBuf.dataPtr;
+            char *pSrc = (char *)src;
+            for (int i = 0; i < mPreviewBuf.height; ++i)
+                memcpy(pDst + i * mPreviewBuf.width, pSrc + i * ALIGN128(mPreviewBuf.width), mPreviewBuf.width);
+            status = NO_ERROR;
+        } else
         switch(mPreviewCbFormat) {
                                   // Android definition: PIXEL_FORMAT_YUV420P-->YV12, please refer to
         case V4L2_PIX_FMT_YVU420: // header file: frameworks/av/include/camera/CameraParameters.h
@@ -1237,6 +1244,7 @@ status_t PreviewThread::handlePreviewCallback(AtomBuffer &srcBuff)
             status = -1;
             break;
         }
+
         if (status == NO_ERROR) {
             int64_t now = systemTime();
             int64_t nsFromLastCb = now - mPreviewCbTs;
@@ -1564,6 +1572,8 @@ status_t PreviewThread::handleSetPreviewConfig(MessageSetPreviewConfig *msg)
         if (mSharedMode && ((w == RESOLUTION_6MP_WIDTH && h == RESOLUTION_6MP_HEIGHT) ||
             mPreviewCallbackMode == PREVIEW_CALLBACK_BEFORE_DISPLAY))
             mPreviewFourcc = V4L2_PIX_FMT_NV21;
+        else if (PlatformData::getIntelligentMode(mCameraId))
+            mPreviewFourcc = V4L2_PIX_FMT_SGRBG8;
         else
             mPreviewFourcc = PlatformData::getPreviewPixelFormat(mCameraId);
 

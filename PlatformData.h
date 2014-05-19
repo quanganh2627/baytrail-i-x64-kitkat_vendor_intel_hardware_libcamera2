@@ -147,6 +147,23 @@ class PlatformData {
     };
 
     /**
+     * set the intelligent mode
+     * the intelligent mode is running windowless mode with raw8 data out from ISP
+     *
+     * if the val is true, the intelligent mode is using
+     *
+     */
+    static void setIntelligentMode(int cameraId, bool val);
+
+    /**
+     * get the intelligent mode
+     *
+     * if the intelligent mode is running, this function will return true.
+     *
+     */
+    static bool getIntelligentMode(int cameraId);
+
+    /**
      * to check if the 3A is needed to be disabled
      *
      * if the camera should disable 3A, this function will return true.
@@ -1166,6 +1183,15 @@ class PlatformData {
      * \return true if supported
      */
     static bool supportExtendedCamera(void);
+
+    /**
+     * Intelligent mode supported value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the supported list for intelligent mode
+     */
+    static const char* supportedIntelligentMode(int cameraId);
+
 };
 
 /**
@@ -1358,6 +1384,7 @@ protected:
             supportedPanorama = "on,off";
             defaultSceneDetection = "off";
             supportedSceneDetection = "on,off";
+            supportedIntelligentMode = "false";
             synchronizeExposure = false;
             maxNumYUVBufferForBurst = 10;
             maxNumYUVBufferForBracket = 10;
@@ -1368,6 +1395,8 @@ protected:
             //DVS
             supportedDvsSizes = "640x480,720x480,720x576,1280x720,1920x1080";
             captureWarmUpFrames = 0;
+
+            mIntelligentMode = false;
 
             disable3A = false;
 
@@ -1489,6 +1518,7 @@ protected:
         String8 supportedPanorama;
         String8 defaultSceneDetection;
         String8 supportedSceneDetection;
+        String8 supportedIntelligentMode;
 
         // SensorSyncManager
         // TODO: implement more control for how to synchronize, e.g. into
@@ -1521,6 +1551,10 @@ protected:
         // at image capture. For example, some SoC sensors need some frames to
         // be skipped in order for the SoC sensor's 3A (or 2A) to converge.
         int captureWarmUpFrames;
+
+        // to store the intelligent mode
+        // if it's true, the 3A should be disabled
+        bool mIntelligentMode;
 
         // in some test purpose, we need to disable 3A.
         // if this is needed, please make the disable3A to true

@@ -258,6 +258,9 @@ namespace android {
     const char IntelCameraParameters::GPS_IMG_DIRECTION_REF_TRUE[] = "true-direction";
     const char IntelCameraParameters::GPS_IMG_DIRECTION_REF_MAGNETIC[] = "magnetic-direction";
 
+    const char IntelCameraParameters::KEY_INTELLIGENT_MODE[] = "intelligent-mode";
+    const char IntelCameraParameters::KEY_SUPPORTED_INTELLIGENT_MODE[] = "intelligent-mode-values";
+
     // Others
     const char IntelCameraParameters::REC_BUFFER_SHARING_SESSION_ID[] = "buffer-sharing-session-id";
 

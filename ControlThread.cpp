@@ -195,6 +195,9 @@ status_t ControlThread::init()
 {
     LOG1("@%s: cameraId = %d", __FUNCTION__, mCameraId);
 
+    // disable intelligent mode by default
+    PlatformData::setIntelligentMode(mCameraId, false);
+
     status_t status = NO_ERROR;
     bool extIsp = PlatformData::supportsContinuousJpegCapture(mCameraId);
     CameraDump::setDumpDataFlag();
@@ -2131,7 +2134,10 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         return status;
     }
 
-    mISP->setPreviewFrameFormat(width, height, bpl, useNV21 ? V4L2_PIX_FMT_NV21 : PlatformData::getPreviewPixelFormat(mCameraId));
+    if (PlatformData::getIntelligentMode(mCameraId))
+        mISP->setPreviewFrameFormat(width, height, bpl, V4L2_PIX_FMT_SGRBG8);
+    else
+        mISP->setPreviewFrameFormat(width, height, bpl, useNV21 ? V4L2_PIX_FMT_NV21 : PlatformData::getPreviewPixelFormat(mCameraId));
 
     if (useSharedGfxBuffers) {
         Vector<AtomBuffer> sharedGfxBuffers;
@@ -5372,6 +5378,10 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         }
     }
 
+    if (status == NO_ERROR) {
+        status = processParamIntelligentMode(oldParams, newParams);
+    }
+
     return status;
 }
 
@@ -5846,6 +5856,13 @@ status_t ControlThread::processPreviewUpdateMode(const CameraParameters *oldPara
             LOGE("Unknown preview update mode received %s", newVal.string());
         }
     }
+
+    // when intelligent mode is used, the windowless mode should be used.
+    if (PlatformData::getIntelligentMode(mCameraId)) {
+        LOG1("@%s, the intelligent mode is used, so set to use windowless mode for preview", __FUNCTION__);
+        mPreviewUpdateMode = IntelCameraParameters::PREVIEW_UPDATE_MODE_WINDOWLESS;
+    }
+
     return status;
 }
 
@@ -6948,6 +6965,19 @@ status_t ControlThread::processParamShutter(const CameraParameters *oldParams,
     }
 
     return status;
+}
+
+status_t ControlThread::processParamIntelligentMode(const CameraParameters *oldParams,
+        CameraParameters *newParams)
+{
+    LOG1("@%s", __FUNCTION__);
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
+                                              IntelCameraParameters::KEY_INTELLIGENT_MODE);
+    if (!newVal.isEmpty()) {
+        PlatformData::setIntelligentMode(mCameraId, newVal == "true" ? true : false);
+    }
+
+    return NO_ERROR;
 }
 
 status_t ControlThread::processParamWhiteBalance(const CameraParameters *oldParams,

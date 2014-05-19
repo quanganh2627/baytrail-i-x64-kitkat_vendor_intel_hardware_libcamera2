@@ -121,8 +121,21 @@ PlatformBase* PlatformData::getInstance(void)
     return mInstance;
 }
 
+void PlatformData::setIntelligentMode(int cameraId, bool val)
+{
+    getInstance()->mCameras.editItemAt(cameraId).mIntelligentMode = val;
+}
+
+bool PlatformData::getIntelligentMode(int cameraId)
+{
+    return getInstance()->mCameras[cameraId].mIntelligentMode;
+}
+
 bool PlatformData::isDisable3A(int cameraId)
 {
+    // the intelligent mode needs 3A to be disabled
+    if (getInstance()->mCameras[cameraId].mIntelligentMode)
+        return true;
     return getInstance()->mCameras[cameraId].disable3A;
 }
 
@@ -1546,6 +1559,14 @@ bool PlatformData::supportExtendedCamera(void)
 {
     PlatformBase *i = getInstance();
     return i->mHasExtendedCamera ? true : false;
+}
+
+const char* PlatformData::supportedIntelligentMode(int cameraId)
+{
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return NULL;
+    }
+    return getInstance()->mCameras[cameraId].supportedIntelligentMode;
 }
 
 }; // namespace android

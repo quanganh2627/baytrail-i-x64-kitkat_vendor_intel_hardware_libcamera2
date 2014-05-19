@@ -258,6 +258,10 @@ namespace android {
     static const char GPS_IMG_DIRECTION_REF_TRUE[];
     static const char GPS_IMG_DIRECTION_REF_MAGNETIC[];
 
+    // intelligent mode
+    static const char KEY_INTELLIGENT_MODE[];
+    static const char KEY_SUPPORTED_INTELLIGENT_MODE[];
+
     // SDV
     static const char KEY_SDV[];
     static const char KEY_SDV_SUPPORTED[];

@@ -366,6 +366,8 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         pCurrentCam->useMultiStreamsForSoC = ((strcmp(atts[1], "true") == 0) ? true : false);
     } else if (strcmp(name, "supportedDvsSizes") == 0) {
         pCurrentCam->supportedDvsSizes = atts[1];
+    } else if (strcmp(name, "supportedIntelligentMode") == 0) {
+        pCurrentCam->supportedIntelligentMode = atts[1];
     } else if (strcmp(name, "disable3A") == 0) {
         pCurrentCam->disable3A = ((strcmp(atts[1], "true") == 0) ? true : false);
     } else if (strcmp(name, "defaultDepthFocalLength") == 0) {
@@ -660,6 +662,7 @@ void CameraProfiles::dump(void)
         LOGD("line%d, in DeviceData, pcam->maxNumYUVBufferForBracket:%d ", __LINE__, mCameras[i].maxNumYUVBufferForBracket);
         LOGD("line%d, in DeviceData, pcam->maxHighSpeedDvsResolution:%s ",__LINE__, mCameras[i].maxHighSpeedDvsResolution.string());
         LOGD("line%d, in DeviceData, pcam->supportedSdvSizes:%s ",__LINE__, mCameras[i].supportedSdvSizes.string());
+        LOGD("line%d, in DeviceData, pcam->supportedIntelligentMode:%s ",__LINE__, mCameras[i].supportedIntelligentMode.string());
     }
 
     LOGD("line%d, in DeviceData, for common settings ", __LINE__);

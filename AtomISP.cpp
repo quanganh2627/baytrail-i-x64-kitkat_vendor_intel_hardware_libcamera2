@@ -765,6 +765,10 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     //Edge Enhancement and Noise Reduction
     intel_params->set(IntelCameraParameters::KEY_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT, "true");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT, "true,false");
+
+    // intelligent mode
+    intel_params->set(IntelCameraParameters::KEY_INTELLIGENT_MODE, "false");
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_INTELLIGENT_MODE, PlatformData::supportedIntelligentMode(cameraId));
 }
 
 Size AtomISP::getHALZSLResolution()
