@@ -41,7 +41,8 @@ class PictureThread : public Thread
 public:
     PictureThread(I3AControls *aaaControls, sp<ScalerService> scaler,
             sp<CallbacksThread> callbacksThread, Callbacks *callbacks,
-            ICallbackPicture *pictureDone);
+            ICallbackPicture *pictureDone,
+            int cameraId);
     virtual ~PictureThread();
 
 // prevent copy constructor and assignment operator
@@ -253,6 +254,7 @@ private:
     I3AControls* m3AControls;
     // for flushing buffers
     ICallbackPicture *mPictureDoneCallback;
+    int mCameraId;
 }; // class PictureThread
 
 }; // namespace android

@@ -53,7 +53,7 @@ class AAAThread : public Thread, public IAtomIspObserver {
 
 // constructor destructor
 public:
-    AAAThread(ICallbackAAA *aaaDone, UltraLowLight *ull, I3AControls *aaaControls, sp<CallbacksThread> callbacksThread, bool extIsp = false);
+    AAAThread(ICallbackAAA *aaaDone, UltraLowLight *ull, I3AControls *aaaControls, sp<CallbacksThread> callbacksThread, int cameraId, bool extIsp = false);
     virtual ~AAAThread();
 
     enum FlashStage {
@@ -217,6 +217,7 @@ private:
     sp<CallbacksThread> mCallbacksThread;
     UltraLowLight *mULL;
 
+    int mCameraId;
     bool m3ARunning;
     bool mStartAF;
     bool mStopAF;

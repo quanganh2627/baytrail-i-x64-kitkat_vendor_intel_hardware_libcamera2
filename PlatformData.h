@@ -98,7 +98,6 @@ class PlatformData {
 
  private:
     static PlatformBase* mInstance;
-    static int mActiveCameraId;
 
     /**
      * Get access to the platform singleton.
@@ -151,9 +150,9 @@ class PlatformData {
      * to check if the 3A is needed to be disabled
      *
      * if the camera should disable 3A, this function will return true.
-     *
+     * /param cameraId identifier passed to android.hardware.Camera.open()
      */
-    static bool isDisable3A(void);
+    static bool isDisable3A(int cameraId);
 
     /**
      * Sets the ID of active camera
@@ -1025,9 +1024,10 @@ class PlatformData {
     /**
      * Returns the preview format with V4l2 definition
      *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
      * \return the preview format, V4L2_PIX_FMT_NV12 or V4L2_PIX_FMT_YVU420
     */
-    static int getPreviewPixelFormat(void);
+    static int getPreviewPixelFormat(int cameraId);
 
     /**
      * Returns the board name
@@ -1060,9 +1060,10 @@ class PlatformData {
     /**
      * Returns whether to use frame synchronization for exposure applying
      *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
      * \return true if synchronisation needed
     */
-    static bool synchronizeExposure(void);
+    static bool synchronizeExposure(int cameraId);
 
     /**
      * Used Ultra Low Light implementation

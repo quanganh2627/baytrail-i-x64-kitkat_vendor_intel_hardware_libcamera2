@@ -27,12 +27,13 @@
 #endif
 namespace android {
 
-ScalerService::ScalerService() :
+ScalerService::ScalerService(int cameraId) :
     Thread(false)
     ,mMessageQueue("ScalerService", MESSAGE_ID_MAX)
     ,mThreadRunning(false)
     ,mHWScaler(NULL)
     ,mFrameCounter(0)
+    ,mCameraId(cameraId)
 {
     LOG1("@%s", __FUNCTION__);
 }
@@ -98,7 +99,7 @@ status_t ScalerService::handleMessageRegisterBuffer(MessageRegister &msg)
 #ifdef GRAPHIC_IS_GEN
         mHWScaler = new VAScaler();
 #else
-        mHWScaler = new GPUScaler();
+        mHWScaler = new GPUScaler(mCameraId);
 #endif
         mFrameCounter = 0;
     }

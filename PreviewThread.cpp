@@ -45,7 +45,7 @@ void release_camera_memory_t(struct camera_memory *mem)
     delete mem;
 }
 
-PreviewThread::PreviewThread(sp<CallbacksThread> callbacksThread, Callbacks* callbacks) :
+PreviewThread::PreviewThread(sp<CallbacksThread> callbacksThread, Callbacks* callbacks, int cameraId) :
     Thread(true) // callbacks may call into java
     ,mMessageQueue("PreviewThread", (int) MESSAGE_ID_MAX)
     ,mThreadRunning(false)
@@ -58,6 +58,7 @@ PreviewThread::PreviewThread(sp<CallbacksThread> callbacksThread, Callbacks* cal
     ,mPreviewBuf(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_PREVIEW))
     ,mTransferingBuffer(NULL)
     ,mCallbacks(callbacks)
+    ,mCameraId(cameraId)
     ,mBuffersInWindow(0)
     ,mNumOfPreviewBuffers(0)
     ,mFetchDone(false)
@@ -65,7 +66,7 @@ PreviewThread::PreviewThread(sp<CallbacksThread> callbacksThread, Callbacks* cal
     ,mPreviewWidth(0)
     ,mPreviewHeight(0)
     ,mPreviewBpl(0)
-    ,mPreviewFourcc(PlatformData::getPreviewPixelFormat())
+    ,mPreviewFourcc(PlatformData::getPreviewPixelFormat(cameraId))
     ,mPreviewCbFormat(V4L2_PIX_FMT_NV21)
     ,mGfxBpl(640)
     ,mOverlayEnabled(false)
@@ -1496,7 +1497,7 @@ status_t PreviewThread::handleSetPreviewConfig(MessageSetPreviewConfig *msg)
         if (w == RESOLUTION_6MP_WIDTH && h == RESOLUTION_6MP_HEIGHT)
             mPreviewFourcc = V4L2_PIX_FMT_NV21;
         else
-            mPreviewFourcc = PlatformData::getPreviewPixelFormat();
+            mPreviewFourcc = PlatformData::getPreviewPixelFormat(mCameraId);
 
         if (mPreviewWindow != NULL) {
 

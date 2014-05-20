@@ -37,7 +37,8 @@ static const int SIZE_OF_APP0_MARKER = 18;      /* Size of the JFIF App0 marker
                                                  */
 PictureThread::PictureThread(I3AControls *aaaControls, sp<ScalerService> scaler,
                              sp<CallbacksThread> callbacksThread, Callbacks *callbacks,
-                             ICallbackPicture *pictureDone) :
+                             ICallbackPicture *pictureDone,
+                             int cameraId) :
     Thread(true) // callbacks may call into java
     ,mMessageQueue("PictureThread", MESSAGE_ID_MAX)
     ,mThreadRunning(false)
@@ -61,6 +62,7 @@ PictureThread::PictureThread(I3AControls *aaaControls, sp<ScalerService> scaler,
     ,mMaxOutJpegBufSize(0)
     ,m3AControls(aaaControls)
     ,mPictureDoneCallback(pictureDone)
+    ,mCameraId(cameraId)
 {
     LOG1("@%s", __FUNCTION__);
 
@@ -212,7 +214,7 @@ status_t PictureThread::encode(MetaData &metaData, AtomBuffer *snapshotBuf, Atom
     return mMessageQueue.send(&msg);
 }
 
-    void PictureThread::getDefaultParameters(CameraParameters *params, int cameraId)
+void PictureThread::getDefaultParameters(CameraParameters *params, int cameraId)
 {
     LOG1("@%s", __FUNCTION__);
     if (!params) {
@@ -256,7 +258,7 @@ status_t PictureThread::handleMessageInitialize(MessageParam *msg)
     if (q != 0)
         mThumbnailQuality = q;
 
-    mThumbBuf.fourcc = PlatformData::getPreviewPixelFormat();
+    mThumbBuf.fourcc = PlatformData::getPreviewPixelFormat(mCameraId);
     mThumbBuf.width = params.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
     mThumbBuf.height = params.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
     mThumbBuf.bpl = pixelsToBytes(mThumbBuf.fourcc, mThumbBuf.width);

@@ -171,8 +171,6 @@ ControlThread::ControlThread(int cameraId) :
     // This is a workaround for an issue with Thread reference counting.
 
     LOG1("@%s", __FUNCTION__);
-
-    PlatformData::setActiveCameraId(mCameraId);
 }
 
 ControlThread::~ControlThread()
@@ -187,8 +185,6 @@ ControlThread::~ControlThread()
         mMessageQueue.receive(&msg);
         LOGE(" Id of first message is %d",msg.id);
     }
-
-    PlatformData::freeActiveCameraId(mCameraId);
 }
 
 status_t ControlThread::init()
@@ -200,7 +196,7 @@ status_t ControlThread::init()
     CameraDump::setDumpDataFlag();
 
     AtomISP * isp = NULL;
-    mScalerService = new ScalerService();
+    mScalerService = new ScalerService(mCameraId);
     if (mScalerService == NULL) {
         LOGE("error creating ScalerService");
         goto bail;
@@ -278,13 +274,13 @@ status_t ControlThread::init()
 
     // we implement the ICallbackPreview interface, so pass
     // this as argument
-    mPreviewThread = new PreviewThread(mCallbacksThread, mCallbacks);
+    mPreviewThread = new PreviewThread(mCallbacksThread, mCallbacks, mCameraId);
     if (mPreviewThread == NULL) {
         LOGE("error creating PreviewThread");
         goto bail;
     }
 
-    mPictureThread = new PictureThread(m3AControls, mScalerService, mCallbacksThread, mCallbacks, this);
+    mPictureThread = new PictureThread(m3AControls, mScalerService, mCallbacksThread, mCallbacks, this, mCameraId);
     if (mPictureThread == NULL) {
         LOGE("error creating PictureThread");
         goto bail;
@@ -297,7 +293,7 @@ status_t ControlThread::init()
     }
 
     // we implement ICallbackAAA interface
-    m3AThread = new AAAThread(this, mULL, m3AControls, mCallbacksThread, extIsp);
+    m3AThread = new AAAThread(this, mULL, m3AControls, mCallbacksThread, mCameraId, extIsp);
     if (m3AThread == NULL) {
         LOGE("error creating 3AThread");
         goto bail;
@@ -3550,7 +3546,7 @@ int ControlThread::selectPostviewFormat()
         // HDR library only support NV12 format.
         fourcc = V4L2_PIX_FMT_NV12;
     } else if (mPanoramaThread->getState() == PANORAMA_STOPPED) {
-        fourcc = PlatformData::getPreviewPixelFormat();
+        fourcc = PlatformData::getPreviewPixelFormat(mCameraId);
     } else {
         fourcc = V4L2_PIX_FMT_NV21;
     }

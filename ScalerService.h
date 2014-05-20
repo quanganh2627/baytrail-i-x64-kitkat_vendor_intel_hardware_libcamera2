@@ -34,7 +34,7 @@ public:
     };
 
 public:
-    ScalerService();
+    ScalerService(int cameraId);
     virtual ~ScalerService();
 
     // Thread overrides
@@ -107,6 +107,7 @@ private:
     bool mThreadRunning;
     IHWScaler *mHWScaler;
     unsigned int mFrameCounter;
+    int mCameraId;
 };
 
 } /* namespace android */

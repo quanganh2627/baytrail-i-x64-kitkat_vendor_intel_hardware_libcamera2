@@ -31,7 +31,7 @@ const size_t FLASH_FRAME_TIMEOUT = 5;
 // TODO: use values relative to real sensor timings or fps
 const unsigned int SKIP_PARTIALLY_EXPOSED = 1;
 
-AAAThread::AAAThread(ICallbackAAA *aaaDone, UltraLowLight *ull, I3AControls *aaaControls, sp<CallbacksThread> callbacksThread, bool extIsp) :
+AAAThread::AAAThread(ICallbackAAA *aaaDone, UltraLowLight *ull, I3AControls *aaaControls, sp<CallbacksThread> callbacksThread, int cameraId, bool extIsp) :
     Thread(false)
     ,mMessageQueue("AAAThread", (int) MESSAGE_ID_MAX)
     ,mThreadRunning(false)
@@ -39,6 +39,7 @@ AAAThread::AAAThread(ICallbackAAA *aaaDone, UltraLowLight *ull, I3AControls *aaa
     ,mAAADoneCallback(aaaDone)
     ,mCallbacksThread(callbacksThread)
     ,mULL(ull)
+    ,mCameraId(cameraId)
     ,m3ARunning(false)
     ,mStartAF(false)
     ,mStopAF(false)
@@ -914,7 +915,7 @@ status_t AAAThread::waitForAndExecuteMessage()
     Message msg;
     mMessageQueue.receive(&msg);
 
-    if (msg.id != MESSAGE_ID_EXIT && PlatformData::isDisable3A()) {
+    if (msg.id != MESSAGE_ID_EXIT && PlatformData::isDisable3A(mCameraId)) {
         if (msg.id == MESSAGE_ID_AUTO_FOCUS)
             mCallbacksThread->autoFocusDone(true);
         mMessageQueue.reply(msg.id, status);

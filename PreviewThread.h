@@ -111,7 +111,7 @@ class PreviewThread : public Thread
 
 // constructor destructor
 public:
-    PreviewThread(sp<CallbacksThread> callbacksThread, Callbacks* callbacks);
+    PreviewThread(sp<CallbacksThread> callbacksThread, Callbacks* callbacks, int cameraId);
     virtual ~PreviewThread();
 
 // prevent copy constructor and assignment operator
@@ -360,6 +360,8 @@ private:
     AtomBuffer          mPreviewBuf;        /*!< Local preview buffer to give to the user */
     unsigned char       *mTransferingBuffer;/*!< Local transfering buffer for real preview callback*/
     Callbacks           *mCallbacks;
+
+    int mCameraId;
     int                 mMinUndequeued;     /*!< Minimum number frames
                                                  to keep in window */
     Vector<GfxAtomBuffer> mPreviewBuffers;    /*!< Vector with the buffers retrieved from window */

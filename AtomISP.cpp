@@ -315,8 +315,8 @@ status_t AtomISP::init()
             = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR, V4L2_PIX_FMT_NV12, RESOLUTION_POSTVIEW_WIDTH, RESOLUTION_POSTVIEW_HEIGHT);
     // Initialize the frame sizes
     setPreviewFrameFormat(RESOLUTION_VGA_WIDTH, RESOLUTION_VGA_HEIGHT,
-                          pixelsToBytes(PlatformData::getPreviewPixelFormat(), RESOLUTION_VGA_WIDTH),
-                          PlatformData::getPreviewPixelFormat());
+                          pixelsToBytes(PlatformData::getPreviewPixelFormat(mCameraId), RESOLUTION_VGA_WIDTH),
+                          PlatformData::getPreviewPixelFormat(mCameraId));
     setPostviewFrameFormat(formatDescriptorPv);
 
     AtomBuffer formatDescriptorSs
@@ -1876,7 +1876,7 @@ status_t AtomISP::configureContinuousSOC()
     mConfig.HALZSL = mConfig.snapshot;
     mConfig.HALZSL.width = zslSize.width;
     mConfig.HALZSL.height = zslSize.height;
-    mConfig.HALZSL.fourcc = PlatformData::getPreviewPixelFormat();
+    mConfig.HALZSL.fourcc = PlatformData::getPreviewPixelFormat(mCameraId);
     mConfig.HALZSL.bpl = SGXandDisplayBpl(mConfig.HALZSL.fourcc, mConfig.HALZSL.width);
     mConfig.HALZSL.size = frameSize(mConfig.HALZSL.fourcc, mConfig.HALZSL.width, mConfig.HALZSL.height);
 
@@ -1988,7 +1988,6 @@ status_t AtomISP::configureMultiStreamsContinuousSOC()
     Size zslSize = getHALZSLResolution();
     mConfig.snapshot.width = zslSize.width;
     mConfig.snapshot.height = zslSize.height;
-    //mConfig.snapshot.fourcc = PlatformData::getPreviewPixelFormat();
     mConfig.snapshot.bpl = SGXandDisplayBpl(mConfig.snapshot.fourcc, mConfig.snapshot.width);
     mConfig.snapshot.size = frameSize(mConfig.snapshot.fourcc, mConfig.snapshot.width, mConfig.snapshot.height);
     LOG1("@%s configured %dx%d bpl %d", __FUNCTION__, mConfig.snapshot.width, mConfig.snapshot.height, mConfig.snapshot.bpl);
