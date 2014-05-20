@@ -302,6 +302,13 @@ class PlatformData {
     static bool supportsDVS(int cameraId);
 
     /**
+     * Whether the sensor supports Narrow Gamma or not
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return true if it is supported
+     */
+    static bool supportsNarrowGamma(int cameraId);
+
+    /**
      * Returns the supported burst capture's fps list for the platform
      * \return Supported burst capture's fps list string.
      */
@@ -1256,6 +1263,7 @@ protected:
             orientation = 90;
             flipping = PlatformData::SENSOR_FLIP_NA;
             dvs = true;
+            narrowGamma = false;
             supportedSnapshotSizes = "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920,3264x1836,3264x2448";
             defaultJpegQuality = 80;
             defaultJpegThumbnailQuality = 50;
@@ -1421,6 +1429,7 @@ protected:
         int orientation;
         int flipping;
         bool dvs;
+        bool narrowGamma;
         String8 supportedSnapshotSizes;
         int defaultJpegQuality;
         int defaultJpegThumbnailQuality;

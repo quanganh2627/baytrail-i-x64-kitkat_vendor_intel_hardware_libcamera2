@@ -381,6 +381,14 @@ bool PlatformData::supportsDVS(int cameraId)
     return getInstance()->mCameras[getActiveCamIdx(cameraId)].dvs;
 }
 
+bool PlatformData::supportsNarrowGamma(int cameraId)
+{
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return false;
+    }
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].narrowGamma;
+}
+
 const char* PlatformData::supportedBurstFPS(int cameraId)
 {
     if (!validCameraId(cameraId, __FUNCTION__)) {

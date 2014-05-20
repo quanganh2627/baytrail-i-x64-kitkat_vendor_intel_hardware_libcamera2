@@ -1539,6 +1539,15 @@ status_t AtomISP::configureRecording()
         goto err;
     }
 
+    // Set NARROW_GAMMA_ON to driver when support narrow gamma in video mode.
+    struct atomisp_formats_config formats_config;
+    formats_config.video_full_range_flag = NARROW_GAMMA_OFF;
+    if (PlatformData::supportsNarrowGamma(mCameraId)) {
+        LOG2("set narrow gamma on to driver");
+        formats_config.video_full_range_flag = NARROW_GAMMA_ON;
+    }
+    setNarrowGamma(&formats_config);
+
     // The recording device must be configured first, so swap the devices after configuration
     if (mSwapRecordingDevice) {
         LOG1("@%s: swapping preview and recording devices", __FUNCTION__);
@@ -6224,6 +6233,15 @@ int AtomISP::setCtcTable(const struct atomisp_ctc_table *ctc_tbl)
     int ret;
     ret = pxioctl(mMainDevice, ATOMISP_IOC_S_ISP_CTC, (struct atomisp_ctc_table *)ctc_tbl);
     LOG2("%s IOCTL ATOMISP_IOC_S_ISP_CTC ret: %d\n", __FUNCTION__, ret);
+    return ret;
+}
+
+int AtomISP::setNarrowGamma(const struct atomisp_formats_config *formats_config)
+{
+    LOG2("@%s", __FUNCTION__);
+    int ret;
+    ret = pxioctl(mMainDevice, ATOMISP_IOC_S_FORMATS_CONFIG, (struct atomisp_formats_config *)formats_config);
+    LOG2("%s ATOMISP_IOC_S_FORMATS_CONFIG ret: %d\n", __FUNCTION__, ret);
     return ret;
 }
 

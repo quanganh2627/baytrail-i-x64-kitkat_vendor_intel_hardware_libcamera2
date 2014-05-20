@@ -60,6 +60,11 @@ struct devNameGroup
     bool in_use;
 };
 
+enum NarrowGammaStatus {
+    NARROW_GAMMA_ON = 0,
+    NARROW_GAMMA_OFF = 1
+};
+
 class Callbacks;
 
 class AtomISP :
@@ -464,6 +469,8 @@ private:
     int configureDevice(V4L2VideoNode *device, int deviceMode, AtomBuffer *formatDescriptor, bool raw);
 
     int atomisp_set_zoom (int zoom);
+
+    int setNarrowGamma(const struct atomisp_formats_config *formats_config);
 
     int startFileInject(void);
     int stopFileInject(void);
