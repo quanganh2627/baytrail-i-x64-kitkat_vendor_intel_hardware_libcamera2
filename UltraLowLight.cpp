@@ -234,9 +234,6 @@ status_t UltraLowLight::addInputFrame(AtomBuffer *snap, AtomBuffer *pv)
     }
 
     mInputBuffers.push(*snap);
-
-    // Store the postview here, although no processing done with it yet.
-    // This is to make more uniform buffer flow with the snapshot buffs.
     mPostviewBuffs.push(*pv);
 
     if (mInputBuffers.size() == maxBufs) {
@@ -330,7 +327,6 @@ status_t UltraLowLight::getInputBuffers(Vector<AtomBuffer> *inputs)
 
 /**
  * returns the postview buffers given as input with addInputFrame()
- * NOTE: no processing done for the postviews at the moment
  */
 status_t UltraLowLight::getPostviewBuffers(Vector<AtomBuffer> *postviews)
 {
@@ -339,9 +335,13 @@ status_t UltraLowLight::getPostviewBuffers(Vector<AtomBuffer> *postviews)
         return BAD_VALUE;
     }
 
-    // No need to iterate, like in getInputBuffers(), as
-    // we don't need to alter buffer status (at the moment).
-    *postviews = mPostviewBuffs;
+    Vector<AtomBuffer>::iterator it = mPostviewBuffs.begin();
+
+    for (;it != mPostviewBuffs.end(); ++it) {
+        it->status = FRAME_STATUS_OK;
+        postviews->push(*it);
+    }
+
     mPostviewBuffs.clear();
 
     return NO_ERROR;
@@ -559,9 +559,10 @@ status_t UltraLowLight::processIntelULL()
     status_t ret = NO_ERROR;
 
     ia_frame out, out_pv;
-    ia_frame * input = new ia_frame[mInputBuffers.size()];
-    if (input == NULL) {
-        LOGE("Input ia_frame sequence allocation failed.");
+    ia_frame * input    = new ia_frame[mInputBuffers.size()];
+    ia_frame * postview = new ia_frame[mInputBuffers.size()];
+    if (input == NULL || postview == NULL) {
+        LOGE("ia_frame sequence allocation failed.");
         return NO_MEMORY;
     }
 
@@ -601,16 +602,20 @@ status_t UltraLowLight::processIntelULL()
         }
     }
 
+    i = 0;
+    end = mPostviewBuffs.end();
+    for (Vector<AtomBuffer>::const_iterator iter = mPostviewBuffs.begin(); iter != end; ++iter) {
+        AtomToIaFrameBuffer(iter, &postview[i]);
+        i++;
+    }
+
     mOutputBuffer = mInputBuffers[0];
     mOutputPostView = mPostviewBuffs[0];
     AtomToIaFrameBuffer(&mOutputBuffer, &out);
     AtomToIaFrameBuffer(&mOutputPostView, &out_pv);
-    // Intel ull does not process postview buffer
-    // set postview buffer status to FRAME_STATUS_SKIPPED to indicate it's not ULL processed
-    mOutputPostView.status = FRAME_STATUS_SKIPPED;
 
     LOG1("Intel ULL processing...");
-    ia_err error = ia_cp_ull_compose(&out, &out_pv, input, input, mInputBuffers.size(), mIntelUllCfg);
+    ia_err error = ia_cp_ull_compose(&out, &out_pv, input, postview, mInputBuffers.size(), mIntelUllCfg);
     if (error != ia_err_none) {
         LOGE("Intel ULL failed with error status %d", error);
         ret = ia_error_to_status_t(error);
@@ -632,7 +637,11 @@ status_t UltraLowLight::processIntelULL()
     if (input != NULL) {
         delete[] input;
         input = NULL;
+    }
 
+    if (postview != NULL) {
+        delete[] postview;
+        postview = NULL;
     }
 
     if (mIntelUllCfg->imreg_fallback != NULL) {

@@ -4309,6 +4309,7 @@ status_t ControlThread::captureULLPic()
              *  mAvailableSnapshotBuffers vector
              */
             snapshotBuffer.status = FRAME_STATUS_SKIPPED;
+            postviewBuffer.status = FRAME_STATUS_SKIPPED;
             status = mPictureThread->encode(firstPicMetaData,&snapshotBuffer, &postviewBuffer);
             if (status != NO_ERROR) {
                 // normally this is done by PictureThread, but as no
@@ -7743,17 +7744,14 @@ status_t ControlThread::handleMessagePostCaptureProcessingDone(MessagePostCaptur
     mCallbacksThread->requestULLPicture(ULLid);
 
     /*
-     * We stop using the postview buffer since it maybe de-allocated
-     * this is because we still allocated the postview buffers in the AtomISP
-     * which means that if a capture is triggered while ULL was processing
-     * the postview will be freed and allocated again
-     *
-     * processedBuffer was originally with status FRAME_STATUS_SKIPPED to
-     * avoid being pushed to mAvailableSnapshotBuffers. Marking status as
-     * FRAME_STATUS_OK enables it to be made available again.
+     * processedBuffer and postviewBuffer were originally with status FRAME_STATUS_SKIPPED
+     * to avoid being pushed to corresponding available buffers.
+     * Marking status as FRAME_STATUS_OK enables it to be made available again.
      */
     processedBuffer.status = FRAME_STATUS_OK;
     processedBuffer.type = ATOM_BUFFER_ULL;
+    postviewBuffer.status = FRAME_STATUS_OK;
+    postviewBuffer.type = ATOM_BUFFER_ULL;
 
     status = mPictureThread->encode(picMetaData, &processedBuffer, &postviewBuffer);
     if (status != NO_ERROR) {

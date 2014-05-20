@@ -199,7 +199,7 @@ private:
     MorphoULLConfig mPresets[ULL_PRESET_MAX];
 
     Vector<AtomBuffer> mInputBuffers;      /*!< snapshots */
-    Vector<AtomBuffer> mPostviewBuffs;     /*!< postview buffers. NOTE: Not used for processing atm */
+    Vector<AtomBuffer> mPostviewBuffs;     /*!< postview buffers */
 
     PictureThread::MetaData mSnapMetadata;  /*!> metadata of the first snapshot taken */
 
