@@ -2446,12 +2446,15 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
     LOG1("@%s", __FUNCTION__);
     bool ret = false;
     int previewWidth, previewHeight;
+    int picWidth, picHeight;
     int videoWidth, videoHeight;
     bool reducedVf = false;
     bool workaround2 = false;
+    const char manUsensorFNameBF3905[] = "bf3905";
 
     params->getPreviewSize(&previewWidth, &previewHeight);
     params->getVideoSize(&videoWidth, &videoHeight);
+    params->getPictureSize(&picWidth, &picHeight);
 
     if (videoMode || mMode == MODE_VIDEO) {
         // Workaround 3: with some sensors the VF resolution must be
@@ -2515,6 +2518,18 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
 			}
 		}
 
+        if (strncmp(mSensorHW.getSensorName(), manUsensorFNameBF3905, sizeof(manUsensorFNameBF3905) - 1) == 0) {
+            if (((previewWidth == 640)&& (previewHeight == 480)) ||
+                    ((previewWidth == 624)&& (previewHeight == 464))) {
+                LOGD("640x480 recording change preview size to 624x464 video size to 624x464");
+                params->setPreviewSize(624,464);
+            }
+
+            if(videoWidth == 640 &&  videoHeight == 480) {
+                params->setVideoSize(624,464);
+            }
+        }
+
         //Workaround 2, detail refer to the function description
         params->getPreviewSize(&previewWidth, &previewHeight);
         params->getVideoSize(&videoWidth, &videoHeight);
@@ -2530,6 +2545,19 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
             }
         } else {
             mSwapRecordingDevice = false;
+        }
+    }
+
+    if (strncmp(mSensorHW.getSensorName(), manUsensorFNameBF3905, sizeof(manUsensorFNameBF3905) - 1) == 0) {
+        if (((previewWidth == 640)&& (previewHeight == 480)) ||
+                ((previewWidth == 624)&& (previewHeight == 464))) {
+            LOGD("change preview size 640x480 to be 624x464");
+            params->setPreviewSize(624,464);
+        }
+
+        if (((picWidth == 640) && (picHeight == 480)) || ((picWidth == 624) && (picHeight == 464))) {
+            LOGD("change picture size 640x480 to be 624x464");
+            params->setPictureSize(624,464);
         }
     }
 
