@@ -322,7 +322,7 @@ status_t ControlThread::init()
         goto bail;
     }
 
-    mBracketManager = new BracketManager(mISP, m3AControls);
+    mBracketManager = new BracketManager(mISP, m3AControls, mCameraId);
     if (mBracketManager == NULL) {
         LOGE("error creating BracketManager");
         goto bail;
@@ -7303,7 +7303,7 @@ status_t ControlThread::createAtom3A()
     status_t status = NO_ERROR;
 
     if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
-        m3AControls = new AtomAIQ(mHwcg);
+        m3AControls = new AtomAIQ(mHwcg, mCameraId);
     } else if (PlatformData::supportsContinuousJpegCapture(mCameraId)) {
         m3AControls = new AtomExtIsp3A(mCameraId, mHwcg);
     } else {

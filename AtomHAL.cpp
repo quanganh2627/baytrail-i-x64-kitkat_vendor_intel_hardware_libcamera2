@@ -395,8 +395,8 @@ static int ATOM_OpenCameraHardware(const hw_module_t* module, const char* name,
         return -EINVAL;
     atom_cam[cameraId].camera_id = cameraId;
     CpfStore cpf(cameraId);
-    PlatformData::AiqConfig = cpf.AiqConfig;
-    PlatformData::HalConfig = cpf.HalConfig;
+    PlatformData::AiqConfig[cameraId] = cpf.AiqConfig;
+    PlatformData::HalConfig[cameraId] = cpf.HalConfig;
 
     int status = openCameraHardware(cameraId);
     if (status != NO_ERROR) {

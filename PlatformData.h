@@ -136,8 +136,8 @@ class PlatformData {
 
  public:
 
-    static AiqConf AiqConfig;
-    static HalConf HalConfig;
+    static AiqConf AiqConfig[MAX_CAMERAS];
+    static HalConf HalConfig[MAX_CAMERAS];
 
     enum SensorFlip {
         SENSOR_FLIP_NA     = -1,   // Support Not-Available
@@ -962,9 +962,11 @@ class PlatformData {
 
     /**
      * Returns the max zoom factor
+     *
+     * \param cameraId identifier passed from android.hardware.Camera.open()
      * \return the max zoom factor
      */
-    static int getMaxZoomFactor(void);
+    static int getMaxZoomFactor(int cameraId);
 
     /**
      * Whether snapshot in video is supported?
@@ -1046,16 +1048,18 @@ class PlatformData {
     /**
      * Returns frame latency for analog gain applying
      *
+     * \param cameraId identifier passed from android.hardware.Camera.open()
      * \return the frame latency for analog gain applying
     */
-    static int getSensorGainLag(void);
+    static int getSensorGainLag(int cameraId);
 
     /**
      * Returns frame latency for exposure applying
      *
+     * \param cameraId identifier passed from android.hardware.Camera.open()
      * \return the frame latency for exposure applying
     */
-    static int getSensorExposureLag(void);
+    static int getSensorExposureLag(int cameraId);
 
     /**
      * Returns whether to use frame synchronization for exposure applying

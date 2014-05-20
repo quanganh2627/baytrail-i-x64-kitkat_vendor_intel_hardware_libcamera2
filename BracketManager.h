@@ -65,7 +65,7 @@ class BracketManager {
 
 // constructor destructor
 public:
-    BracketManager(AtomISP *atomISP, I3AControls *aaaControls);
+    BracketManager(AtomISP *atomISP, I3AControls *aaaControls, int cameraId);
     virtual ~BracketManager();
 
 // prevent copy constructor and assignment operator
@@ -111,6 +111,7 @@ private:
     BracketImpl *mBracketImpl;
     List<SensorAeConfig> mBracketingParams;
     int  mBurstLength;
+    int mCameraId;
 }; // class BracketManager
 
 } // namespace android

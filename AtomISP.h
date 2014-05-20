@@ -220,7 +220,7 @@ protected:
     int getCameraId(void);
     const char * getSensorName(void);
     float getFrameRate() const { return mConfig.fps; }
-    virtual unsigned int getExposureDelay() { return PlatformData::getSensorExposureLag(); };
+    virtual unsigned int getExposureDelay() { return PlatformData::getSensorExposureLag(mCameraId); };
     virtual int setExposure(struct atomisp_exposure *exposure);
 
     void getSensorData(sensorPrivateData *sensor_data);

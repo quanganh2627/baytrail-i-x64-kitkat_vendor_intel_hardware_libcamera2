@@ -38,7 +38,7 @@ class OnlineBracket :
 
 // constructor destructor
 public:
-    OnlineBracket(AtomISP *atomISP, I3AControls *aaaControls, BracketManager *manager);
+    OnlineBracket(AtomISP *atomISP, I3AControls *aaaControls, BracketManager *manager, int cameraId);
     virtual ~OnlineBracket();
 
 // prevent copy constructor and assignment operator
@@ -137,6 +137,7 @@ private:
     bool mThreadRunning;
     UniquePtr<AtomBuffer[]> mSnapshotBufs;
     UniquePtr<AtomBuffer[]> mPostviewBufs;
+    int mCameraId;
 
 }; // class OnlineBracket
 

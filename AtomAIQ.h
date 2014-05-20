@@ -169,7 +169,8 @@ public:
                            unsigned int maxStatsWidth,
                            unsigned int maxStatsHeight,
                            ia_cmc_t *cmc,
-                           ia_mkn *mkn) = 0;
+                           ia_mkn *mkn,
+                           int cameraId) = 0;
 
     /*!
      * \brief Converts ISP HW specific statistics to IA_AIQ generic format.
@@ -309,7 +310,7 @@ private:
     AtomAIQ& operator=(const AtomAIQ& other);
 
 public:
-    AtomAIQ(HWControlGroup &hwcg);
+    AtomAIQ(HWControlGroup &hwcg, int cameraId);
     ~AtomAIQ();
 
     virtual SensorType getType() { return SENSOR_TYPE_RAW; }
@@ -493,6 +494,8 @@ private:
     IIaIspAdaptor *mISPAdaptor;
 
     bool mFileInjection; // Note: AtomAIQ contains custom logic when file injection is enabled
+
+    int mCameraId;
 }; // class AtomAIQ
 
 
@@ -510,7 +513,8 @@ public:
                  unsigned int maxStatsWidth,
                  unsigned int maxStatsHeight,
                  ia_cmc_t *cmc,
-                 ia_mkn *mkn);
+                 ia_mkn *mkn,
+                 int cameraId);
 
     ia_err convertIspStatistics(void *statistics,
                                 ia_aiq_rgbs_grid **outRgbsGrid,
@@ -538,7 +542,8 @@ public:
                  unsigned int maxStatsWidth,
                  unsigned int maxStatsHeight,
                  ia_cmc_t *cmc,
-                 ia_mkn *mkn);
+                 ia_mkn *mkn,
+                 int cameraId);
 
     ia_err convertIspStatistics(void *statistics,
                                 ia_aiq_rgbs_grid **outRgbsGrid,

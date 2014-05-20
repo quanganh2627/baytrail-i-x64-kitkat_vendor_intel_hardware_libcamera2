@@ -628,10 +628,9 @@ status_t SensorHW::prepare(bool preQueuedExposure)
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     int ret = 0;
-    int cameraId = getCurrentCameraId();
 
     mPostponePrequeued = preQueuedExposure;
-    mDirectExposureIo = (mPostponePrequeued) ? false : !PlatformData::synchronizeExposure(cameraId);
+    mDirectExposureIo = (mPostponePrequeued) ? false : !PlatformData::synchronizeExposure(mCameraId);
 
     // Open subdevice for direct IOCTL.
     status = openSubdevices();
@@ -1214,10 +1213,9 @@ unsigned int SensorHW::getExposureDelay()
 status_t SensorHW::initializeExposureFilter()
 {
     LOG1("@%s", __FUNCTION__);
-    int gainLag = PlatformData::getSensorGainLag();
-    int exposureLag = PlatformData::getSensorExposureLag();
-    int cameraId = getCurrentCameraId();
-    bool useExposureSync = PlatformData::synchronizeExposure(cameraId);
+    int gainLag = PlatformData::getSensorGainLag(mCameraId);
+    int exposureLag = PlatformData::getSensorExposureLag(mCameraId);
+    bool useExposureSync = PlatformData::synchronizeExposure(mCameraId);
     unsigned int gainDelay = 0;
 
     LOG1("Exposure synchronization config read, gain lag %d, exposure lag %d, synchronize %s",

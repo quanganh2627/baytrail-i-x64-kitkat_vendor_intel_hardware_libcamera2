@@ -33,8 +33,8 @@ static const int spIdLength = 4;
 
 PlatformBase* PlatformData::mInstance = 0;
 
-AiqConf PlatformData::AiqConfig;
-HalConf PlatformData::HalConfig;
+AiqConf PlatformData::AiqConfig[MAX_CAMERAS];
+HalConf PlatformData::HalConfig[MAX_CAMERAS];
 
 // Max width and height string length, like "1920x1080".
 const int MAX_WIDTH_HEIGHT_STRING_LENGTH = 25;
@@ -225,7 +225,7 @@ int PlatformData::numberOfCameras(void)
 const char* PlatformData::preferredPreviewSizeForVideo(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::PreviewSizeVideoDefault)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::PreviewSizeVideoDefault)) {
         return sPtr;
     }
 
@@ -238,7 +238,7 @@ const char* PlatformData::preferredPreviewSizeForVideo(int cameraId)
 const char* PlatformData::supportedVideoSizes(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::VideoSizes)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::VideoSizes)) {
         return sPtr;
     }
 
@@ -397,7 +397,7 @@ bool PlatformData::supportEV(int cameraId)
 const char* PlatformData::supportedMaxEV(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::EvMax)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::EvMax)) {
         return sPtr;
     }
 
@@ -410,7 +410,7 @@ const char* PlatformData::supportedMaxEV(int cameraId)
 const char* PlatformData::supportedMinEV(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::EvMin)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::EvMin)) {
         return sPtr;
     }
 
@@ -423,7 +423,7 @@ const char* PlatformData::supportedMinEV(int cameraId)
 const char* PlatformData::supportedDefaultEV(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::EvDefault)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::EvDefault)) {
         return sPtr;
     }
 
@@ -436,7 +436,7 @@ const char* PlatformData::supportedDefaultEV(int cameraId)
 const char* PlatformData::supportedStepEV(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::EvStep)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::EvStep)) {
         return sPtr;
     }
 
@@ -449,7 +449,7 @@ const char* PlatformData::supportedStepEV(int cameraId)
 const char* PlatformData::supportedAeMetering(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::AeModes)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::AeModes)) {
         return sPtr;
     }
 
@@ -462,7 +462,7 @@ const char* PlatformData::supportedAeMetering(int cameraId)
 const char* PlatformData::defaultAeMetering(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::AeModeDefault)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::AeModeDefault)) {
         return sPtr;
     }
 
@@ -483,7 +483,7 @@ const char* PlatformData::supportedAeLock(int cameraId)
 const char* PlatformData::supportedMaxSaturation(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::SaturationMax)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::SaturationMax)) {
         return sPtr;
     }
 
@@ -496,7 +496,7 @@ const char* PlatformData::supportedMaxSaturation(int cameraId)
 const char* PlatformData::supportedMinSaturation(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::SaturationMin)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::SaturationMin)) {
         return sPtr;
     }
 
@@ -509,7 +509,7 @@ const char* PlatformData::supportedMinSaturation(int cameraId)
 const char* PlatformData::defaultSaturation(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::SaturationDefault)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::SaturationDefault)) {
         return sPtr;
     }
 
@@ -522,7 +522,7 @@ const char* PlatformData::defaultSaturation(int cameraId)
 const char* PlatformData::supportedSaturation(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::Saturations)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::Saturations)) {
         return sPtr;
     }
 
@@ -535,7 +535,7 @@ const char* PlatformData::supportedSaturation(int cameraId)
 const char* PlatformData::supportedStepSaturation(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::SaturationStep)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::SaturationStep)) {
         return sPtr;
     }
 
@@ -564,7 +564,7 @@ int PlatformData::highSaturation(int cameraId)
 const char* PlatformData::supportedMaxContrast(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::ContrastMax)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::ContrastMax)) {
         return sPtr;
     }
 
@@ -577,7 +577,7 @@ const char* PlatformData::supportedMaxContrast(int cameraId)
 const char* PlatformData::supportedMinContrast(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::ContrastMin)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::ContrastMin)) {
         return sPtr;
     }
 
@@ -590,7 +590,7 @@ const char* PlatformData::supportedMinContrast(int cameraId)
 const char* PlatformData::defaultContrast(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::ContrastDefault)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::ContrastDefault)) {
         return sPtr;
     }
 
@@ -603,7 +603,7 @@ const char* PlatformData::defaultContrast(int cameraId)
 const char* PlatformData::supportedContrast(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::Contrasts)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::Contrasts)) {
         return sPtr;
     }
 
@@ -616,7 +616,7 @@ const char* PlatformData::supportedContrast(int cameraId)
 const char* PlatformData::supportedStepContrast(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::ContrastStep)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::ContrastStep)) {
         return sPtr;
     }
 
@@ -645,7 +645,7 @@ int PlatformData::hardContrast(int cameraId)
 const char* PlatformData::supportedMaxSharpness(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::SharpnessMax)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::SharpnessMax)) {
         return sPtr;
     }
 
@@ -658,7 +658,7 @@ const char* PlatformData::supportedMaxSharpness(int cameraId)
 const char* PlatformData::supportedMinSharpness(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::SharpnessMin)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::SharpnessMin)) {
         return sPtr;
     }
 
@@ -671,7 +671,7 @@ const char* PlatformData::supportedMinSharpness(int cameraId)
 const char* PlatformData::defaultSharpness(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::SharpnessDefault)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::SharpnessDefault)) {
         return sPtr;
     }
 
@@ -684,7 +684,7 @@ const char* PlatformData::defaultSharpness(int cameraId)
 const char* PlatformData::supportedSharpness(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::Sharpnesses)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::Sharpnesses)) {
         return sPtr;
     }
 
@@ -697,7 +697,7 @@ const char* PlatformData::supportedSharpness(int cameraId)
 const char* PlatformData::supportedStepSharpness(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::SharpnessStep)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::SharpnessStep)) {
         return sPtr;
     }
 
@@ -726,7 +726,7 @@ int PlatformData::hardSharpness(int cameraId)
 const char* PlatformData::supportedFlashModes(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::FlashModes)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::FlashModes)) {
         return sPtr;
     }
 
@@ -739,7 +739,7 @@ const char* PlatformData::supportedFlashModes(int cameraId)
 const char* PlatformData::defaultFlashMode(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::FlashModeDefault)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::FlashModeDefault)) {
         return sPtr;
     }
 
@@ -752,7 +752,7 @@ const char* PlatformData::defaultFlashMode(int cameraId)
 const char* PlatformData::supportedIso(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::IsoModes)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::IsoModes)) {
         return sPtr;
     }
 
@@ -765,7 +765,7 @@ const char* PlatformData::supportedIso(int cameraId)
 const char* PlatformData::defaultIso(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::IsoModeDefault)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::IsoModeDefault)) {
         return sPtr;
     }
 
@@ -778,7 +778,7 @@ const char* PlatformData::defaultIso(int cameraId)
 const char* PlatformData::supportedSceneModes(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::SceneModes)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::SceneModes)) {
         return sPtr;
     }
 
@@ -791,7 +791,7 @@ const char* PlatformData::supportedSceneModes(int cameraId)
 const char* PlatformData::defaultSceneMode(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::SceneModeDefault)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::SceneModeDefault)) {
         return sPtr;
     }
 
@@ -804,7 +804,7 @@ const char* PlatformData::defaultSceneMode(int cameraId)
 const char* PlatformData::supportedEffectModes(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::EffectModes)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::EffectModes)) {
         return sPtr;
     }
 
@@ -817,7 +817,7 @@ const char* PlatformData::supportedEffectModes(int cameraId)
 const char* PlatformData::supportedIntelEffectModes(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::ExtendedEffectModes)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::ExtendedEffectModes)) {
         return sPtr;
     }
 
@@ -830,7 +830,7 @@ const char* PlatformData::supportedIntelEffectModes(int cameraId)
 const char* PlatformData::defaultEffectMode(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::EffectModeDefault)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::EffectModeDefault)) {
         return sPtr;
     }
 
@@ -843,7 +843,7 @@ const char* PlatformData::defaultEffectMode(int cameraId)
 const char* PlatformData::supportedAwbModes(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::AwbModes)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::AwbModes)) {
         return sPtr;
     }
 
@@ -856,7 +856,7 @@ const char* PlatformData::supportedAwbModes(int cameraId)
 const char* PlatformData::defaultAwbMode(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::AwbModeDefault)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::AwbModeDefault)) {
         return sPtr;
     }
 
@@ -869,7 +869,7 @@ const char* PlatformData::defaultAwbMode(int cameraId)
 const char* PlatformData::supportedPreviewFrameRate(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::PreviewFpss)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::PreviewFpss)) {
         return sPtr;
     }
 
@@ -890,7 +890,7 @@ const char* PlatformData::supportedAwbLock(int cameraId)
 const char* PlatformData::supportedPreviewFPSRange(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::PreviewFpsRanges)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::PreviewFpsRanges)) {
         return sPtr;
     }
 
@@ -903,7 +903,7 @@ const char* PlatformData::supportedPreviewFPSRange(int cameraId)
 const char* PlatformData::defaultPreviewFPSRange(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::PreviewFpsRangeDefault)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::PreviewFpsRangeDefault)) {
         return sPtr;
     }
 
@@ -916,7 +916,7 @@ const char* PlatformData::defaultPreviewFPSRange(int cameraId)
 const char* PlatformData::supportedPreviewSizes(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::PreviewSizes)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::PreviewSizes)) {
         return sPtr;
     }
 
@@ -953,7 +953,7 @@ bool PlatformData::supportsSlowMotion(int cameraId)
 bool PlatformData::supportsFlash(int cameraId)
 {
     bool boolean;
-    if (!HalConfig.getBool(boolean, CPF::HasFlash)) {
+    if (!HalConfig[cameraId].getBool(boolean, CPF::HasFlash)) {
         return boolean;
     }
 
@@ -1006,7 +1006,7 @@ const char* PlatformData::supportedSdvSizes(int cameraId)
 const char* PlatformData::supportedFocusModes(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::FocusModes)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::FocusModes)) {
         return sPtr;
     }
 
@@ -1019,7 +1019,7 @@ const char* PlatformData::supportedFocusModes(int cameraId)
 const char* PlatformData::defaultFocusMode(int cameraId)
 {
     const char *sPtr;
-    if (!HalConfig.getString(sPtr, CPF::FocusModeDefault)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::FocusModeDefault)) {
         return sPtr;
     }
 
@@ -1209,10 +1209,10 @@ const char* PlatformData::getISPSubDeviceName(void)
     return getInstance()->mSubDevName;
 }
 
-int PlatformData::getMaxZoomFactor(void)
+int PlatformData::getMaxZoomFactor(int cameraId)
 {
     int value;
-    if (!HalConfig.getValue(value, CPF::ZoomDigital, CPF::Max)) {
+    if (!HalConfig[cameraId].getValue(value, CPF::ZoomDigital, CPF::Max)) {
         return value;
     }
 
@@ -1327,19 +1327,19 @@ status_t PlatformData::createVendorPlatformProductName(String8& name)
     return OK;
 }
 
-int PlatformData::getSensorGainLag(void)
+int PlatformData::getSensorGainLag(int cameraId)
 {
     int value;
-    if (!HalConfig.getValue(value, CPF::Gain, CPF::Lag))
+    if (!HalConfig[cameraId].getValue(value, CPF::Gain, CPF::Lag))
         return value;
 
     return getInstance()->mSensorGainLag;
 }
 
-int PlatformData::getSensorExposureLag(void)
+int PlatformData::getSensorExposureLag(int cameraId)
 {
     int value;
-    if (!HalConfig.getValue(value, CPF::Exposure, CPF::Lag))
+    if (!HalConfig[cameraId].getValue(value, CPF::Exposure, CPF::Lag))
         return value;
 
     return getInstance()->mSensorExposureLag;
@@ -1379,7 +1379,7 @@ float PlatformData::verticalFOV(int cameraId, int width, int height)
         }
     }
 
-    if (!HalConfig.getFloat(retVal, CPF::Fov, CPF::Vertical)) {
+    if (!HalConfig[cameraId].getFloat(retVal, CPF::Fov, CPF::Vertical)) {
         return retVal;
     }
 
@@ -1410,7 +1410,7 @@ float PlatformData::horizontalFOV(int cameraId, int width, int height)
         }
     }
 
-    if (!HalConfig.getFloat(retVal, CPF::Fov, CPF::Horizontal)) {
+    if (!HalConfig[cameraId].getFloat(retVal, CPF::Fov, CPF::Horizontal)) {
         return retVal;
     }
 

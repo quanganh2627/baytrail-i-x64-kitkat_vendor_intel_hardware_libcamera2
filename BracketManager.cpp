@@ -26,13 +26,14 @@
 
 namespace android {
 
-BracketManager::BracketManager(AtomISP *atomISP, I3AControls *aaaControls) :
+BracketManager::BracketManager(AtomISP *atomISP, I3AControls *aaaControls, int cameraId) :
      m3AControls(aaaControls)
     ,mISP(atomISP)
     ,mState(STATE_STOPPED)
     ,mImplMethod(IMPL_OFFLINE)
     ,mBracketImpl(NULL)
     ,mBurstLength(-1)
+    ,mCameraId(cameraId)
 {
     LOG1("@%s", __FUNCTION__);
     mBracketing.mode = BRACKET_NONE;
@@ -55,7 +56,7 @@ status_t BracketManager::createImpl(BracketImplMethod method)
     }
 
     if (method == IMPL_ONLINE) {
-        OnlineBracket *onlineBracket = new OnlineBracket(mISP, m3AControls, this);
+        OnlineBracket *onlineBracket = new OnlineBracket(mISP, m3AControls, this, mCameraId);
         status = onlineBracket->run("CamHAL_ONLINE_BRACKET");
         if (status != NO_ERROR) {
             LOGW("Error Starting online bracket");

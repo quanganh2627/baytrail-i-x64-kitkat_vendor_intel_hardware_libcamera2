@@ -56,7 +56,7 @@ AtomSoc3A::~AtomSoc3A()
     LOG2("@%s", __FUNCTION__);
 
     // We don't need this memory anymore
-    PlatformData::AiqConfig.clear();
+    PlatformData::AiqConfig[mCameraId].clear();
 }
 
 // I3AControls

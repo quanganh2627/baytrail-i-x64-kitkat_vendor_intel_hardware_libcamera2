@@ -24,7 +24,7 @@
 
 namespace android {
 
-OnlineBracket::OnlineBracket(AtomISP *atomISP, I3AControls *aaaControls, BracketManager *manager) :
+OnlineBracket::OnlineBracket(AtomISP *atomISP, I3AControls *aaaControls, BracketManager *manager, int cameraId) :
     Thread(false)
     ,mManager(manager)
     ,m3AControls(aaaControls)
@@ -39,6 +39,7 @@ OnlineBracket::OnlineBracket(AtomISP *atomISP, I3AControls *aaaControls, Bracket
     ,mLastFrameSequenceNbr(-1)
     ,mMessageQueue("OnlineBracket", (int) MESSAGE_ID_MAX)
     ,mThreadRunning(false)
+    ,mCameraId(cameraId)
 {
     LOG1("@%s", __FUNCTION__);
     mBracketing = &mManager->mBracketing;
@@ -361,7 +362,7 @@ status_t OnlineBracket::startBracketing(int *expIdFrom)
          *  See documentation for OnlineBracket::skipFrames()
          */
         int exposureLag = 0;
-        PlatformData::HalConfig.getValue(exposureLag, CPF::Exposure, CPF::Lag);
+        PlatformData::HalConfig[mCameraId].getValue(exposureLag, CPF::Exposure, CPF::Lag);
         if (exposureLag == 0) {
             LOG1("Exposure latency (CPF Exposure.Lag) zero, using static default in bracketing");
             exposureLag = 2;

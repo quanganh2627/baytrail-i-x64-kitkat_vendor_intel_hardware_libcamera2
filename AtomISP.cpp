@@ -4783,7 +4783,7 @@ void AtomISP::computeZoomRatiosLinear()
 }
 
 void AtomISP::computeZoomRatiosFactor() {
-    int maxZoomFactor(PlatformData::getMaxZoomFactor());
+    int maxZoomFactor(PlatformData::getMaxZoomFactor(mCameraId));
     int zoomFactor(maxZoomFactor);
     int ratio((maxZoomFactor * ZOOM_RATIO + zoomFactor / 2) / zoomFactor);
     int preRatio(0);
@@ -5529,7 +5529,7 @@ unsigned int AtomISP::getNumOfSkipFrames(void)
 unsigned int AtomISP::getNumOfSkipStatistics(void)
 {
     int num_skipstats = 0;
-    PlatformData::HalConfig.getValue(num_skipstats, CPF::Statistics, CPF::InitialSkip);
+    PlatformData::HalConfig[mCameraId].getValue(num_skipstats, CPF::Statistics, CPF::InitialSkip);
 
     LOG1("%s: skipping %d initial statistics", __FUNCTION__, num_skipstats);
     return (unsigned int)num_skipstats;

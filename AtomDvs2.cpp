@@ -91,11 +91,12 @@ status_t AtomDvs2::dvsInit()
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     ia_err err;
+    int cameraId = mSensorCI->getCurrentCameraId();
 
-    if (PlatformData::AiqConfig) {
+    if (PlatformData::AiqConfig[cameraId]) {
         ia_binary_data cpfData;
-        cpfData.data = PlatformData::AiqConfig.ptr();
-        cpfData.size = PlatformData::AiqConfig.size();
+        cpfData.data = PlatformData::AiqConfig[cameraId].ptr();
+        cpfData.size = PlatformData::AiqConfig[cameraId].size();
         ia_cmc_t *cmc = ia_cmc_parser_init((ia_binary_data*)&(cpfData));
         err = dvs_init(&mState, &cpfData, cmc, NULL, &mDvs2Env);
         ia_cmc_parser_deinit(cmc);
@@ -456,7 +457,8 @@ status_t AtomDvs2::setZoom(int zoom)
     Mutex::Autolock lock(mLock);
     LOG1("@%s zoom:%d", __FUNCTION__, zoom);
     ia_err err = ia_err_none;
-    int maxZoomFactor(PlatformData::getMaxZoomFactor());
+    int cameraId = mSensorCI->getCurrentCameraId();
+    int maxZoomFactor(PlatformData::getMaxZoomFactor(cameraId));
     int drv_zoom = mIsp->getDrvZoom(zoom);
     err = dvs_set_digital_zoom_magnitude(mState, (float)maxZoomFactor /((float)maxZoomFactor - drv_zoom));
     if (err != ia_err_none)

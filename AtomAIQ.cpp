@@ -63,7 +63,7 @@ namespace android {
 #define MAX_STATISTICS_HEIGHT 150
 #define IA_AIQ_MAX_NUM_FACES 5
 
-AtomAIQ::AtomAIQ(HWControlGroup &hwcg):
+AtomAIQ::AtomAIQ(HWControlGroup &hwcg, int cameraId):
     mISP(hwcg.mIspCI)
     ,mAfMode(CAM_AF_MODE_NOT_SET)
     ,mStillAfStart(0)
@@ -88,6 +88,7 @@ AtomAIQ::AtomAIQ(HWControlGroup &hwcg):
     ,mLensCI(hwcg.mLensCI)
     ,mISPAdaptor(NULL)
     ,mFileInjection(false)
+    ,mCameraId(cameraId)
 {
     LOG1("@%s", __FUNCTION__);
     CLEAR(mPrintFunctions);
@@ -112,17 +113,16 @@ AtomAIQ::~AtomAIQ()
     LOG1("@%s", __FUNCTION__);
 
     // We don't need this memory anymore
-    PlatformData::AiqConfig.clear();
+    PlatformData::AiqConfig[mCameraId].clear();
 }
 
 status_t AtomAIQ::init3A()
 {
     LOG1("@%s", __FUNCTION__);
-    int cameraId = mSensorCI->getCurrentCameraId();
 
-    mFileInjection = (cameraId == INTEL_FILE_INJECT_CAMERA_ID);
+    mFileInjection = (mCameraId == INTEL_FILE_INJECT_CAMERA_ID);
 
-    if (PlatformData::isDisable3A(cameraId)) {
+    if (PlatformData::isDisable3A(mCameraId)) {
         LOG2("@%s, the 3A is disabled, return NO_ERROR", __FUNCTION__);
         return NO_ERROR;
     }
@@ -209,7 +209,8 @@ status_t AtomAIQ::_init3A()
                          MAX_STATISTICS_WIDTH,
                          MAX_STATISTICS_HEIGHT,
                          cmc,
-                         mMkn);
+                         mMkn,
+                         mCameraId);
 
     ia_cmc_parser_deinit(cmc);
 
@@ -237,9 +238,9 @@ status_t AtomAIQ::getAiqConfig(ia_binary_data *cpfData)
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    if (PlatformData::AiqConfig && cpfData != NULL) {
-        cpfData->data = PlatformData::AiqConfig.ptr();
-        cpfData->size = PlatformData::AiqConfig.size();
+    if (PlatformData::AiqConfig[mCameraId] && cpfData != NULL) {
+        cpfData->data = PlatformData::AiqConfig[mCameraId].ptr();
+        cpfData->size = PlatformData::AiqConfig[mCameraId].size();
     } else {
         status = UNKNOWN_ERROR;
     }
@@ -430,9 +431,8 @@ status_t AtomAIQ::setAfWindow(const CameraWindow *window)
 status_t AtomAIQ::setAfWindows(CameraWindow *windows, size_t numWindows, const AAAWindowInfo*)
 {
     LOG2("@%s: windows = %p, num = %u", __FUNCTION__, windows, numWindows);
-    int cameraId = mSensorCI->getCurrentCameraId();
 
-    if (PlatformData::isDisable3A(cameraId))
+    if (PlatformData::isDisable3A(mCameraId))
         return NO_ERROR;
 
     // If no windows given, equal to null-window. HAL meters as it wants -> "auto".
@@ -2443,7 +2443,7 @@ status_t AtomAIQ::runAICMain()
                  mAwbResults->distance_from_convergence <= EPSILON) &&
                  mAwbRunCount > RETRY_COUNT ) {
                 mAwbRunCount = 0;
-                CameraDump::getInstance(mSensorCI->getCurrentCameraId())->dumpMkn2File();
+                CameraDump::getInstance(mCameraId)->dumpMkn2File();
             } else if(mAwbResults->distance_from_convergence >= -EPSILON &&
                       mAwbResults->distance_from_convergence <= EPSILON){
                 mAwbRunCount++;
@@ -2551,7 +2551,6 @@ void AtomAIQ::getDefaultParams(CameraParameters *params, CameraParameters *intel
         return;
     }
 
-    int cameraId = mSensorCI->getCurrentCameraId();
     // ae mode
     intel_params->set(IntelCameraParameters::KEY_AE_MODE, "auto");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_AE_MODES, "auto,manual,shutter-priority,aperture-priority");
@@ -2573,7 +2572,7 @@ void AtomAIQ::getDefaultParams(CameraParameters *params, CameraParameters *intel
     intel_params->set(IntelCameraParameters::KEY_SHUTTER, "60");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SHUTTER, "1s,2,4,8,15,30,60,125,250,500");
 
-    if (!PlatformData::isFixedFocusCamera(cameraId)) {
+    if (!PlatformData::isFixedFocusCamera(mCameraId)) {
         // multipoint focus
         params->set(CameraParameters::KEY_MAX_NUM_FOCUS_AREAS, getAfMaxNumWindows());
     } else {
@@ -2592,8 +2591,8 @@ void AtomAIQ::getDefaultParams(CameraParameters *params, CameraParameters *intel
     intel_params->set(IntelCameraParameters::KEY_CAPTURE_BRACKET, "none");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_CAPTURE_BRACKET, "none,exposure,focus");
 
-    intel_params->set(IntelCameraParameters::KEY_HDR_IMAGING, PlatformData::defaultHdr(cameraId));
-    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_IMAGING, PlatformData::supportedHdr(cameraId));
+    intel_params->set(IntelCameraParameters::KEY_HDR_IMAGING, PlatformData::defaultHdr(mCameraId));
+    intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_IMAGING, PlatformData::supportedHdr(mCameraId));
     intel_params->set(IntelCameraParameters::KEY_HDR_SAVE_ORIGINAL, "off");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_HDR_SAVE_ORIGINAL, "on,off");
 
@@ -2656,12 +2655,13 @@ void IaIsp15::initIaIspAdaptor(const ia_binary_data *cpfData,
                            unsigned int maxStatsWidth,
                            unsigned int maxStatsHeight,
                            ia_cmc_t *cmc,
-                           ia_mkn *mkn)
+                           ia_mkn *mkn,
+                           int cameraId)
 {
     LOG1("@%s", __FUNCTION__);
 
     int value = 0;
-    PlatformData::HalConfig.getValue(value, CPF::IspVamemType);
+    PlatformData::HalConfig[cameraId].getValue(value, CPF::IspVamemType);
     mIaIsp15InputParams.isp_vamem_type = value;
 
     mIspHandle = ia_isp_1_5_init(cpfData,
@@ -2723,12 +2723,13 @@ void IaIsp22::initIaIspAdaptor(const ia_binary_data *cpfData,
                            unsigned int maxStatsWidth,
                            unsigned int maxStatsHeight,
                            ia_cmc_t *cmc,
-                           ia_mkn *mkn)
+                           ia_mkn *mkn,
+                           int cameraId)
 {
     LOG1("@%s", __FUNCTION__);
 
     int value = 0;
-    PlatformData::HalConfig.getValue(value, CPF::IspVamemType);
+    PlatformData::HalConfig[cameraId].getValue(value, CPF::IspVamemType);
     mIaIsp22InputParams.isp_vamem_type = value;
 
     mIspHandle = ia_isp_2_2_init(cpfData,
