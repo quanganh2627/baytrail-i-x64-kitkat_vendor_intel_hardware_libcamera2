@@ -6833,6 +6833,7 @@ status_t ControlThread::processParamPreviewFrameRate(const CameraParameters *old
         int fps = newParams->getPreviewFrameRate();
         // Save the set FPS for doing frame dropping
         mISP->setPreviewFramerate(fps);
+        mPreviewThread->setPreviewCallbackFps(fps);
     }
 
     return NO_ERROR;

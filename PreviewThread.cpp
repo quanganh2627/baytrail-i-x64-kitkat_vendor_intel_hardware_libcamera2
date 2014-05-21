@@ -72,6 +72,8 @@ PreviewThread::PreviewThread(sp<CallbacksThread> callbacksThread, Callbacks* cal
     ,mRotation(0)
     ,mHALVideoStabilization(false)
     ,mFakeHeaps(0)
+    ,mFps(30)
+    ,mPreviewCbTs(0)
 {
     LOG1("@%s", __FUNCTION__);
     mPreviewBuffers.setCapacity(MAX_NUMBER_PREVIEW_GFX_BUFFERS);
@@ -111,6 +113,22 @@ status_t PreviewThread::detachCallback(ICallbackPreview *cb, ICallbackPreview::C
     msg.data.setCallback.detach = true;
 
     return mMessageQueue.send(&msg);
+}
+
+void PreviewThread::setPreviewCallbackFps(int fps) {
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_FPS;
+    msg.data.fps.fps = fps;
+
+    mMessageQueue.send(&msg);
+}
+
+status_t PreviewThread::handleMessageFPS(MessageFPS *msg)
+{
+    LOG1("@%s fps:%d", __FUNCTION__, msg->fps);
+    mFps = msg->fps;
+    return OK;
 }
 
 status_t PreviewThread::handleMessageSetCallback(MessageSetCallback *msg)
@@ -681,6 +699,10 @@ status_t PreviewThread::waitForAndExecuteMessage()
             status = handleMessageFetchBufferGeometry();
             break;
 
+        case MESSAGE_ID_FPS:
+            status = handleMessageFPS(&msg.data.fps);
+            break;
+
         default:
             LOGE("Invalid message");
             status = BAD_VALUE;
@@ -1186,8 +1208,19 @@ status_t PreviewThread::handlePreviewCallback(AtomBuffer &srcBuff)
             status = -1;
             break;
         }
-        if (status == NO_ERROR)
+        if (status == NO_ERROR) {
+            int64_t now = systemTime();
+            int64_t nsFromLastCb = now - mPreviewCbTs;
+            int64_t nsFrameInterval = 1000000000 / mFps;
+            if (nsFromLastCb < nsFrameInterval) {
+                // sleep for 90% of the full time, to satisfy frame interval CTS test and to not cause too much preview lag
+                int usSleepTime = (0.9 * (nsFrameInterval - nsFromLastCb)) / 1000;
+                LOG2("@%s sleeping %d us to satisfy callback frame intervals", __FUNCTION__, usSleepTime);
+                usleep(usSleepTime);
+            }
             mCallbacksThread->previewFrameDone(callbackBuffer);
+            mPreviewCbTs = systemTime();
+        }
     }
 
     return status;

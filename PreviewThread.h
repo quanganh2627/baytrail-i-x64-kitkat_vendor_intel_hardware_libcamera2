@@ -157,6 +157,7 @@ public:
     status_t returnPreviewBuffers();
     status_t flushBuffers();
     status_t enableOverlay(bool set = true, int rotation = 90);
+    void setPreviewCallbackFps(int fps);
 
     // IBufferOwner override
     virtual void returnBuffer(AtomBuffer* buff);
@@ -191,6 +192,7 @@ private:
         MESSAGE_ID_WINDOW_QUERY,
         MESSAGE_ID_RETURN_BUFFER,
         MESSAGE_ID_SET_CALLBACK,
+        MESSAGE_ID_FPS,
         MESSAGE_ID_SET_CALLBACK_PREVIEW_SIZE,
         MESSAGE_ID_FETCH_BUF_GEOMETRY,
 
@@ -206,6 +208,10 @@ private:
         AtomBuffer buff;
         bool hide;
         bool synchronous;
+    };
+
+    struct MessageFPS {
+        int fps;
     };
 
     struct MessageSetPreviewWindow {
@@ -258,6 +264,9 @@ private:
 
         // MESSAGE_ID_SET_CALLBACK_PREVIEW_SIZE
         MessageSetCallbackPreviewSize callbackPreviewSize;
+
+        // MESSAGE_ID_FPS
+        MessageFPS fps;
     };
 
     // message id and message data
@@ -293,6 +302,7 @@ private:
     status_t handleMessageSetCallback(MessageSetCallback *msg);
     status_t handleMessageSetCallbackPreviewSize(MessageSetCallbackPreviewSize *msg);
     status_t handleMessageReturnBuffer(MessageReturnBuffer *msg);
+    status_t handleMessageFPS(MessageFPS *msg);
     status_t handleSetPreviewWindow(MessageSetPreviewWindow *msg);
     status_t handleSetPreviewConfig(MessageSetPreviewConfig *msg);
     status_t handlePreview(MessagePreview *msg);
@@ -375,6 +385,8 @@ private:
                           the display attached to overlay plane */
     bool mHALVideoStabilization;
     sp<CameraHeapMemory> *mFakeHeaps;
+    int mFps; /*!< Desired callback fps */
+    int64_t mPreviewCbTs; /*!< (last) Preview callback timestamp */
 }; // class PreviewThread
 
 }; // namespace android
