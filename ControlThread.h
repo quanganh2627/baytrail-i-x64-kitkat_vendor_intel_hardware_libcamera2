@@ -672,7 +672,7 @@ private:
     status_t sdvUpdateParams(bool offline, bool updateCache);
     status_t sdvRestoreParams(bool updateCache);
     status_t getSdvSupportedMinVideoSize(int &width, int &height);
-    bool isFullSizeSdvSupportedVideoSize(int width, int height);
+    bool isFullSizeSdvSupportedVideoSize(int width, int height, int previewWidth, int previewHeight);
     void saveCurrentPictureParams();
     void clearSavedPictureParams();
     bool selectSdvSize(int &width, int &height);

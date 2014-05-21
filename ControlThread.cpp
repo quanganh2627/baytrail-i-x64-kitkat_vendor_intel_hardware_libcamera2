@@ -1437,11 +1437,14 @@ status_t ControlThread::sdvRestoreParams(bool updateCache)
     return NO_ERROR;
 }
 
-bool ControlThread::isFullSizeSdvSupportedVideoSize(int width, int height)
+bool ControlThread::isFullSizeSdvSupportedVideoSize(int width, int height, int previewWidth, int previewHeight)
 {
     int minW, minH;
     getSdvSupportedMinVideoSize(minW, minH);
-    return (width >= minW && height >= minH) ? true : false;
+    if ((previewWidth * previewHeight) > (width * height)) // see AtomISP::applyISPLimitations workarounds
+        return (previewWidth >= minW && previewHeight >= minH) ? true : false; // AtomISP swaps the devices, so compare to preview size
+    else
+        return (width >= minW && height >= minH) ? true : false;
 }
 
 status_t ControlThread::getSdvSupportedMinVideoSize(int &width, int &height)
@@ -1976,7 +1979,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
             !mDualVideo && // not dual video
             sdvParam == CameraParameters::TRUE && // user doesn't request to disable sdv by parameter
             fps <= DEFAULT_RECORDING_FPS && // not high speed mode
-            isFullSizeSdvSupportedVideoSize(width, height) && // video size limitation
+            isFullSizeSdvSupportedVideoSize(width, height, previewWidth, previewHeight) && // video size limitation
             !mHALVideoStabilization;
 
         mode = mFullSizeSdv ? MODE_CONTINUOUS_VIDEO : MODE_VIDEO;
