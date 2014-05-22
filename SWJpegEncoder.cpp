@@ -579,6 +579,9 @@ doJpegEncoding(const void *y_buf, const void *uv_buf, int fourcc)
     case V4L2_PIX_FMT_NV12:
         NV12ToP411Separate(width, height, srcY, srcUV, p411);
         break;
+    case V4L2_PIX_FMT_NV21:
+        NV21ToP411Separate(width, height, srcY, srcUV, p411);
+        break;
     defaut:
         LOGE("%s Unsupported fourcc %s 0x%x", __func__,v4l2Fmt2Str(fourcc), fourcc);
         return -1;

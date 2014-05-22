@@ -63,6 +63,7 @@ void ImageScaler::downScaleImage(void *src, void *dest,
          dest_w, dest_h, src_w, src_h, v4l2Fmt2Str(fourcc), fourcc);
 
     switch (fourcc) {
+        case V4L2_PIX_FMT_NV21:
         case V4L2_PIX_FMT_NV12: {
             if (dest_w == src_w && dest_h == src_h) {
                 // trim only

@@ -387,6 +387,7 @@ private:
     struct ExtIsp {
         bool LLS;
         bool HDR;
+        bool kidsMode;
     };
 
     struct StillPicParamsCtx {
@@ -492,6 +493,7 @@ private:
     status_t stopFaceRecognition();
     status_t enableIspExtensions();
     status_t handleMessageRelease();
+    status_t handleKidsMode(int value);
 
     status_t cancelPictureThread();
     status_t cancelPostCaptureThread();

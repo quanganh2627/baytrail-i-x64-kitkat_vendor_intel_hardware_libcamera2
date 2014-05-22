@@ -358,6 +358,8 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
             pCurrentCam->mPreviewFourcc = V4L2_PIX_FMT_YUYV;
         else if (strcmp(atts[1], "V4L2_PIX_FMT_UYVY") == 0)
             pCurrentCam->mPreviewFourcc = V4L2_PIX_FMT_UYVY;
+        else if (strcmp(atts[1], "V4L2_PIX_FMT_NV21") == 0)
+            pCurrentCam->mPreviewFourcc = V4L2_PIX_FMT_NV21;
         else
             pCurrentCam->mPreviewFourcc = V4L2_PIX_FMT_NV12;
     } else if (strcmp(name, "useMultiStreamsForSoC") == 0) {

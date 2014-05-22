@@ -425,7 +425,7 @@ void NV12ToP411Separate(int width, int height, void *srcY, void *srcUV, void *ds
     p = q = 0;
     for (i = 0; i < height / 2; i++) {
         for (j = 0; j < width; j++) {
-            if (j % 2 == 0) {
+            if ((j & 1) == 0) { // (j & 1) is equivalent to (j % 2) but optimized
                 pdstU[p]= (psrcUV[i * width + j] & 0xFF) ;
                 p++;
            } else {
@@ -436,10 +436,43 @@ void NV12ToP411Separate(int width, int height, void *srcY, void *srcUV, void *ds
     }
 }
 
+// P411's Y, U, V are separated. But the NV21's U and V are interleaved.
+void NV21ToP411Separate(int width, int height, void *srcY, void *srcUV, void *dst)
+{
+    int i, j, p, q;
+    unsigned char *pdstU, *pdstV;
+    unsigned char *psrcUV;
+
+    // copy Y data
+    memcpy(dst, srcY, width * height);
+    // copy U data and V data
+    psrcUV = (unsigned char *)srcUV;
+    pdstU = (unsigned char *)dst + width * height;
+    pdstV = pdstU + width * height / 4;
+    p = q = 0;
+    for (i = 0; i < height / 2; i++) {
+        for (j = 0; j < width; j++) {
+            if ((j & 1) == 0) { // (j & 1) is equivalent to (j % 2) but optimized
+                pdstV[p]= (psrcUV[i * width + j] & 0xFF) ;
+                p++;
+           } else {
+                pdstU[q]= (psrcUV[i * width + j] & 0xFF);
+                q++;
+            }
+        }
+    }
+}
+
 // P411's Y, U, V are seperated. But the NV12's U and V are interleaved.
 void NV12ToP411(int width, int height, void *src, void *dst)
 {
     NV12ToP411Separate(width, height, src, (void *)((unsigned char *)src + width * height), dst);
+}
+
+// P411's Y, U, V are seperated. But the NV21's U and V are interleaved.
+void NV21ToP411(int width, int height, void *src, void *dst)
+{
+    NV21ToP411Separate(width, height, src, (void *)((unsigned char *)src + width * height), dst);
 }
 
 // Re-pad YUV420 format image, the format can be YV12, YU12 or YUV420 planar.

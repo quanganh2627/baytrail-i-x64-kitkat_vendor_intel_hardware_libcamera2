@@ -1946,6 +1946,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     int fps(0);
     State state(STATE_STOPPED);
     AtomMode mode(MODE_NONE);
+    bool useNV21 = false;
 
     if (mState != STATE_STOPPED) {
         LOGE("Must be in STATE_STOPPED to start preview");
@@ -2106,10 +2107,13 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         (mPreviewUpdateMode != IntelCameraParameters::PREVIEW_UPDATE_MODE_WINDOWLESS)
         && (mIntelParamsAllowed || (mode != MODE_CONTINUOUS_CAPTURE));
 
-    // for ext-isp 6MP panorama, enable zero-copy shared mode always in order have zero-copy preview callbacks
-    if (PlatformData::supportsContinuousJpegCapture(mCameraId) &&
-        width == RESOLUTION_6MP_WIDTH && height == RESOLUTION_6MP_HEIGHT) {
+    // for certain ext-isp use cases (6MP panorama, kids mode), enable zero-copy
+    // shared mode always in order have zero-copy preview callbacks
+    if ((PlatformData::supportsContinuousJpegCapture(mCameraId) &&
+        width == RESOLUTION_6MP_WIDTH && height == RESOLUTION_6MP_HEIGHT) ||
+        mExtIsp.kidsMode) {
         useSharedGfxBuffers = true;
+        useNV21 = true;
     }
 
     if (mHALVideoStabilization) {
@@ -2127,7 +2131,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         return status;
     }
 
-    mISP->setPreviewFrameFormat(width, height, bpl);
+    mISP->setPreviewFrameFormat(width, height, bpl, useNV21 ? V4L2_PIX_FMT_NV21 : PlatformData::getPreviewPixelFormat(mCameraId));
 
     if (useSharedGfxBuffers) {
         Vector<AtomBuffer> sharedGfxBuffers;
@@ -7629,7 +7633,7 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
             default:
                 LOGE("formats can only be changed while in preview or stop states");
                 break;
-        };
+        }
     }
 
     // if file injection is enabled, get file injection parameters and save
@@ -7772,6 +7776,9 @@ status_t ControlThread::handleMessageCommand(MessageCommand* msg)
         mExtIsp.LLS = (msg->arg1 == EXTISP_FEAT_ON);
         status = NO_ERROR;
         break;
+    case CAMERA_CMD_EXTISP_KIDS_MODE:
+        status = handleKidsMode(msg->arg1);
+        break;
     case CAMERA_CMD_FRONT_SS:
         mSmartStabilization = (msg->arg1 == 1);
         break;
@@ -7782,6 +7789,36 @@ status_t ControlThread::handleMessageCommand(MessageCommand* msg)
 
     if (status != NO_ERROR)
         LOGE("@%s command id %d failed", __FUNCTION__, msg->cmd_id);
+    return status;
+}
+
+status_t ControlThread::handleKidsMode(int value)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = OK;
+    mExtIsp.kidsMode = (value == 1);
+    if (mExtIsp.kidsMode)
+        mPreviewThread->setCallbackMode(PreviewThread::PREVIEW_CALLBACK_BEFORE_DISPLAY);
+    else
+        mPreviewThread->setCallbackMode(PreviewThread::PREVIEW_CALLBACK_NORMAL);
+
+    // if preview is running we need
+    // to stop, reconfigure, and restart the isp and all threads.
+    // this is because kids mode has the special NV21 preview format.
+    switch (mState) {
+        case STATE_PREVIEW_VIDEO:
+        case STATE_PREVIEW_STILL:
+        case STATE_CONTINUOUS_CAPTURE:
+        case STATE_JPEG_CAPTURE:
+            status = restartPreview(false);
+            break;
+        case STATE_STOPPED:
+            break;
+        default:
+            LOGE("kids mode can only be changed while in preview or stop states");
+            break;
+    }
+
     return status;
 }
 

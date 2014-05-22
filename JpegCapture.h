@@ -131,7 +131,8 @@ const size_t JPEG_META_FRAME_COUNT_ADDR = 0x13;
 enum {
     CAMERA_CMD_EXTISP_HDR        = 1014,
     CAMERA_CMD_EXTISP_LLS        = 1351,
-    CAMERA_CMD_FRONT_SS          = 0x4F1  /* TODO, SS did not confirmed the name and value of Smart Stabilization. Please change them when SS give the final confirmation. */
+    CAMERA_CMD_FRONT_SS          = 0x4F1,  /* TODO, SS did not confirmed the name and value of Smart Stabilization. Please change them when SS give the final confirmation. */
+    CAMERA_CMD_EXTISP_KIDS_MODE  = 0x4F2
 };
 
 static uint32_t getU32fromFrame(uint8_t* framePtr, size_t addr) {
