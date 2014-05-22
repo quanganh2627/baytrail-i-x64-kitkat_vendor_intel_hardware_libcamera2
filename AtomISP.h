@@ -65,6 +65,12 @@ enum NarrowGammaStatus {
     NARROW_GAMMA_OFF = 1
 };
 
+enum IspFlip {
+    ISP_FLIP_NONE = 0,
+    ISP_FLIP_H = 0x1,
+    ISP_FLIP_V = 0x2,
+};
+
 class Callbacks;
 
 class AtomISP :
@@ -146,6 +152,10 @@ public:
     bool dataAvailable();
 
     bool isHALZSLEnabled() const { return mHALZSLEnabled; }
+
+    // for saving mirrored feature, set ISP mirror in runtime
+    // this only affects capture and recording devices
+    status_t setIspMirror(int flip);
 
     status_t setPreviewFrameFormat(int width, int height, int bpl, int fourcc = 0);
     status_t setPostviewFrameFormat(AtomBuffer& formatDescriptor);
@@ -484,7 +494,7 @@ private:
     size_t setupCameraInfo();
     unsigned int getNumOfSkipFrames(void);
     unsigned int getNumOfSkipStatistics(void);
-    status_t applySensorFlip(void);
+    status_t applyIspFlipForDevice(sp<V4L2VideoNode> device);
     void fetchIspVersions();
 
     // TODO: Remove once BZ #119181 gets fixed by the firmware team!!
@@ -668,6 +678,9 @@ private:
     bool mHALVideoStabilization;
     bool mExtIspVideoHighSpeed;
     bool mNoiseReductionEdgeEnhancement;
+
+    // ISP flip configuration for save-mirrored feature
+    int mIspFlip;
 
     // Sensor helper fields
     Vector <v4l2_fmtdesc>    mSensorSupportedFormats;     /*!< List of V4L2 pixel format supported by the sensor */

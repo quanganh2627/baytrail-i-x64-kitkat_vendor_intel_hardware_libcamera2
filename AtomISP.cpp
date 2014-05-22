@@ -127,6 +127,7 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService, Callbacks *callb
     ,mHALVideoStabilization(false)
     ,mExtIspVideoHighSpeed(false)
     ,mNoiseReductionEdgeEnhancement(true)
+    ,mIspFlip(ISP_FLIP_NONE)
     ,mFlashIsOn(false)
 {
     LOG1("@%s", __FUNCTION__);
@@ -1015,21 +1016,52 @@ bool AtomISP::isAllowedToSetFps(V4L2VideoNode *device, int deviceMode) const
         return false;
 }
 
-status_t AtomISP::applySensorFlip(void)
+status_t AtomISP::setIspMirror(int flip)
 {
-    int sensorFlip = PlatformData::sensorFlipping(mCameraId);
+    if (mMode == MODE_NONE || mMode == MODE_PREVIEW || mMode == MODE_CONTINUOUS_JPEG) {
+        LOGE("set ISP mirror in wrong mode:%d", mMode);
+        return INVALID_OPERATION;
+    }
 
-    if (sensorFlip == PlatformData::SENSOR_FLIP_NA
-        || sensorFlip == PlatformData::SENSOR_FLIP_OFF)
-        return NO_ERROR;
+    // save the mirror request, apply it before device start
+    mIspFlip = flip;
 
-    if (mMainDevice->setControl(V4L2_CID_VFLIP,
-        (sensorFlip & PlatformData::SENSOR_FLIP_V)?1:0, "vertical image flip"))
+    if (mMode == MODE_CAPTURE || mMode == MODE_CONTINUOUS_CAPTURE ||
+            mMode == MODE_CONTINUOUS_VIDEO) {
+        applyIspFlipForDevice(mMainDevice);
+        applyIspFlipForDevice(mPostViewDevice);
+    }
+
+    if (mMode == MODE_CONTINUOUS_VIDEO || mMode == MODE_VIDEO)
+        applyIspFlipForDevice(mRecordingDevice);
+
+    return NO_ERROR;
+}
+
+status_t AtomISP::applyIspFlipForDevice(sp<V4L2VideoNode> device)
+{
+    LOG1("@%s image flip %x", __FUNCTION__, mIspFlip);
+    int currentValue, requestedValue;
+
+    if (device->getControl(V4L2_CID_VFLIP, &currentValue))
         return UNKNOWN_ERROR;
 
-    if (mMainDevice->setControl(V4L2_CID_HFLIP,
-        (sensorFlip & PlatformData::SENSOR_FLIP_H)?1:0, "horizontal image flip"))
+    requestedValue = (mIspFlip & ISP_FLIP_V) ? 1 : 0;
+    if (currentValue != requestedValue) {
+        LOG1("%s set ISP v flip to %d", __FUNCTION__, requestedValue);
+        if (device->setControl(V4L2_CID_VFLIP, requestedValue, "ISP vertical image flip"))
+            return UNKNOWN_ERROR;
+    }
+
+    if (device->getControl(V4L2_CID_HFLIP, &currentValue))
         return UNKNOWN_ERROR;
+
+    requestedValue = (mIspFlip & ISP_FLIP_H) ? 1 : 0;
+    if (currentValue != requestedValue) {
+        LOG1("%s set ISP h flip to %d", __FUNCTION__, requestedValue);
+        if (device->setControl(V4L2_CID_HFLIP, requestedValue, "ISP horizontal image flip"))
+            return UNKNOWN_ERROR;
+    }
 
     return NO_ERROR;
 }
@@ -3059,7 +3091,6 @@ int AtomISP::configureDevice(V4L2VideoNode *device, int deviceMode, AtomBuffer *
     if (device->mId == V4L2_MAIN_DEVICE ||
         device->mId == V4L2_RECORDING_DEVICE ||
         device->mId == V4L2_PREVIEW_DEVICE) {
-        applySensorFlip();
 
         // Set high-speed video recording frame rate
         // Configure ISP with higher fps and do the frame skipping for
@@ -3207,6 +3238,7 @@ status_t AtomISP::setSnapshotFrameFormat(AtomBuffer& formatDescriptor)
     mConfig.snapshot.size = frameSize(formatDescriptor.fourcc, bytesToPixels(formatDescriptor.fourcc, mConfig.snapshot.bpl), formatDescriptor.height);
     LOG1("width(%d), height(%d), bpl(%d), size(%d), fourcc(%s 0x%x)",
          formatDescriptor.width, formatDescriptor.height, mConfig.snapshot.bpl, mConfig.snapshot.size,v4l2Fmt2Str(formatDescriptor.fourcc), formatDescriptor.fourcc);
+
     return status;
 }
 

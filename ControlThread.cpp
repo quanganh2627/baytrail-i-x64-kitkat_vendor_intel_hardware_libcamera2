@@ -1986,6 +1986,24 @@ online_preview:
 
 }
 
+/**
+ * Get ISP flip configuration, this is for saved-mirror feature of front camera.
+ */
+int ControlThread::getNeededIspFlipType()
+{
+    if (!mSaveMirrored || PlatformData::cameraFacing(mCameraId) != CAMERA_FACING_FRONT) {
+        return ISP_FLIP_NONE;
+    }
+
+    int sensorOrientation = PlatformData::cameraOrientation(mCameraId);
+    int orientation = (sensorOrientation - mCurrentOrientation + 360) % 360;
+    if (orientation == 90 || orientation == 270) {
+        return ISP_FLIP_V;
+    } else {
+        return ISP_FLIP_H;
+    }
+}
+
 status_t ControlThread::startPreviewCore(bool videoMode)
 {
     LOG1("@%s", __FUNCTION__);
@@ -2341,6 +2359,9 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         if (gPowerLevel & CAMERA_POWERBREAKDOWN_DISABLE_PREVIEW) {
             mPreviewThread->setPreviewState(PreviewThread::STATE_ENABLED_HIDDEN);
         }
+
+        // initialize ISP mirror
+        mISP->setIspMirror(getNeededIspFlipType());
     } else {
         LOGE("Error starting ISP!");
         mPreviewThread->returnPreviewBuffers();
@@ -2903,14 +2924,10 @@ status_t ControlThread::handleMessageStartRecording()
         status = INVALID_OPERATION;
     }
 
-    // Store device orientation at the start of video recording
-    if (mSaveMirrored && (PlatformData::cameraFacing(mCameraId) == CAMERA_FACING_FRONT)) {
-        mVideoThread->setRecordingMirror(true, mCurrentOrientation, PlatformData::cameraOrientation(mCameraId));
-    }
-
     // update parameter for SDV
     sdvUpdateParams(mFullSizeSdv, true);
 
+    mISP->setIspMirror(getNeededIspFlipType());
     // call video thread to start recording
     mVideoThread->startRecording();
 
@@ -3331,10 +3348,8 @@ void ControlThread::fillPicMetaData(PictureThread::MetaData &metaData, bool flas
     metaData.ia3AMkNote = aaaMkNote;
     metaData.atomispMkNote = atomispMkNote;
 
-    // Request mirroring for snapshot and postview buffers (only for front camera)
-    // Do mirroring only in still capture mode
-    metaData.saveMirrored = mSaveMirrored && (PlatformData::cameraFacing(mCameraId) == CAMERA_FACING_FRONT) &&
-                            (mState != STATE_RECORDING);
+    // disable sw mirror since ISP supports it
+    metaData.saveMirrored = false;
     metaData.cameraOrientation = PlatformData::cameraOrientation(mCameraId);
     metaData.currentOrientation = mCurrentOrientation;
 }
@@ -3960,6 +3975,9 @@ status_t ControlThread::captureStillPic()
             displayPostview = postviewDisplayable;
         }
     }
+
+    // set isp mirror for capture
+    mISP->setIspMirror(getNeededIspFlipType());
 
     if (mState == STATE_CONTINUOUS_CAPTURE) {
         // initialize offline bracketing
@@ -9447,6 +9465,14 @@ status_t ControlThread::handleMessageSetOrientation(MessageOrientation *msg)
 {
     LOG1("@%s: orientation = %d", __FUNCTION__, msg->value);
     mCurrentOrientation = msg->value;
+
+    /**
+     * The ISP flip parameter needs a little time to take effect. Set ISP mirror early when
+     * phone orientation changed can speed up capture or recording start
+     */
+    if (mSaveMirrored && (PlatformData::cameraFacing(mCameraId) == CAMERA_FACING_FRONT))
+        mISP->setIspMirror(getNeededIspFlipType());
+
     return NO_ERROR;
 }
 
