@@ -391,7 +391,7 @@ static int ATOM_OpenCameraHardware(const hw_module_t* module, const char* name,
     }
 
     int cameraId = atoi(name);
-    if(cameraId < 0 || cameraId > 1 || atom_cam[cameraId].is_used)
+    if(cameraId < 0 || cameraId >= MAX_HAL_INSTANCES || atom_cam[cameraId].is_used)
         return -EINVAL;
     atom_cam[cameraId].camera_id = cameraId;
     CpfStore cpf(cameraId);
@@ -460,6 +460,11 @@ static int ATOM_GetNumberOfCameras(void)
     LogHelper::setDebugLevel();
 
     int nodes = PlatformData::numberOfCameras();
+
+    // Don't report fileInject device
+    if (PlatformData::supportsFileInject())
+        --nodes;
+
     if (nodes > MAX_CAMERAS)
         nodes = MAX_CAMERAS;
 
