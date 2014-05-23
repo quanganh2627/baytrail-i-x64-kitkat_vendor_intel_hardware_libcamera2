@@ -7746,13 +7746,23 @@ status_t ControlThread::handleMessageCommand(MessageCommand* msg)
         status = mAccManagerThread->returnBuffer(msg->arg1);
         break;
     case CAMERA_CMD_EXTISP_HDR:
+        if (msg->arg1 == EXTISP_FEAT_ON)
+            mHwcg.mIspCI->setShotMode(EXT_ISP_SHOT_MODE_RICH_TONE_HDR);
+        else
+            mHwcg.mIspCI->setShotMode(EXT_ISP_SHOT_MODE_AUTO); // todo restore previous HAL shot mode when that is implemented
+
         mHwcg.mIspCI->setHDR(msg->arg1);
-        mExtIsp.HDR = (msg->arg1 == 1);
+        mExtIsp.HDR = (msg->arg1 == EXTISP_FEAT_ON);
         status = NO_ERROR;
         break;
     case CAMERA_CMD_EXTISP_LLS:
+        if (msg->arg1 == EXTISP_FEAT_ON)
+            mHwcg.mIspCI->setShotMode(EXT_ISP_SHOT_MODE_NIGHT);
+        else
+            mHwcg.mIspCI->setShotMode(EXT_ISP_SHOT_MODE_AUTO); // todo restore previous HAL shot mode when that is implemented
+
         mHwcg.mIspCI->setLLS(msg->arg1);
-        mExtIsp.LLS = (msg->arg1 == 1);
+        mExtIsp.LLS = (msg->arg1 == EXTISP_FEAT_ON);
         status = NO_ERROR;
         break;
     case CAMERA_CMD_FRONT_SS:

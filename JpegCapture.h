@@ -120,6 +120,10 @@ const uint16_t NV12_META_MAX_FACE_COUNT = 16;
 const char NV12_META_START_MARKER[] =  "METADATA-START";
 const char NV12_META_END_MARKER[] = "METADATA-END";
 
+// Generic ON/OFF bits
+const int EXTISP_FEAT_ON = 1;
+const int EXTISP_FEAT_OFF = 0;
+
 // JPEG META addresses
 const size_t JPEG_META_FRAME_COUNT_ADDR = 0x13;
 
