@@ -136,7 +136,7 @@ status_t AtomCP::initializeHDR(unsigned width, unsigned height, ia_binary_data *
         return NO_MEMORY;
     }
 
-    ia_err = ia_cp_hdr_init(width, height, aiqb_data);
+    ia_err = ia_cp_hdr_init(width, height, aiqb_data, ia_cp_tgt_ipu);
     if (ia_err != ia_err_none) {
         LOGE("@%s: failed to allocate HDR intermediate buffers", __FUNCTION__);
         return NO_MEMORY;
