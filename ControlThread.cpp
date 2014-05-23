@@ -2278,8 +2278,15 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     }
 
     // For ext-isp, enable AF here, after the preview is running
-    if (PlatformData::supportsContinuousJpegCapture(mCameraId))
+    if (PlatformData::supportsContinuousJpegCapture(mCameraId)) {
+        // The initial parameters from app comes before startPreview()
+        // but M10MO expects the Af mode be set after preview is running,
+        // so need to do this here:
+        AfMode initialAfMode = m3AControls->getAfMode();
+        m3AControls->setAfMode(initialAfMode);
+        // TODO: Need to set AF window here
         m3AControls->setAfEnabled(true);
+    }
 
     if (videoMode) {
         /**
