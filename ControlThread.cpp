@@ -7665,6 +7665,7 @@ status_t ControlThread::handleMessageGetParameters(MessageGetParameters *msg)
 }
 status_t ControlThread::handleMessageCommand(MessageCommand* msg)
 {
+    LOG2("@%s, line:%d, cmd:%d, arg1:%d, arg2:%d", __FUNCTION__, __LINE__, msg->cmd_id, msg->arg1, msg->arg2);
     status_t status = BAD_VALUE;
     switch (msg->cmd_id)
     {
@@ -7747,10 +7748,12 @@ status_t ControlThread::handleMessageCommand(MessageCommand* msg)
     case CAMERA_CMD_EXTISP_HDR:
         mHwcg.mIspCI->setHDR(msg->arg1);
         mExtIsp.HDR = (msg->arg1 == 1);
+        status = NO_ERROR;
         break;
     case CAMERA_CMD_EXTISP_LLS:
         mHwcg.mIspCI->setLLS(msg->arg1);
         mExtIsp.LLS = (msg->arg1 == 1);
+        status = NO_ERROR;
         break;
     case CAMERA_CMD_FRONT_SS:
         mSmartStabilization = (msg->arg1 == 1);
