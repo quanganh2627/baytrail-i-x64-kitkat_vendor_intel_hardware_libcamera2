@@ -42,6 +42,7 @@ AAAThread::AAAThread(ICallbackAAA *aaaDone, UltraLowLight *ull, I3AControls *aaa
     ,mCameraId(cameraId)
     ,m3ARunning(false)
     ,mStartAF(false)
+    ,mWaitForScanStart(true)
     ,mStopAF(false)
     ,mPreviousCafStatus(CAM_AF_STATUS_IDLE)
     ,mPublicAeLock(false)
@@ -450,6 +451,8 @@ status_t AAAThread::handleAutoFocusExtIsp(const AtomBuffer *buff)
     if (mStartAF) {
         // Status for normal AF sequence:
         if (afStatus == CAM_AF_STATUS_BUSY) {
+            // metadata has indicated that AF is running:
+            mWaitForScanStart = false;
             LOG1("StillAFExtIsp BUSY    (continuing...)");
         } else if (afStatus == CAM_AF_STATUS_SUCCESS) {
             LOG1("StillAFExtIsp SUCCESS (stopping...)");
@@ -459,13 +462,20 @@ status_t AAAThread::handleAutoFocusExtIsp(const AtomBuffer *buff)
             stopStillAf = true;
         }
 
-        if (stopStillAf) {
+        if (mWaitForScanStart) {
+            // We are still waiting for the NV12 metadata to indicate that AF is actually running
+            // a new sequence on ext-ISP. We need to wait AF start, as metadata still indicates previous AF run
+            // status.
+            // Do nothing for this frame:
+            return NO_ERROR;
+        } else if (stopStillAf) {
             m3AControls->stopStillAf();
             // Stop the AF once we are done.
             m3AControls->setAfEnabled(false);
             mCallbacksThread->autoFocusDone(afStatus == CAM_AF_STATUS_SUCCESS);
             // Some AF status was reached, stop the sequence:
             mStartAF = false;
+            mWaitForScanStart = true;
         }
     }
 
@@ -520,6 +530,7 @@ status_t AAAThread::handleMessageCancelAutoFocus()
 
     if (mStartAF) {
         mStopAF = true;
+        mWaitForScanStart = true;
     }
 
     // For ext-isp, only stop the AF

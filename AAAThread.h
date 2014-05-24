@@ -219,7 +219,8 @@ private:
 
     int mCameraId;
     bool m3ARunning;
-    bool mStartAF;
+    bool mStartAF;              // Indicates that autoFocus() command was issued by the app.
+    bool mWaitForScanStart;     // Indicates the waiting for information of AF sequence start. (ATM for ext-ISP only).
     bool mStopAF;
     AfStatus mPreviousCafStatus;
     bool mPublicAeLock;
