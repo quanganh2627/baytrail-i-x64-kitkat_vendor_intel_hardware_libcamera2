@@ -588,7 +588,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     /**
      * DUAL VIDEO
      */
-    if(PlatformData::supportDualVideo())
+    if (PlatformData::supportDualVideo())
     {
         intel_params->set(IntelCameraParameters::KEY_DUAL_VIDEO_SUPPORTED,"true");
         intel_params->set(IntelCameraParameters::KEY_DUAL_VIDEO,"false");
@@ -606,7 +606,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     /**
      * Continuous shooting
      */
-    if(mSensorType == SENSOR_TYPE_RAW) {
+    if (mSensorType == SENSOR_TYPE_RAW) {
         intel_params->set(IntelCameraParameters::KEY_CONTINUOUS_SHOOTING_SUPPORTED, CameraParameters::TRUE);
         intel_params->set(IntelCameraParameters::KEY_CONTINUOUS_SHOOTING, CameraParameters::FALSE);
     } else {

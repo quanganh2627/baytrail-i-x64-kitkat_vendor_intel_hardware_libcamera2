@@ -94,7 +94,7 @@ const int MIN_PREVIEW_FPS = 11;
 // TODO: This value should be gotten from sensor dynamically, instead of hardcoding:
 const int MAX_PREVIEW_FPS = 30;
 
-// default snapshot buffer number for continuous shooting
+// default snapshot buffer count for continuous shooting
 const int DEFAULT_BUF_NUM_FOR_CONT_SHOOTING = 4;
 
 // number pictures for smart stabilization capture
@@ -4246,7 +4246,7 @@ status_t ControlThread::prepareContinuousShooting()
     status_t status = NO_ERROR;
 
     if (mState != STATE_CONTINUOUS_CAPTURE || !mContShootingEnabled) {
-        LOGE("Invalid calling for preparing continuous capture in stat:%d enabled:%d",
+        LOGE("Invalid calling for preparing continuous capture in state:%d enabled:%d",
                 mState, mContShootingEnabled);
         return INVALID_OPERATION;
     }
@@ -4262,9 +4262,9 @@ status_t ControlThread::prepareContinuousShooting()
 
 /**
  * This method is used to restore all snapshot buffers forcibly according to allocated list
- * It can only be used after cancelPictureThread(). Not recommanded to call it otherwhere
+ * It can only be used after cancelPictureThread(). Not recommanded to call it elsewhere
  *
- * CallbacksThread::flushPictures is not reliable to recycal all snapshot buffers because its
+ * CallbacksThread::flushPictures is not reliable to recycle all snapshot buffers because its
  * FLUSH cmd is asynchronous. mBuffers in it would be neglected just due to this.
  */
 void ControlThread::forceRestoreSnapshotPostviewBuffers()
@@ -4290,7 +4290,7 @@ void ControlThread::forceRestoreSnapshotPostviewBuffers()
 }
 
 /**
- * Prepare for continuous shooting
+ * Finalize continuous shooting
  */
 status_t ControlThread::finalizeContinuousShooting()
 {
@@ -4333,7 +4333,7 @@ status_t ControlThread::captureContinuousShooting(bool clientRequest = false)
             return NO_ERROR;
     }
 
-    if (holdOnContinuousShooting() > 2) {
+    if (holdOnContinuousShooting()) {
         LOG1("@%s enough buffer :%d ready", __FUNCTION__, mContinuousPicsReady);
         return NO_ERROR;
     }
