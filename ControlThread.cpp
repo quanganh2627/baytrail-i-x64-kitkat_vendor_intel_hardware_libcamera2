@@ -1809,7 +1809,7 @@ ControlThread::ShootingMode ControlThread::selectShootingMode()
             if (isBurstRunning())
                 ret = SHOOTING_MODE_ZSL_BURST;
             else if (mContShootingState != CONT_SHOOTING_NONE) {
-                ret = SHOOTING_MODE_CONTINUOUS;
+                ret = SHOOTING_MODE_CONTINUOUS_SHOOTING;
                 break;
             }
             else if (mSmartStabilization) {
@@ -3094,8 +3094,8 @@ status_t ControlThread::handleMessageTakePicture() {
             status = captureStillPic();
             break;
 
-        case SHOOTING_MODE_CONTINUOUS:
-            status = captureContinuous(true);
+        case SHOOTING_MODE_CONTINUOUS_SHOOTING:
+            status = captureContinuousShooting(true);
             break;
 
         case SHOOTING_MODE_ZSL_BURST:
@@ -4240,7 +4240,7 @@ bool ControlThread::compressedFrameQueueFull()
 /**
  * Prepare for continuous shooting
  */
-status_t ControlThread::prepareContinuous()
+status_t ControlThread::prepareContinuousShooting()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
@@ -4292,7 +4292,7 @@ void ControlThread::forceRestoreSnapshotPostviewBuffers()
 /**
  * Prepare for continuous shooting
  */
-status_t ControlThread::finalizeContinuous()
+status_t ControlThread::finalizeContinuousShooting()
 {
     mContShootingState = CONT_SHOOTING_NONE;
     stopOfflineCapture();
@@ -4302,7 +4302,7 @@ status_t ControlThread::finalizeContinuous()
     return NO_ERROR;
 }
 
-bool ControlThread::holdOnContinuous()
+bool ControlThread::holdOnContinuousShooting()
 {
     static const int MAX_NUM_PICTRUE_WAITING = 2;
     return mContinuousPicsReady >= MAX_NUM_PICTRUE_WAITING;
@@ -4311,7 +4311,7 @@ bool ControlThread::holdOnContinuous()
 /**
  * Starts continuous shooting.
  */
-status_t ControlThread::captureContinuous(bool clientRequest = false)
+status_t ControlThread::captureContinuousShooting(bool clientRequest = false)
 {
     LOG1("@%s client request:%d ", __FUNCTION__, clientRequest);
     status_t status = NO_ERROR;
@@ -4333,7 +4333,7 @@ status_t ControlThread::captureContinuous(bool clientRequest = false)
             return NO_ERROR;
     }
 
-    if (holdOnContinuous() > 2) {
+    if (holdOnContinuousShooting() > 2) {
         LOG1("@%s enough buffer :%d ready", __FUNCTION__, mContinuousPicsReady);
         return NO_ERROR;
     }
@@ -7984,10 +7984,10 @@ status_t ControlThread::handleMessageCommand(MessageCommand* msg)
         status = stopFaceDetection();
         break;
     case CAMERA_CMD_START_CONTINUOUS_SHOOTING:
-        status = prepareContinuous();
+        status = prepareContinuousShooting();
         break;
     case CAMERA_CMD_STOP_CONTINUOUS_SHOOTING:
-        status = finalizeContinuous();
+        status = finalizeContinuousShooting();
         break;
     case CAMERA_CMD_START_SCENE_DETECTION:
         status = startSmartSceneDetection();
@@ -9155,9 +9155,9 @@ bool ControlThread::threadLoop()
                 // make sure ISP has data before we ask for some
                 if (burstMoreCapturesNeeded()) {
                     status = captureFixedBurstPic();
-                } else if (mContShootingState == CONT_SHOOTING_STARTED && !holdOnContinuous()) {
+                } else if (mContShootingState == CONT_SHOOTING_STARTED && !holdOnContinuousShooting()) {
                     LOG1("@%s continuous shooting for next", __FUNCTION__);
-                    captureContinuous(false);
+                    captureContinuousShooting(false);
                 } else
                     status = waitForAndExecuteMessage();
             }

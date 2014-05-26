@@ -367,7 +367,7 @@ private:
         SHOOTING_MODE_ULL,          /*!< Ultra LowLight */
         SHOOTING_MODE_JPEG,         /*!< Continuous JPEG capture */
         SHOOTING_MODE_EXTISP_HDR_LLS, /*!< ext-isp HDR/LLS capture */
-        SHOOTING_MODE_CONTINUOUS,   /*!< Continuous shooting */
+        SHOOTING_MODE_CONTINUOUS_SHOOTING,   /*!< Continuous shooting */
         SHOOTING_MODE_SMARTSTABILIZATION, /*!< Smart Stabilization capture */
     };
 
@@ -693,10 +693,10 @@ private:
     status_t stopJpegPicContinuousShooting();
 
     // for continuous shooting
-    bool     holdOnContinuous();
-    status_t prepareContinuous();
-    status_t captureContinuous(bool clientRequest);
-    status_t finalizeContinuous();
+    bool     holdOnContinuousShooting();
+    status_t prepareContinuousShooting();
+    status_t captureContinuousShooting(bool clientRequest);
+    status_t finalizeContinuousShooting();
     // snapshot during video functions
     status_t initSdv(bool offline);
     status_t deinitSdv(bool offline);
