@@ -4245,6 +4245,9 @@ status_t ControlThread::prepareContinuousShooting()
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
+    if (PlatformData::supportsContinuousJpegCapture(mCameraId))
+        return startJpegPicContinuousShooting();
+
     if (mState != STATE_CONTINUOUS_CAPTURE || !mContShootingEnabled) {
         LOGE("Invalid calling for preparing continuous capture in state:%d enabled:%d",
                 mState, mContShootingEnabled);
@@ -4294,6 +4297,9 @@ void ControlThread::forceRestoreSnapshotPostviewBuffers()
  */
 status_t ControlThread::finalizeContinuousShooting()
 {
+    if (PlatformData::supportsContinuousJpegCapture(mCameraId))
+        return stopJpegPicContinuousShooting();
+
     mContShootingState = CONT_SHOOTING_NONE;
     stopOfflineCapture();
     cancelPictureThread();
@@ -4702,6 +4708,12 @@ status_t ControlThread::captureExtIspHDRLLSPic()
 status_t ControlThread::captureJpegPic()
 {
     LOG1("@%s: ", __FUNCTION__);
+
+    // in continuous mode we already take pictures as fast we can
+    if (mJpegContinuousShootingRunning) {
+        LOGW("TakePicture called during continuos shooting.");
+        return NO_ERROR;
+    }
 
     // Configure PictureThread, inform of the picture and thumbnail resolutions
     mPictureThread->initialize(mParameters, mHwcg.mIspCI->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
@@ -5427,7 +5439,8 @@ status_t ControlThread::processParamContinuousShooting(const CameraParameters *o
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams, IntelCameraParameters::KEY_CONTINUOUS_SHOOTING);
     if (!newVal.isEmpty()) {
         mContShootingEnabled = (newVal == CameraParameters::TRUE);
-        restartNeeded = true;
+        if (!PlatformData::supportsContinuousJpegCapture(mCameraId))
+            restartNeeded = true;
     }
 
     return status;
