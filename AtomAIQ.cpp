@@ -930,6 +930,7 @@ status_t AtomAIQ::startStillAf()
                 // fixes cross-dependencies for container
                 mPreAssistLightAeResults.results.weight_grid =  &mPreAssistLightAeResults.weight_grid;
                 mPreAssistLightAeResults.results.exposures = mPreAssistLightAeResults.exposure_result_array;
+                mPreAssistLightAeResults.results.exposures[0].exposure_index = 0;
                 mPreAssistLightAeResults.results.exposures[0].exposure =  &mPreAssistLightAeResults.exposures[0];
                 mPreAssistLightAeResults.results.exposures[0].sensor_exposure =  &mPreAssistLightAeResults.sensor_exposures[0];
                 mPreAssistLightAeResults.results.flash =  &mPreAssistLightAeResults.flash;
@@ -1628,6 +1629,7 @@ ia_aiq_ae_results* AtomAIQ::peekAeStoredResults(unsigned int offset)
     // restore cross-dependencies
     ae_results->weight_grid = &stored_results_element->weight_grid;
     ae_results->exposures = stored_results_element->exposure_result_array;
+    ae_results->exposures[0].exposure_index = 0;
     ae_results->exposures[0].exposure = &stored_results_element->exposures[0];
     ae_results->exposures[0].sensor_exposure = &stored_results_element->sensor_exposures[0];
     ae_results->flash = &stored_results_element->flash;
@@ -1666,6 +1668,7 @@ ia_aiq_ae_results* AtomAIQ::pickAeFeedbackResults()
         memcpy(feedback_results, stored_results, sizeof(ia_aiq_ae_results));
         feedback_results->weight_grid = &mAeState.feedback_results.weight_grid;
         feedback_results->exposures = mAeState.feedback_results.exposure_result_array;
+        feedback_results->exposures[0].exposure_index = 0;
         feedback_results->exposures[0].exposure = &mAeState.feedback_results.exposures[0];
         feedback_results->exposures[0].sensor_exposure = &mAeState.feedback_results.sensor_exposures[0];
         feedback_results->flash = &mAeState.feedback_results.flash;
@@ -1854,6 +1857,7 @@ status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct)
         statistics_input_parameters.num_af_grids = NUM_EXPOSURES;
 
         statistics_input_parameters.frame_timestamp = TIMEVAL2USECS(frame_timestamp_struct);
+        statistics_input_parameters.frame_id = statistics_input_parameters.frame_timestamp + 1;
 
         statistics_input_parameters.frame_af_parameters = NULL;
         statistics_input_parameters.external_histograms = NULL;

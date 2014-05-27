@@ -105,8 +105,10 @@ status_t AtomCP::composeHDR(const CiUserBuffer& inputBuf, const CiUserBuffer& ou
 
     LOG1("@%s: inputBuf=%p, outputBuf=%p", __FUNCTION__, &inputBuf, &outputBuf);
 
-    mIntelHdrCfg->gbce.ygamma_lut_size    = gbce_results.ygamma_lut_size;
-    mIntelHdrCfg->gbce.ygamma_lut         = gbce_results.ygamma_lut;
+    mIntelHdrCfg->gbce.gamma_lut_size    = gbce_results.gamma_lut_size;
+    mIntelHdrCfg->gbce.r_gamma_lut       = gbce_results.r_gamma_lut;
+    mIntelHdrCfg->gbce.g_gamma_lut       = gbce_results.g_gamma_lut;
+    mIntelHdrCfg->gbce.b_gamma_lut       = gbce_results.b_gamma_lut;
     mIntelHdrCfg->gbce.ctc_gains_lut_size = gbce_results.ctc_gains_lut_size;
     mIntelHdrCfg->gbce.ctc_gains_lut      = gbce_results.ctc_gains_lut;
 
