@@ -4181,7 +4181,6 @@ status_t AtomISP::getPreviewFrame(AtomBuffer *buff)
         return BAD_INDEX;
     }
 
-    LOG2("Device: %d. Grabbed frame of size: %d", mPreviewDevice->mId, bufInfo.vbuffer.bytesused);
     mPreviewBuffers.editItemAt(index).id = index;
     mPreviewBuffers.editItemAt(index).expId = (bufInfo.vbuffer.reserved >> 16) & 0xFFFF;
     mPreviewBuffers.editItemAt(index).frameCounter = mPreviewDevice->getFrameCount();
@@ -4194,6 +4193,9 @@ status_t AtomISP::getPreviewFrame(AtomBuffer *buff)
     *buff = mPreviewBuffers[index];
 
     mNumPreviewBuffersQueued--;
+
+    LOG2("Device: %d. Grabbed frame of size: %d exp id:%d",
+            mPreviewDevice->mId, bufInfo.vbuffer.bytesused, buff->expId);
 
     dumpPreviewFrame(index);
 
@@ -4685,8 +4687,8 @@ nopostview:
 
     dumpSnapshot(snapshotIndex, postviewIndex);
 
-    LOG1("@%s buffer id:%d frameCounter:%d frameSequenceNbr:%d", __FUNCTION__,
-            snapshotBuf->id, snapshotBuf->frameCounter, snapshotBuf->frameSequenceNbr);
+    LOG1("@%s buffer id:%d frameCounter:%d frameSequenceNbr:%d exp id:%d", __FUNCTION__,
+            snapshotBuf->id, snapshotBuf->frameCounter, snapshotBuf->frameSequenceNbr, snapshotBuf->expId);
     return NO_ERROR;
 }
 

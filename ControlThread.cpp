@@ -3378,25 +3378,18 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
 
 void ControlThread::recycleUnusedBufferInISP()
 {
-    AtomBuffer buf;
     LOGI("@%s buffers in ISP %d,%d", __FUNCTION__, mSnapshotBuffersInISP.size(), mPostviewBuffersInISP.size());
     if (mSnapshotBuffersInISP.size() != mPostviewBuffersInISP.size()) {
         LOGW("@%s buffer number snapshot(%d) != postview(%d), find the bug", __FUNCTION__,
                 mSnapshotBuffersInISP.size(), mPostviewBuffersInISP.size());
     }
 
-    // get all unused buffers back.
+    AtomBuffer snapshotBuffer, postviewBuffer;
     while (mSnapshotBuffersInISP.size()) {
-        buf = mSnapshotBuffersInISP.top();
-        mAvailableSnapshotBuffers.push(buf);
-        mSnapshotBuffersInISP.pop();
-        LOG1("%s unused snapshot buffer %p back to available queue", __FUNCTION__, buf.dataPtr);
-    }
-    while (mPostviewBuffersInISP.size()) {
-        buf = mPostviewBuffersInISP.top();
-        mAvailablePostviewBuffers.push(buf);
-        mPostviewBuffersInISP.pop();
-        LOG1("%s unused postview buffer %p back to available queue", __FUNCTION__, buf.dataPtr);
+        getSnapshot(&snapshotBuffer, &postviewBuffer);
+        mAvailableSnapshotBuffers.push(snapshotBuffer);
+        mAvailablePostviewBuffers.push(postviewBuffer);
+        LOG1("%s snapshot buffer %p back to available queue", __FUNCTION__, snapshotBuffer.dataPtr);
     }
 }
 
@@ -3405,9 +3398,9 @@ void ControlThread::stopOfflineCapture()
     LOG1("@%s: ", __FUNCTION__);
     if ((mState == STATE_CONTINUOUS_CAPTURE || mState == STATE_RECORDING) &&
             mISP->isOfflineCaptureRunning()) {
-        mISP->stopOfflineCapture();
         resetOfflineCaptureControl();
         recycleUnusedBufferInISP();
+        mISP->stopOfflineCapture();
     }
 }
 
