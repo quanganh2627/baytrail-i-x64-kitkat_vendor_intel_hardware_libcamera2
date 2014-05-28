@@ -1121,12 +1121,14 @@ protected:
             softSharpness = 0;
             hardSharpness = 0;
             //FlashMode
+#if 0
             supportedFlashModes.appendFormat("%s,%s,%s,%s"
                 ,CameraParameters::FLASH_MODE_AUTO
                 ,CameraParameters::FLASH_MODE_OFF
                 ,CameraParameters::FLASH_MODE_ON
                 ,CameraParameters::FLASH_MODE_TORCH);
             defaultFlashMode.appendFormat("%s", CameraParameters::FLASH_MODE_OFF);
+#endif
             //Iso
             supportedIso = "iso-auto,iso-100,iso-200,iso-400,iso-800";
             defaultIso = "iso-auto";
