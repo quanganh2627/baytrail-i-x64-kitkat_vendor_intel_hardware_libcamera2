@@ -329,8 +329,8 @@ FlashMode AtomExtIsp3A::getAeFlashMode()
             mode = CAM_AE_FLASH_MODE_TORCH;
             break;
         default:
-            LOGW("Unsupported Flash mode (%d), using OFF", mode);
-            mode = CAM_AE_FLASH_MODE_OFF;
+            LOGW("Unsupported Flash mode got (%d), using NOT_SET", mDrvFlashMode);
+            mode = CAM_AE_FLASH_MODE_NOT_SET;
             break;
     }
 
