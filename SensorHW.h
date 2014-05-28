@@ -40,7 +40,9 @@ class SensorHW
 
 public:
     SensorHW(int cameraId);
-    ~SensorHW();
+    virtual ~SensorHW();
+    virtual void reset(int cameraId);
+
     status_t selectActiveSensor(sp<V4L2VideoNode> &device);
     status_t prepare(bool preQueuedExposure);
     status_t start();

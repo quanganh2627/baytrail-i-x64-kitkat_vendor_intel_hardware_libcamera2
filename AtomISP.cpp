@@ -266,12 +266,19 @@ status_t AtomISP::init()
 
     status_t status = NO_ERROR;
 
-    if (PlatformData::supportsContinuousJpegCapture(mCameraId)) {
-        // This is for external ISP...
-        mSensorHW = new SensorHWExtIsp(mCameraId);
+    if (mSensorHW != NULL) {
+        // because sensorHW pointer is give out reset it instead making
+        // new instance
+        LOGD("@%s: SensorHW already exists, use old one.", __FUNCTION__);
+        mSensorHW->reset(mCameraId);
     } else {
-        // "Normal" sensor HW:
-        mSensorHW = new SensorHW(mCameraId);
+        if (PlatformData::supportsContinuousJpegCapture(mCameraId)) {
+            // This is for external ISP...
+            mSensorHW = new SensorHWExtIsp(mCameraId);
+        } else {
+            // "Normal" sensor HW:
+            mSensorHW = new SensorHW(mCameraId);
+        }
     }
 
     if (mSensorHW == NULL) {

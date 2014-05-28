@@ -51,13 +51,19 @@ SensorHW::SensorHW(int cameraId):
     mExposureHistory(NULL),
     mGroupId(0)
 {
-    CLEAR(mCameraInput);
-    CLEAR(mInitialModeData);
+    // note init values are set also inside reset()
+    reset(cameraId);
     sprintf(mIspSubDevName, "%s%d", ISP_SUBDEV_NAME_PREFIX, mGroupId);
 }
 
 SensorHW::~SensorHW()
 {
+    reset(mCameraId);
+}
+
+void SensorHW::reset(int cameraId)
+{
+    LOG1("@%s", __FUNCTION__);
     mSensorSubdevice.clear();
     mIspSubdevice.clear();
     mSyncEventDevice.clear();
@@ -69,6 +75,20 @@ SensorHW::~SensorHW()
         delete mExposureHistory;
         mExposureHistory = NULL;
     }
+
+    mSensorType = SENSOR_TYPE_NONE;
+    mCameraId = cameraId;
+    mStarted = false;
+    mInitialModeDataValid = false;
+    mRawBayerFormat = V4L2_PIX_FMT_SBGGR10;
+    mFrameSyncSource = FRAME_SYNC_NA;
+    mCssVersion = 0;
+    mActiveItemIndex = 0;
+    mDirectExposureIo = true;
+    mPostponePrequeued = false;
+    mExposureLag = 0;
+    CLEAR(mCameraInput);
+    CLEAR(mInitialModeData);
 }
 
 int SensorHW::getCurrentCameraId(void)

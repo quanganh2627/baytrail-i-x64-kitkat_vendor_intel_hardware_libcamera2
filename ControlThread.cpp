@@ -572,6 +572,12 @@ void ControlThread::deinit()
         mCallbacksThread.clear();
     }
 
+    // clean local HWControlGroup
+    mHwcg.mIspCI = NULL;
+    mHwcg.mSensorCI = NULL;
+    mHwcg.mFlashCI = NULL;
+    mHwcg.mLensCI = NULL;
+
     if (mISP != NULL) {
         mISP->deInitDevice();
         delete mISP;
