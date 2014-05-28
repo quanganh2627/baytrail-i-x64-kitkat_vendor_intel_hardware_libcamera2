@@ -609,6 +609,7 @@ private:
     int dumpSnapshot(int snapshotIndex, int postviewIndex);
     int dumpRawImageFlush(void);
     bool isDumpRawImageReady(void);
+    bool isAllowedToSetFps(V4L2VideoNode *device, int deviceMode) const;
 
     bool mIsFileInject;
     struct FileInject {

@@ -930,6 +930,19 @@ status_t AtomISP::getIspParameters(struct atomisp_parm *isp_param) const
     return status;
 }
 
+//Set device fps base on device mode and platform
+bool AtomISP::isAllowedToSetFps(V4L2VideoNode *device, int deviceMode) const
+{
+    if (device->mId == V4L2_RECORDING_DEVICE && deviceMode == CI_MODE_VIDEO) {
+        return true;
+    } else if (mHALVideoStabilization &&
+            deviceMode == CI_MODE_PREVIEW &&
+            device->mId == V4L2_PREVIEW_DEVICE) {
+        return true;
+    } else
+        return false;
+}
+
 status_t AtomISP::applySensorFlip(void)
 {
     int sensorFlip = PlatformData::sensorFlipping(mCameraId);
@@ -2854,34 +2867,33 @@ int AtomISP::configureDevice(V4L2VideoNode *device, int deviceMode, AtomBuffer *
         // Configure ISP with higher fps and do the frame skipping for
         // the other stream if needed.
         int fps = MAX(mConfig.preview_fps, mConfig.recording_fps);
-        if (deviceMode == CI_MODE_VIDEO && fps > DEFAULT_RECORDING_FPS) {
-            if (device->mId == V4L2_RECORDING_DEVICE) {
-                status_t status;
-                struct v4l2_streamparm parm;
-                parm.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-                parm.parm.capture.capturemode = CI_MODE_NONE;
-                parm.parm.capture.timeperframe.numerator = 1;
-                parm.parm.capture.timeperframe.denominator = fps;
-                LOG1("setting fps: %d", fps);
-                status = mMainDevice->setParameter(&parm);
-                if (status != NO_ERROR) {
-                    LOGE("error setting fps: %d", fps);
-                    return -1;
-                }
-                // Update the configuration with fps from the driver
-                if (parm.parm.capture.timeperframe.denominator && parm.parm.capture.timeperframe.numerator) {
-                    mConfig.fps = (float) parm.parm.capture.timeperframe.denominator / parm.parm.capture.timeperframe.numerator;
-                    LOG1("Sensor fps: %.2f", mConfig.fps);
-                } else {
-                    LOGW("Sensor driver returned invalid frame rate, using default");
-                    mConfig.fps = DEFAULT_SENSOR_FPS;
-                }
+        if (fps > DEFAULT_RECORDING_FPS && isAllowedToSetFps(device, deviceMode)) {
+
+            status_t status;
+            struct v4l2_streamparm parm;
+            parm.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+            parm.parm.capture.capturemode = CI_MODE_NONE;
+            parm.parm.capture.timeperframe.numerator = 1;
+            parm.parm.capture.timeperframe.denominator = fps;
+            LOG1("setting fps: %d", fps);
+            status = mMainDevice->setParameter(&parm);
+            if (status != NO_ERROR) {
+                LOGE("error setting fps: %d", fps);
+                return -1;
+            }
+            // Update the configuration with fps from the driver
+            if (parm.parm.capture.timeperframe.denominator && parm.parm.capture.timeperframe.numerator) {
+                mConfig.fps = (float) parm.parm.capture.timeperframe.denominator / parm.parm.capture.timeperframe.numerator;
+                LOG1("Sensor fps: %.2f", mConfig.fps);
+            } else {
+                LOGW("Sensor driver returned invalid frame rate, using default");
+                mConfig.fps = DEFAULT_SENSOR_FPS;
             }
         } else {
             ret = device->getFramerate(&mConfig.fps, w, h, fourcc);
             if (ret != NO_ERROR) {
-            /*Error handler: if driver does not support FPS achieving,
-                           just give the default value.*/
+                /*Error handler: if driver does not support FPS achieving,
+                  just give the default value.*/
                 mConfig.fps = DEFAULT_SENSOR_FPS;
                 ret = 0;
             }
