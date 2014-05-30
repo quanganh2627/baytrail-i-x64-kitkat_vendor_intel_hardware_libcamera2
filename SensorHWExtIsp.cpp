@@ -45,7 +45,7 @@ int SensorHWExtIsp::setAfMode(int mode)
         return -1;
 
     int ret = -1;
-    ret = extIspIoctl(EXT_ISP_FOCUS_MODE_CTRL, mode);
+    ret = extIspIoctl(EXT_ISP_CID_FOCUS_MODE, mode);
     return ret;
 }
 
@@ -57,7 +57,7 @@ int SensorHWExtIsp::getAfMode(int *mode)
         return -1;
 
     int data = -1;
-    int retval =  extIspIoctl(EXT_ISP_GET_AF_MODE_CTRL, data);
+    int retval =  extIspIoctl(EXT_ISP_CID_GET_AF_MODE, data);
     *mode = data;
 
     return retval;
@@ -73,7 +73,7 @@ int SensorHWExtIsp::setAfEnabled(bool enable)
     // start running the AF
     int data = enable ? EXT_ISP_FOCUS_SEARCH : EXT_ISP_FOCUS_STOP;
 
-    int retval = extIspIoctl(EXT_ISP_FOCUS_EXECUTION_CTRL, data);
+    int retval = extIspIoctl(EXT_ISP_CID_FOCUS_EXECUTION, data);
     return retval;
 }
 
@@ -96,8 +96,8 @@ int SensorHWExtIsp::setAfWindows(const CameraWindow *windows, int numWindows)
     // left corner of the touch area. Thus, using only that point here.
     int x = windows[0].x_left;
     int y = windows[0].y_top;
-    retX = extIspIoctl(EXT_ISP_TOUCH_POSX_CTRL, x);
-    retY = extIspIoctl(EXT_ISP_TOUCH_POSY_CTRL, y);
+    retX = extIspIoctl(EXT_ISP_CID_TOUCH_POSX, x);
+    retY = extIspIoctl(EXT_ISP_CID_TOUCH_POSY, y);
 
     if (retX != NO_ERROR || retY != NO_ERROR) {
         LOGW("Failed setting AF windows, retvals %d, %d", retX, retY);
@@ -115,7 +115,7 @@ int SensorHWExtIsp::setAeFlashMode(int mode)
     // use our custom control for external ISP, as standard
     // V4L2 value range lacks "auto" mode.
     // TODO: can we use existing V4L2 std control instead? Would not need this hack then...
-    ret = extIspIoctl(EXT_ISP_FLASH_MODE_CTRL, mode);
+    ret = extIspIoctl(EXT_ISP_CID_FLASH_MODE, mode);
     if (ret != 0) {
         LOGW("Failed setting flash mode, ret: %d", ret);
         return UNKNOWN_ERROR;

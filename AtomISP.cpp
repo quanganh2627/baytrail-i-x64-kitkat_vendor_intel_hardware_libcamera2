@@ -3524,7 +3524,7 @@ status_t AtomISP::setHDR(int mode)
     LOG1("@%s: %d", __FUNCTION__, mode);
     struct atomisp_ext_isp_ctrl m10mo_ctrl;
     CLEAR(m10mo_ctrl);
-    m10mo_ctrl.id = EXT_ISP_HDR_CAPTURE_CTRL;
+    m10mo_ctrl.id = EXT_ISP_CID_CAPTURE_HDR;
     m10mo_ctrl.data = mode;
     status_t status = mMainDevice->xioctl(ATOMISP_IOC_EXT_ISP_CTRL, &m10mo_ctrl);
 
@@ -3536,7 +3536,7 @@ status_t AtomISP::setLLS(int mode)
     LOG1("@%s: %d", __FUNCTION__, mode);
     struct atomisp_ext_isp_ctrl m10mo_ctrl;
     CLEAR(m10mo_ctrl);
-    m10mo_ctrl.id = EXT_ISP_LLS_CAPTURE_CTRL;
+    m10mo_ctrl.id = EXT_ISP_CID_CAPTURE_LLS;
     m10mo_ctrl.data = mode;
     status_t status = mMainDevice->xioctl(ATOMISP_IOC_EXT_ISP_CTRL, &m10mo_ctrl);
 
@@ -3628,7 +3628,7 @@ int AtomISP::atomisp_set_zoom (int zoom)
     if (PlatformData::supportsContinuousJpegCapture(mCameraId)) {
         struct atomisp_ext_isp_ctrl m10mo_ctrl;
         CLEAR(m10mo_ctrl);
-        m10mo_ctrl.id = EXT_ISP_ZOOM_CTRL;
+        m10mo_ctrl.id = EXT_ISP_CID_ZOOM;
         m10mo_ctrl.data = mZoomDriveTable[zoom];
         mMainDevice->xioctl(ATOMISP_IOC_EXT_ISP_CTRL, &m10mo_ctrl);
     } else if (!mHALZSLEnabled && !mHALSDVEnabled) { // fix for driver zoom bug, prevent setting in HAL ZSL mode
@@ -4790,7 +4790,7 @@ status_t AtomISP::startJpegModeContinuousShooting()
 
     struct atomisp_ext_isp_ctrl m10mo_ctrl;
     CLEAR(m10mo_ctrl);
-    m10mo_ctrl.id = EXT_ISP_BURST_CAPTURE_CTRL;
+    m10mo_ctrl.id = EXT_ISP_CID_CAPTURE_BURST;
     m10mo_ctrl.data = EXT_ISP_BURST_CAPTURE_CTRL_START;
     return mMainDevice->xioctl(ATOMISP_IOC_EXT_ISP_CTRL, &m10mo_ctrl);
 }
@@ -4806,7 +4806,7 @@ status_t AtomISP::stopJpegModeContinuousShooting()
 
     struct atomisp_ext_isp_ctrl m10mo_ctrl;
     CLEAR(m10mo_ctrl);
-    m10mo_ctrl.id = EXT_ISP_BURST_CAPTURE_CTRL;
+    m10mo_ctrl.id = EXT_ISP_CID_CAPTURE_BURST;
     m10mo_ctrl.data = EXT_ISP_BURST_CAPTURE_CTRL_STOP;
     status_t status = mMainDevice->xioctl(ATOMISP_IOC_EXT_ISP_CTRL, &m10mo_ctrl);
 
