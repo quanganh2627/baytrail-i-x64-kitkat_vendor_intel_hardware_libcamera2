@@ -1701,7 +1701,17 @@ void PreviewThread::copyPreviewBuffer(AtomBuffer* src, AtomBuffer* dst)
         LOGE("@%s: 270 case not handled", __FUNCTION__);
         break;
     case 0:
-        memcpy((char *)dst->dataPtr, (const char*)src->dataPtr, dst->size);
+        if (src->bpl == dst->bpl){
+            memcpy((char *)dst->dataPtr, (const char*)src->dataPtr, dst->size);
+        }
+        else{
+            int rows = src->size / src->bpl;
+            for (int i=0; i<rows; i++){
+                char* src_ptr = (char*)src->dataPtr + i*src->bpl;
+                char* dst_ptr = (char*)dst->dataPtr + i*dst->bpl;
+                memcpy(dst_ptr, src_ptr, src->width);
+            }
+        }
         break;
     }
 
