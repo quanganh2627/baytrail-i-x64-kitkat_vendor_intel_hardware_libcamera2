@@ -2068,7 +2068,13 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     if (!cb_fourcc) {
         LOGW("Unsupported preview callback fourcc : %s", cb_fourcc_s ? cb_fourcc_s : "not set");
     }
-    mParameters.getPreviewSize(&width, &height);
+
+    if (videoMode && mISP->getRecordingFramerate() == 60) {
+        // 60 fps recording only supports VF size equaling recording size, so
+        // take the preview width and height from video size during that use case
+        mParameters.getVideoSize(&width, &height);
+    } else
+        mParameters.getPreviewSize(&width, &height);
 
     // Load any ISP extensions before ISP is started
     // workaround for FR during HAL ZSL - do not use extensions
