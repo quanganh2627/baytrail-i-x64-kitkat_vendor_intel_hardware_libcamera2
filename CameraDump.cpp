@@ -280,8 +280,8 @@ int CameraDump::dumpImage2File(camera_delay_dumpImage_T *aDumpImage, const char 
     }
     else
     {
-        snprintf(filename, sizeof(filename), "dump_%d_%d_%03u_%s", width,
-                 height, count, name);
+        snprintf(filename, sizeof(filename), "dump_%d_%d_s%d_%03u_%s", width,
+                 height, bpl, count, name);
         strncat(rawdpp, filename, strlen(filename));
     }
 
