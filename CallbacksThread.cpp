@@ -198,6 +198,16 @@ status_t CallbacksThread::lowBattery()
     return mMessageQueue.send(&msg);
 }
 
+status_t CallbacksThread::sendFrameId(int id)
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.data.frameId.id = id;
+    msg.id = MESSAGE_ID_SEND_FRAME_ID;
+
+    return mMessageQueue.send(&msg);
+}
+
 status_t CallbacksThread::rawFrameDone(AtomBuffer* snapshotBuf)
 {
     LOG1("@%s", __FUNCTION__);
@@ -666,6 +676,13 @@ status_t CallbacksThread::handleMessageLowBattery()
     return NO_ERROR;
 }
 
+status_t CallbacksThread::handleMessageSendFrameId(MessageFrameId *msg)
+{
+    LOG1("@%s Done",__FUNCTION__);
+    mCallbacks->sendFrameId(msg->id);
+    return NO_ERROR;
+}
+
 status_t CallbacksThread::handleMessageUllJpegDataRequest(MessageULLSnapshot *msg)
 {
     LOG1("@%s Done",__FUNCTION__);
@@ -1027,6 +1044,10 @@ status_t CallbacksThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_ACC_METADATA_BUFFER:
             status = handleMessageAccManagerMetadataBuffer(&msg.data.accManager);
+            break;
+
+        case MESSAGE_ID_SEND_FRAME_ID:
+            status = handleMessageSendFrameId(&msg.data.frameId);
             break;
 
         default:

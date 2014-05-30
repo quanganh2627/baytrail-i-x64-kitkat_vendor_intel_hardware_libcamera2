@@ -5104,7 +5104,11 @@ status_t AtomISP::allocatePreviewBuffers()
         LOG1("Allocating %d buffers of size %d", mConfig.num_preview_buffers, mConfig.preview.size);
 
         for (int i = 0; i < mConfig.num_preview_buffers; i++) {
-            MemoryUtils::allocateGraphicBuffer(tmp, mConfig.preview);
+            /* Graphic don't support UYUV format for some platforms */
+            if (V4L2_PIX_FMT_UYVY == mConfig.preview.fourcc)
+                MemoryUtils::allocateAtomBuffer(tmp, mConfig.preview, mCallbacks);
+            else
+                MemoryUtils::allocateGraphicBuffer(tmp, mConfig.preview);
             if (tmp.dataPtr == NULL) {
                 LOGE("Error allocation memory for preview buffers!");
                 status = NO_MEMORY;

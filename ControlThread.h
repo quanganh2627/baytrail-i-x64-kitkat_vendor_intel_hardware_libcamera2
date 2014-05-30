@@ -869,6 +869,8 @@ private:
     int mNumCaptures;               /*!< control the the number of capture */
     int mNumSounds;                 /*!< shutter sound times,trigger shutter sound by EOF/preview buffer event*/
 
+    bool mDepthMode;                /*!< if working in depth mode */
+
     // continuous capture
     ContinuousShootingState mContShootingState;   /*!< continuous shooting state */
     bool mContShootingEnabled;                    /*!< app controls to enable of disable continuous shooting mode*/

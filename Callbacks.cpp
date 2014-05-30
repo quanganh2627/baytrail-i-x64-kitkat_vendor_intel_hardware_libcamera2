@@ -414,6 +414,16 @@ void Callbacks::lowBattery()
     }
 }
 
+void Callbacks::sendFrameId(int id)
+{
+    LOG1("@%s", __FUNCTION__);
+
+    if (mNotifyCB != NULL) {
+        LOG1("Sending message: CAMERA_MSG_FRAME_ID");
+        mNotifyCB(CAMERA_MSG_FRAME_ID, id, 0, mUserToken);
+    }
+}
+
 void Callbacks::accManagerPointer(int isp_ptr, int idx)
 {
     LOG1("@%s", __FUNCTION__);

@@ -197,6 +197,7 @@ struct AtomBuffer {
     GFXBufferInfo gfxInfo_rec;          /*!< for video recording only, to store codec specific data for video encoding*/
     AtomBuffer *auxBuf;                 /*!< auxiliary buffer (metadata/jpeg), used in jpeg capture mode */
     bool returnAfterCB;                 /*!< flag indicating whether after the callback to camera service the buffer should be returned */
+    int sensorFrameId;          /*!< Sensor frame id gotten from sensor meta data and set by AtomISP class. */
 };
 
 struct AAAWindowInfo {

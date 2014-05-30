@@ -75,6 +75,8 @@ public:
     void ullTriggered(int id);
     void ullPictureDone(AtomBuffer *ullJpegPicture);
 
+    void sendFrameId(int id);
+
     void lowBattery();
     void accManagerPointer(int isp_ptr, int idx);
     void accManagerFinished();

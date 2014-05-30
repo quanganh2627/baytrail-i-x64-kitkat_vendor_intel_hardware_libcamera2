@@ -172,6 +172,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mNextExpID(EXP_ID_INVALID)
     ,mNumCaptures(0)
     ,mNumSounds(0)
+    ,mDepthMode(false)
     ,mContShootingState(CONT_SHOOTING_NONE)
     ,mContShootingEnabled(false)
     ,mContinuousPicsReady(0)
@@ -4030,6 +4031,11 @@ status_t ControlThread::captureStillPic()
         }
     }
 
+    if (mDepthMode && !PlatformData::isExtendedCamera(mCameraId)) {
+        // send sensor frame id to application
+        mCallbacksThread->sendFrameId(snapshotBuffer.sensorFrameId);
+    }
+
     if (mRawBufferLockMode)
         mISP->rawBufferUnlock(snapshotBuffer.expId);
 
@@ -5380,6 +5386,7 @@ status_t ControlThread::processParamDualCameraMode(CameraParameters *oldParams,
     if (!newVal.isEmpty()) {
         if (newVal == IntelCameraParameters::DUAL_CAMERA_MODE_DEPTH) {
             PlatformData::useExtendedCamera(true);
+            mDepthMode = true;
 
             // For Kevlar project, we expect to use the same focal length for both SBS camera
             // and main back camera in depth mode. We will force to set afMode to CAM_AF_MODE_MANUAL
@@ -5411,6 +5418,7 @@ status_t ControlThread::processParamDualCameraMode(CameraParameters *oldParams,
             }
         } else {
             PlatformData::useExtendedCamera(false);
+            mDepthMode = false;
 
             if (!PlatformData::isFixedFocusCamera(mCameraId)
                && PlatformData::supportExtendedCamera()) {
