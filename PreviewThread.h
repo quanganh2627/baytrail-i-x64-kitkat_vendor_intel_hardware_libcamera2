@@ -165,6 +165,10 @@ public:
     void setPreviewCallbackFps(int fps);
     void setCallbackMode(CallbackMode mode);
 
+    status_t pausePreviewFrameUpdate();
+    status_t resumePreviewFrameUpdate();
+    status_t setPreviewFrameCaptureId(int count);
+
     // IBufferOwner override
     virtual void returnBuffer(AtomBuffer* buff);
 
@@ -202,6 +206,9 @@ private:
         MESSAGE_ID_FPS,
         MESSAGE_ID_SET_CALLBACK_PREVIEW_SIZE,
         MESSAGE_ID_FETCH_BUF_GEOMETRY,
+        MESSAGE_ID_PAUSE_PREVIEW_FRAME_UPDATE,
+        MESSAGE_ID_RESUME_PREVIEW_FRAME_UPDATE,
+        MESSAGE_ID_SET_PREVIEW_FRAME_CAPTURE_ID,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -255,6 +262,10 @@ private:
         AtomBuffer buff;
     };
 
+    struct MessageFrameId{
+        int id;
+    };
+
     // union of all message data
     union MessageData {
 
@@ -281,6 +292,9 @@ private:
 
         // MESSAGE_ID_FPS
         MessageFPS fps;
+
+        // MESSAGE_ID_SET_PREVIEW_FRAME_CAPTURE_ID
+        MessageFrameId frameId;
     };
 
     // message id and message data
@@ -329,6 +343,10 @@ private:
     status_t handleVSPreview(MessagePreview *msg);
     status_t handlePreviewCore(AtomBuffer *buf);
     status_t handlePreviewCallback(AtomBuffer &srcBuf);
+
+    status_t handlePausePreviewFrameUpdate();
+    status_t handleResumePreviewFrameUpdate();
+    status_t handleSetPreviewFrameCaptureId(MessageFrameId *msg);
 
     // main message function
     status_t waitForAndExecuteMessage();
@@ -407,6 +425,9 @@ private:
     int mFps; /*!< Desired callback fps */
     int64_t mPreviewCbTs; /*!< (last) Preview callback timestamp */
     CallbackMode mPreviewCallbackMode; /*!< Preview callback mode. E.g. "normal" or before display */
+
+    int mPreviewFrameId;
+    bool mPreviewBufferQueueUpdate;
 }; // class PreviewThread
 
 }; // namespace android

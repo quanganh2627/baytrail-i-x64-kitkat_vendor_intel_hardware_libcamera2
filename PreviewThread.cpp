@@ -79,6 +79,8 @@ PreviewThread::PreviewThread(sp<CallbacksThread> callbacksThread, Callbacks* cal
     ,mFps(30)
     ,mPreviewCbTs(0)
     ,mPreviewCallbackMode(PREVIEW_CALLBACK_NORMAL)
+    ,mPreviewFrameId(0)
+    ,mPreviewBufferQueueUpdate(true)
 {
     LOG1("@%s", __FUNCTION__);
     mPreviewBuffers.setCapacity(MAX_NUMBER_PREVIEW_GFX_BUFFERS);
@@ -726,6 +728,18 @@ status_t PreviewThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_SET_CALLBACK_MODE:
             status = handleMessagePreviewCallbackMode(&msg.data.callbackMode);
+            break;
+
+        case MESSAGE_ID_PAUSE_PREVIEW_FRAME_UPDATE:
+            status = handlePausePreviewFrameUpdate();
+            break;
+
+        case MESSAGE_ID_RESUME_PREVIEW_FRAME_UPDATE:
+            status = handleResumePreviewFrameUpdate();
+            break;
+
+        case MESSAGE_ID_SET_PREVIEW_FRAME_CAPTURE_ID:
+            status = handleSetPreviewFrameCaptureId(&msg.data.frameId);
             break;
 
         default:
@@ -2131,4 +2145,57 @@ void PreviewThread::getEffectiveDimensions(int *w, int *h)
         *h = mPreviewHeight;
     }
 }
+
+status_t PreviewThread::pausePreviewFrameUpdate()
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_PAUSE_PREVIEW_FRAME_UPDATE;
+    return mMessageQueue.send(&msg, MESSAGE_ID_PAUSE_PREVIEW_FRAME_UPDATE);
+}
+
+status_t PreviewThread::resumePreviewFrameUpdate()
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_RESUME_PREVIEW_FRAME_UPDATE;
+    return mMessageQueue.send(&msg, MESSAGE_ID_RESUME_PREVIEW_FRAME_UPDATE);
+}
+
+status_t PreviewThread::setPreviewFrameCaptureId(int id)
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.data.frameId.id= id;
+    msg.id = MESSAGE_ID_SET_PREVIEW_FRAME_CAPTURE_ID;
+    return mMessageQueue.send(&msg, MESSAGE_ID_SET_PREVIEW_FRAME_CAPTURE_ID);
+}
+
+status_t PreviewThread::handlePausePreviewFrameUpdate()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    mPreviewBufferQueueUpdate = false;
+    mMessageQueue.reply(MESSAGE_ID_PAUSE_PREVIEW_FRAME_UPDATE, status);
+    return status;
+}
+
+status_t PreviewThread::handleResumePreviewFrameUpdate()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    mPreviewBufferQueueUpdate = true;
+    mMessageQueue.reply(MESSAGE_ID_RESUME_PREVIEW_FRAME_UPDATE, status);
+    return status;
+}
+
+status_t PreviewThread::handleSetPreviewFrameCaptureId(MessageFrameId *msg)
+{
+    LOG1("@%s mPreviewFrameId = %d", __FUNCTION__, msg->id);
+    status_t status = NO_ERROR;
+    mPreviewFrameId = msg->id;
+    mMessageQueue.reply(MESSAGE_ID_SET_PREVIEW_FRAME_CAPTURE_ID, status);
+    return status;
+}
+
 } // namespace android

@@ -8121,7 +8121,15 @@ status_t ControlThread::handleMessageCommand(MessageCommand* msg)
     case CAMERA_CMD_FRONT_SS:
         mSmartStabilization = (msg->arg1 == 1);
         break;
-
+    case CAMERA_CMD_PAUSE_PREVIEW_FRAME_UPDATE:
+        status = mPreviewThread->pausePreviewFrameUpdate();
+        break;
+    case CAMERA_CMD_RESUME_PREVIEW_FRAME_UPDATE:
+        status = mPreviewThread->resumePreviewFrameUpdate();
+        break;
+    case CAMERA_CMD_SET_PREVIEW_FRAME_CAPTURE_ID:
+        status = mPreviewThread->setPreviewFrameCaptureId(msg->arg1);
+        break;
     default:
         break;
     }
