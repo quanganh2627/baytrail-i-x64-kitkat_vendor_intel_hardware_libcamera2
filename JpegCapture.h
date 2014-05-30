@@ -133,7 +133,10 @@ enum {
     CAMERA_CMD_EXTISP_LLS        = 1264,
     CAMERA_CMD_FRONT_SS          = 0x4F1,  /* TODO, SS did not confirmed the name and value of Smart Stabilization. Please change them when SS give the final confirmation. */
     CAMERA_CMD_EXTISP_KIDS_MODE  = 0x4F2,
-    CAMERA_CMD_AUTO_LOW_LIGHT    = 1351
+    CAMERA_CMD_AUTO_LOW_LIGHT    = 1351,
+    CAMERA_CMD_BURST_START       = 1571,
+    CAMERA_CMD_BURST_STOP        = 1572,
+    CAMERA_CMD_BURST_DELETE      = 1573
 };
 
 struct extended_frame_metadata_t {

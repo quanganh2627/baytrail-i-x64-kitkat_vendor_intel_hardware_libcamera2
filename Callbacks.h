@@ -82,6 +82,8 @@ public:
     void accManagerArgumentBuffer(camera_memory_t *buffer);
     void accManagerMetadataBuffer(camera_memory_t *buffer);
 
+    void setContShooting(bool val, const char* filepath = NULL);
+
 private:
     camera_notify_callback mNotifyCB;
     camera_data_callback mDataCB;
@@ -93,8 +95,11 @@ private:
     camera_memory_t* mPanoramaMetadata;
     camera_memory_t* mSceneDetectionMetadata;
     bool mStoreMetaDataInBuffers;
-    };
 
+    bool mContShootingEnabled;
+    String8 mContShootingFilepath;
+    int mBurstCount;
+    };
 };
 
 #endif  // ANDROID_LIBCAMERA_CALLBACKS

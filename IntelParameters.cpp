@@ -63,6 +63,7 @@ namespace android {
     // continuous shooting
     const char IntelCameraParameters::KEY_CONTINUOUS_SHOOTING[] = "continuous-shooting";
     const char IntelCameraParameters::KEY_CONTINUOUS_SHOOTING_SUPPORTED[] = "continuous-shooting-supported";
+    const char IntelCameraParameters::KEY_CONTINUOUS_SHOOTING_FILEPATH[] = "capture-burst-filepath";
 
     // 3A related
     const char IntelCameraParameters::KEY_AE_MODE[] = "ae-mode";

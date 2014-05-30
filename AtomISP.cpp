@@ -606,7 +606,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     /**
      * Continuous shooting
      */
-    if (mSensorType == SENSOR_TYPE_RAW) {
+    if (mSensorType == SENSOR_TYPE_RAW || PlatformData::supportsContinuousJpegCapture(mCameraId)) {
         intel_params->set(IntelCameraParameters::KEY_CONTINUOUS_SHOOTING_SUPPORTED, CameraParameters::TRUE);
         intel_params->set(IntelCameraParameters::KEY_CONTINUOUS_SHOOTING, CameraParameters::FALSE);
     } else {

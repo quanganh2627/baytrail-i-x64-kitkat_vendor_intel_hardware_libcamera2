@@ -870,9 +870,10 @@ private:
     int mNumSounds;                 /*!< shutter sound times,trigger shutter sound by EOF/preview buffer event*/
 
     // continuous capture
-    ContinuousShootingState mContShootingState; /*!< continuous shooting state */
-    bool mContShootingEnabled;                  /*!< app controls to enable of disable continuous shooting mode*/
-    int mContinuousPicsReady;                   /*!< number buffer ready*/
+    ContinuousShootingState mContShootingState;   /*!< continuous shooting state */
+    bool mContShootingEnabled;                    /*!< app controls to enable of disable continuous shooting mode*/
+    int mContinuousPicsReady;                     /*!< number buffer ready*/
+    bool mUseTakePictureDuringContinuousShooting; /*!< app calls take_picture repeatedbly in continuous shooting mode */
 
     /*----------- Debugging helpers --------------------*/
     static const char* sCaptureSubstateStrings[STATE_CAPTURE_LAST];

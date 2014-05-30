@@ -269,6 +269,7 @@ namespace android {
     // continuous shooting
     static const char KEY_CONTINUOUS_SHOOTING[];
     static const char KEY_CONTINUOUS_SHOOTING_SUPPORTED[];
+    static const char KEY_CONTINUOUS_SHOOTING_FILEPATH[];
 
     // Others
     static const char REC_BUFFER_SHARING_SESSION_ID[];

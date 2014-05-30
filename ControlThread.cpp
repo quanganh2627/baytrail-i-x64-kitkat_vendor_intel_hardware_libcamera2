@@ -175,6 +175,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mContShootingState(CONT_SHOOTING_NONE)
     ,mContShootingEnabled(false)
     ,mContinuousPicsReady(0)
+    ,mUseTakePictureDuringContinuousShooting(false)
 {
     // DO NOT PUT ANY ALLOCATION CODE IN THIS METHOD!!!
     // Put all init code in the init() method.
@@ -1068,7 +1069,8 @@ void ControlThread::atPostviewPresent() {
     // we do this without msg to make sure preview is hidden right a way.
 
     // standard Google API request stop preview on take picture
-    if (mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD) {
+    if (mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD &&
+        !mJpegContinuousShootingRunning) {
         LOG1("@%s: Hide preview on continuous JPEG capture", __FUNCTION__);
         status = mPreviewThread->setPreviewState(PreviewThread::STATE_ENABLED_HIDDEN);
         if(status != NO_ERROR) {
@@ -1076,7 +1078,7 @@ void ControlThread::atPostviewPresent() {
         }
     }
 
-    if (mJpegContinuousShootingRunning) {
+    if (mJpegContinuousShootingRunning && !mUseTakePictureDuringContinuousShooting) {
         LOG2("@%s: request next continuous shooting picture", __FUNCTION__);
         mCallbacksThread->requestTakePicture(false, false , false);
     }
@@ -4298,6 +4300,7 @@ status_t ControlThread::finalizeContinuousShooting()
     cancelPictureThread();
     forceRestoreSnapshotPostviewBuffers();
     mContinuousPicsReady = 0;
+    mUseTakePictureDuringContinuousShooting = false;
     return NO_ERROR;
 }
 
@@ -4700,11 +4703,14 @@ status_t ControlThread::captureExtIspHDRLLSPic()
  */
 status_t ControlThread::captureJpegPic()
 {
-    LOG1("@%s: ", __FUNCTION__);
+    LOG1("@%s", __FUNCTION__);
 
     // in continuous mode we already take pictures as fast we can
     if (mJpegContinuousShootingRunning) {
-        LOGW("TakePicture called during continuos shooting.");
+        LOG2("@%s: request continuous shooting picture, requestTakePicture = %s", __FUNCTION__, mUseTakePictureDuringContinuousShooting ? "true" : "false");
+        if (mUseTakePictureDuringContinuousShooting) {
+            mCallbacksThread->requestTakePicture(false, false, false);
+        }
         return NO_ERROR;
     }
 
@@ -4817,7 +4823,9 @@ status_t ControlThread::startJpegPicContinuousShooting()
     mPictureThread->initialize(mParameters, mHwcg.mIspCI->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
 
     // Notify CallbacksThread that a picture was requested, so grab one from queue
-    mCallbacksThread->requestTakePicture(false, false, false);
+    if (!mUseTakePictureDuringContinuousShooting) {
+        mCallbacksThread->requestTakePicture(false, false, false);
+    }
 
     // TODO: do we need somekind of shutter sound
 
@@ -5001,10 +5009,13 @@ status_t ControlThread::handleMessageCancelPicture()
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    mBurstLength = 0;
-    status = cancelPictureThread();
-
-    mStillCaptureInProgress = false;
+    // In continuous shooting case capture is not cancelled until
+    // receiving stop command.
+    if (!mJpegContinuousShootingRunning) {
+        mBurstLength = 0;
+        status = cancelPictureThread();
+        mStillCaptureInProgress = false;
+    }
 
     mMessageQueue.reply(MESSAGE_ID_CANCEL_PICTURE, status);
     return status;
@@ -7989,11 +8000,19 @@ status_t ControlThread::handleMessageCommand(MessageCommand* msg)
     case CAMERA_CMD_STOP_FACE_DETECTION:
         status = stopFaceDetection();
         break;
+    case CAMERA_CMD_BURST_START:
     case CAMERA_CMD_START_CONTINUOUS_SHOOTING:
+        mContShootingEnabled = true;
+        mUseTakePictureDuringContinuousShooting = (msg->cmd_id == CAMERA_CMD_BURST_START);
+        mCallbacks->setContShooting(mContShootingEnabled,
+            mParameters.get(IntelCameraParameters::KEY_CONTINUOUS_SHOOTING_FILEPATH));
         status = prepareContinuousShooting();
         break;
+    case CAMERA_CMD_BURST_STOP:
     case CAMERA_CMD_STOP_CONTINUOUS_SHOOTING:
         status = finalizeContinuousShooting();
+        mContShootingEnabled = false;
+        mCallbacks->setContShooting(mContShootingEnabled);
         break;
     case CAMERA_CMD_START_SCENE_DETECTION:
         status = startSmartSceneDetection();
