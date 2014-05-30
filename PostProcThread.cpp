@@ -602,6 +602,7 @@ void PostProcThread::setAutoLowLightReporting(bool value)
 {
     LOG1("@%s", __FUNCTION__);
     Message msg;
+    msg.id = MESSAGE_ID_SET_AUTO_LOW_LIGHT;
     msg.data.config.value = value ? 1 : 0;
     mMessageQueue.send(&msg);
 }
