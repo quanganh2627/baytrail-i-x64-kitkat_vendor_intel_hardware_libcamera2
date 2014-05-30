@@ -81,6 +81,7 @@ PreviewThread::PreviewThread(sp<CallbacksThread> callbacksThread, Callbacks* cal
     ,mPreviewCallbackMode(PREVIEW_CALLBACK_NORMAL)
     ,mPreviewFrameId(0)
     ,mPreviewBufferQueueUpdate(true)
+    ,mPreviewBufferNum(0)
 {
     LOG1("@%s", __FUNCTION__);
     mPreviewBuffers.setCapacity(MAX_NUMBER_PREVIEW_GFX_BUFFERS);
@@ -470,7 +471,13 @@ bool PreviewThread::atomIspNotify(IAtomIspObserver::Message *msg, const Observer
             buff->owner->returnBuffer(buff);
         } else {
             PerformanceTraces::FaceLock::getCurFrameNum(buff->frameCounter);
-            preview(buff);
+            if (PlatformData::getMaxDepthPreviewBufferQueueSize(mCameraId) > 0) {
+                buff = handlePreviewBufferQueue(buff);
+                if (buff != NULL)
+                    preview(buff);
+            } else {
+                preview(buff);
+            }
         }
     } else {
         LOG1("Received unexpected notify message id %d!", msg->id);
@@ -503,6 +510,7 @@ status_t PreviewThread::flushBuffers()
     msg.id = MESSAGE_ID_FLUSH;
     mMessageQueue.remove(MESSAGE_ID_PREVIEW);
     mMessageQueue.remove(MESSAGE_ID_POSTVIEW);
+    mPreviewBufferQueue.clear();
     return mMessageQueue.send(&msg, MESSAGE_ID_FLUSH);
 }
 
@@ -1574,6 +1582,7 @@ status_t PreviewThread::handleSetPreviewConfig(MessageSetPreviewConfig *msg)
     int bufferCount = 0;
     int reservedBufferCount = 0;
 
+    mPreviewBufferNum = msg->bufferCount;
     mHALVideoStabilization = msg->halVSVideo;
     if (mHALVideoStabilization && mHALVS == NULL)
         mHALVS = new HALVideoStabilization();
@@ -2144,6 +2153,30 @@ void PreviewThread::getEffectiveDimensions(int *w, int *h)
         *w = mPreviewWidth;
         *h = mPreviewHeight;
     }
+}
+
+AtomBuffer* PreviewThread::handlePreviewBufferQueue(AtomBuffer* buff)
+{
+    LOG1("@%s", __FUNCTION__);
+
+    int maxQueueSize = PlatformData::getMaxDepthPreviewBufferQueueSize(mCameraId);
+    // If max queue size is less than 0 or larger than preview buffer number, don't hold buffer.
+    if (!mPreviewBufferQueueUpdate || ((maxQueueSize <= 0) && (maxQueueSize >= mPreviewBufferNum))) {
+        LOG2("Queue size is [%d], Preview buffer number is [%d].", maxQueueSize, mPreviewBufferNum);
+        return buff;
+    }
+
+    mPreviewBufferQueue.push(*buff);
+
+    // hold maxQueueSize preview buffer in mPreviewBufferQueue
+    if ((int)mPreviewBufferQueue.size() > maxQueueSize) {
+        Vector<AtomBuffer>::iterator it = mPreviewBufferQueue.begin();
+        it->owner->returnBuffer(it);
+        mPreviewBufferQueue.erase(it);
+        return it;
+    }
+
+    return NULL;
 }
 
 status_t PreviewThread::pausePreviewFrameUpdate()

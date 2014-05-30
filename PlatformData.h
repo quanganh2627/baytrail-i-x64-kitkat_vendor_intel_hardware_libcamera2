@@ -1108,6 +1108,14 @@ class PlatformData {
     static int getMaxISPTimeoutCount(void);
 
     /**
+     * Retrns max number of preview buffer queue size for depth sensor
+     *
+     * \param cameraId identifier passed from android.hardware.Camera.open()
+     * \return int max number of preview buffer queue
+     */
+    static int getMaxDepthPreviewBufferQueueSize(int cameraId);
+
+    /**
      * supported DVS sizes
      *
      * \param cameraId identifier passed to android.hardware.Camera.open()
@@ -1403,6 +1411,7 @@ protected:
             useMultiStreamsForSoC = false;
             mPreviewFourcc = V4L2_PIX_FMT_NV12;
             defaultDepthFocalLength = 0;
+            maxDepthPreviewBufferQueueSize = 0;
         }
 
         String8 sensorName;
@@ -1571,6 +1580,7 @@ protected:
         int mPreviewFourcc;
 
         int defaultDepthFocalLength;
+        int maxDepthPreviewBufferQueueSize;
     };
 
     // note: Android NDK does not yet support C++11 and

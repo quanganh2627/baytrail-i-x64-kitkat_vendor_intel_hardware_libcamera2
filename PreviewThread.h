@@ -376,6 +376,7 @@ private:
     status_t fetchReservedBuffers(int numOfReservedBuffers);
     GfxAtomBuffer* pickReservedBuffer();
 
+    AtomBuffer* handlePreviewBufferQueue(AtomBuffer *buff);
 // private data
 private:
     MessageQueue<Message, MessageId> mMessageQueue;
@@ -428,6 +429,9 @@ private:
 
     int mPreviewFrameId;
     bool mPreviewBufferQueueUpdate;
+    int mPreviewBufferNum;  /*!< preview buffer number */
+    Vector<AtomBuffer> mPreviewBufferQueue;
+
 }; // class PreviewThread
 
 }; // namespace android

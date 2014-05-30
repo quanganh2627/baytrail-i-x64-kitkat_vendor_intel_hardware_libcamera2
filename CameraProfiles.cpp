@@ -372,6 +372,8 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         pCurrentCam->disable3A = ((strcmp(atts[1], "true") == 0) ? true : false);
     } else if (strcmp(name, "defaultDepthFocalLength") == 0) {
         pCurrentCam->defaultDepthFocalLength = atoi(atts[1]);
+    } else if (strcmp(name, "maxDepthPreviewBufferQueueSize") == 0) {
+        pCurrentCam->maxDepthPreviewBufferQueueSize = atoi(atts[1]);
     }
 }
 

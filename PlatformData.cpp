@@ -1056,6 +1056,13 @@ size_t PlatformData::getMaxNumFocusAreas(int cameraId)
     return getInstance()->mCameras[cameraId].maxNumFocusAreas;
 }
 
+int PlatformData::getMaxDepthPreviewBufferQueueSize(int cameraId)
+{
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return 0;
+    }
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].maxDepthPreviewBufferQueueSize;
+}
 
 bool PlatformData::isFixedFocusCamera(int cameraId)
 {
