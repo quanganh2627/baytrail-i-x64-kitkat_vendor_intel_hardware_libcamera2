@@ -109,7 +109,7 @@ status_t AtomExtIsp3A::setAfMode(AfMode mode)
  */
 AfMode AtomExtIsp3A::getAfMode()
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
 
     AfMode mode = CAM_AF_MODE_AUTO;
     int v4lMode = EXT_ISP_FOCUS_MODE_NORMAL;
@@ -155,7 +155,7 @@ AfMode AtomExtIsp3A::getAfMode()
             mode = CAM_AF_MODE_AUTO;
             break;
         default:
-            LOGW("Unsupported ext-ISP AF mode (%d), using PREVIEW_CAF", mode);
+            LOG2("Unsupported ext-ISP AF mode (%d), using CAM_AF_MODE_AUTO", mode);
             mode = CAM_AF_MODE_AUTO;
             break;
     }

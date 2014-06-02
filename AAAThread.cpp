@@ -490,13 +490,13 @@ AfStatus AAAThread::parseAfMeta(const AtomBuffer *buff)
     LOG2("@%s", __FUNCTION__);
     unsigned char *nv12Meta = ((unsigned char*)buff->auxBuf->dataPtr) + NV12_META_START;
 
-    uint16_t afState = getU16fromFrame(nv12Meta, NV12_META_AF_STATE_ADDR);
+    // metadata is big-endian. Convert to host format:
+    uint16_t afState = be16toh(getU16fromFrame(nv12Meta, NV12_META_AF_STATE_ADDR));
     AfStatus status = CAM_AF_STATUS_FAIL;
 
-    LOG2("Ext-isp AF state: %d", afState);
+    LOG2("Ext-isp AF state: 0x%x", afState);
 
-    // metadata is big-endian. Convert to host format:
-    switch (be16toh(afState)) {
+    switch (afState) {
         case CAF_RESTART_CHECK:
         case AF_INVALID:
             // TODO: Check: Is this OK for CAF restart?
@@ -516,7 +516,7 @@ AfStatus AAAThread::parseAfMeta(const AtomBuffer *buff)
             break;
         default:
             status = CAM_AF_STATUS_FAIL;
-            LOGW("Unknown AF/CAF state %x, using CAM_AF_STATUS_FAIL", afState);
+            LOGW("Unknown AF/CAF state 0x%x, using CAM_AF_STATUS_FAIL", afState);
             break;
     }
 
