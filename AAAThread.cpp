@@ -529,14 +529,13 @@ status_t AAAThread::handleMessageCancelAutoFocus()
     status_t status = NO_ERROR;
 
     if (mStartAF) {
+        // For ext-isp, only stop the AF
+        if (mExtIsp) {
+            m3AControls->setAfEnabled(false);
+        }
+
         mStopAF = true;
         mWaitForScanStart = true;
-    }
-
-    // For ext-isp, only stop the AF
-    if (mExtIsp) {
-        LOGD("LASSI: ext-isp AF cancel");
-        m3AControls->setAfEnabled(false);
     }
 
     return status;
