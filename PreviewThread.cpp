@@ -1260,6 +1260,12 @@ status_t PreviewThread::handlePreviewCallback(AtomBuffer &srcBuff)
                 // "before display" type of callback buffers are returned to us and thus we need to steal ownership for that to work
                 // see also ::handleMessageReturnBuffer which calls handlePreviewCore
                 GfxAtomBuffer *buff = lookForAtomBuffer(&srcBuff);
+
+                if (buff == NULL) {
+                    LOGE("Couldn't find gfx buffer?!");
+                    return BAD_VALUE;
+                }
+
                 buff->originalAtomBufferOwner = srcBuff.owner;
                 srcBuff.owner = this;
                 srcBuff.returnAfterCB = true;
@@ -1452,12 +1458,11 @@ status_t PreviewThread::handleMessageReturnBuffer(MessageReturnBuffer *msg)
     status_t status = OK;
 
     GfxAtomBuffer *buff = lookForGfxBufferHandle(msg->buff.gfxInfo.gfxBufferHandle);
-    if (mHALVideoStabilization) {
-        if (buff != NULL) {
-            buff->queuedToVideo = false;
-        } else {
-            LOGE("Couldn't find gfx buffer?!");
-        }
+    if (buff == NULL) {
+        LOGE("Couldn't find gfx buffer?!");
+        status = BAD_VALUE;
+    } else if (mHALVideoStabilization) {
+        buff->queuedToVideo = false;
     } else {
         // this is a callback buffer returning to us
         msg->buff.owner = buff->originalAtomBufferOwner;
