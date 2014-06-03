@@ -490,8 +490,8 @@ AfStatus AAAThread::parseAfMeta(const AtomBuffer *buff)
     LOG2("@%s", __FUNCTION__);
     unsigned char *nv12Meta = ((unsigned char*)buff->auxBuf->dataPtr) + NV12_META_START;
 
-    // metadata is big-endian. Convert to host format:
-    uint16_t afState = be16toh(getU16fromFrame(nv12Meta, NV12_META_AF_STATE_ADDR));
+    // metadata is big-endian. getU16FromFrame() converts to host format:
+    uint16_t afState = getU16fromFrame(nv12Meta, NV12_META_AF_STATE_ADDR);
     AfStatus status = CAM_AF_STATUS_FAIL;
 
     LOG2("Ext-isp AF state: 0x%x", afState);

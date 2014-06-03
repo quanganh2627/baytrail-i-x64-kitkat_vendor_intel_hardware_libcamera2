@@ -94,18 +94,16 @@ const size_t NV12_META_AV_ADDR = 0x228;
 const size_t NV12_META_AF_STATE_ADDR = 0x846;
 
 enum AfState {
-    // NOTE: These are big-endian in m10mo metadata, so we have convert
-    // values to host format. Usage example: be16toh(value) == AF_INVALID
     // AF states
-    AF_INVALID = 0x1000,
-    AF_FOCUSING = 0x2000,
-    AF_SUCCESS = 0x3000,
-    AF_FAIL = 0x4000,
+    AF_INVALID = 0x0010,
+    AF_FOCUSING = 0x0020,
+    AF_SUCCESS = 0x0030,
+    AF_FAIL = 0x0040,
     // CAF states
-    CAF_RESTART_CHECK = 0x010,
-    CAF_FOCUSING = 0x0200,
-    CAF_SUCCESS = 0x0300,
-    CAF_FAIL = 0x0400
+    CAF_RESTART_CHECK = 0x0001,
+    CAF_FOCUSING = 0x0002,
+    CAF_SUCCESS = 0x0003,
+    CAF_FAIL = 0x0004
 };
 
 const size_t NV12_META_END_MARKER_ADDR = 0xFF4;
