@@ -377,13 +377,13 @@ void mirrorBuffer(AtomBuffer *buffer, int currentOrientation, int cameraOrientat
 
     int rotation = (cameraOrientation - currentOrientation + 360) % 360;
     if (rotation == 90 || rotation == 270) {
-        flipBufferH(buffer);
-    } else {
         flipBufferV(buffer);
+    } else {
+        flipBufferH(buffer);
     }
 }
 
-void flipBufferV(AtomBuffer *buffer) {
+void flipBufferH(AtomBuffer *buffer) {
     LOG1("@%s", __FUNCTION__);
     int width, height, bpl;
     unsigned char *data = NULL;
@@ -429,44 +429,40 @@ void flipBufferV(AtomBuffer *buffer) {
     }
 }
 
-void flipBufferH(AtomBuffer *buffer) {
+void flipBufferV(AtomBuffer *buffer) {
     LOG1("@%s", __FUNCTION__);
-    int width, height, bpl;
     unsigned char *data = NULL;
+    int width = buffer->width;
+    int height = buffer->height;
+    int bpl = buffer->bpl;
+    unsigned char *lineX, *lineY;
+    unsigned char lineM[bpl];
 
-    void *ptr = NULL;
     if (buffer->shared)
-        ptr = (void *) *((char **)buffer->dataPtr);
+        data = (unsigned char *) *((char **)buffer->dataPtr);
     else
-        ptr = buffer->dataPtr;
-
-    data = (unsigned char *) ptr;
-    width = buffer->width;
-    height = buffer->height;
-    bpl = buffer->bpl;
-    int h = height / 2;
-    unsigned char temp = 0;
+        data = (unsigned char *)buffer->dataPtr;
 
     // Y
-    for (int j=0; j < width; j++) {
-        for (int i=0; i < h; i++) {
-            temp = data[i*bpl + j];
-            data[i*bpl + j] = data[(height-1-i)*bpl + j];
-            data[(height-1-i)*bpl + j] = temp;
-        }
+    int loop = height / 2;
+    for (int j = 0; j < loop; j++) {
+        lineX = data + j * bpl;
+        lineY = data + (height-1-j) * bpl;
+        memcpy (lineM, lineX, width);
+        memcpy (lineX, lineY, width);
+        memcpy (lineY, lineM, width);
     }
 
     // U+V
-    data = data + bpl * height;
-    h = height / 4;
-    int heightUV = height / 2;
-
-    for (int j=0; j < width; j++) {
-        for (int i=0; i < h; i++) {
-            temp = data[i*bpl + j];
-            data[i*bpl + j] = data[(heightUV-1-i)*bpl + j];
-            data[(heightUV-1-i)*bpl + j] = temp;
-        }
+    data   = data + bpl * height;
+    loop   = height / 4;
+    height = height / 2;
+    for (int j = 0; j < loop; j++) {
+        lineX = data + j * bpl;
+        lineY = data + (height-1-j) * bpl;
+        memcpy (lineM, lineX, width);
+        memcpy (lineX, lineY, width);
+        memcpy (lineY, lineM, width);
     }
 }
 
