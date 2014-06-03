@@ -8174,20 +8174,15 @@ status_t ControlThread::handleMessageCommand(MessageCommand* msg)
         status = NO_ERROR;
         break;
     case CAMERA_CMD_EXTISP_LLS:
-        if (msg->arg1 == EXTISP_FEAT_ON)
-            mHwcg.mIspCI->setShotMode(EXT_ISP_SHOT_MODE_NIGHT);
-        else
-            mHwcg.mIspCI->setShotMode(EXT_ISP_SHOT_MODE_AUTO); // todo restore previous HAL shot mode when that is implemented
-
-        mHwcg.mIspCI->setLLS(msg->arg1);
-        mExtIsp.LLS = (msg->arg1 == EXTISP_FEAT_ON);
-        status = NO_ERROR;
+        status = handleLowLightMode(msg->arg1 == EXTISP_FEAT_ON);
         break;
     case CAMERA_CMD_EXTISP_KIDS_MODE:
         status = handleKidsMode(msg->arg1);
         break;
     case CAMERA_CMD_AUTO_LOW_LIGHT:
+        mSmartStabilization = (msg->arg1 == 1);
         mPostProcThread->setAutoLowLightReporting(msg->arg1 == 1);
+        status = NO_ERROR;
         break;
     case CAMERA_CMD_FRONT_SS:
         mSmartStabilization = (msg->arg1 == 1);
@@ -8208,6 +8203,31 @@ status_t ControlThread::handleMessageCommand(MessageCommand* msg)
     if (status != NO_ERROR)
         LOGE("@%s command id %d failed", __FUNCTION__, msg->cmd_id);
     return status;
+}
+
+void ControlThread::lowLightDetected(bool needLLS)
+{
+    LOG2("@%s", __FUNCTION__);
+
+    Message msg;
+    msg.id = MESSAGE_ID_COMMAND;
+    msg.data.command.cmd_id = CAMERA_CMD_EXTISP_LLS;
+    msg.data.command.arg1 = needLLS ? EXTISP_FEAT_ON : EXTISP_FEAT_OFF;
+    mMessageQueue.send(&msg);
+}
+
+status_t ControlThread::handleLowLightMode(bool enableLLS)
+{
+    LOG1("@%s: enableLLS = %s", __FUNCTION__, enableLLS ? "true" : "false");
+
+    if (enableLLS)
+        mHwcg.mIspCI->setShotMode(EXT_ISP_SHOT_MODE_NIGHT);
+    else
+        mHwcg.mIspCI->setShotMode(EXT_ISP_SHOT_MODE_AUTO); // todo restore previous HAL shot mode when that is implemented
+
+    mHwcg.mIspCI->setLLS(enableLLS);
+    mExtIsp.LLS = enableLLS;
+    return NO_ERROR;
 }
 
 status_t ControlThread::handleKidsMode(int value)

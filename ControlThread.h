@@ -160,6 +160,7 @@ private:
     virtual void postProcCaptureTrigger();
     virtual void sceneDetected(String8 sceneMode, bool sceneHdr);
     virtual void facesDetected(const ia_face_state *faceState);
+    virtual void lowLightDetected(bool needLLS);
     virtual void panoramaCaptureTrigger();
     virtual void panoramaFinalized(AtomBuffer *buff, AtomBuffer *pvBuff);
 
@@ -506,6 +507,7 @@ private:
     status_t enableIspExtensions();
     status_t handleMessageRelease();
     status_t handleKidsMode(int value);
+    status_t handleLowLightMode(bool enableLLS);
 
     status_t cancelPictureThread();
     status_t cancelPostCaptureThread();

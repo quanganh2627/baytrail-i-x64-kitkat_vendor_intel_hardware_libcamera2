@@ -49,6 +49,7 @@ PostProcThread::PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *
     ,mIsBackCamera(false)
     ,mCameraId(cameraId)
     ,mAutoLowLightReporting(false)
+    ,mLastLowLightValue(false)
 {
     LOG1("@%s", __FUNCTION__);
 
@@ -922,7 +923,14 @@ status_t PostProcThread::handleExtIspFaceDetection(AtomBuffer *auxBuf)
     // get the needLLS
     extended_face_metadata.needLLS = getU16fromFrame(nv12meta, NV12_META_NEED_LLS_ADDR);
 
-    // send face info towards the application
+    // handle low light status internally ...
+    if (mAutoLowLightReporting &&
+        mLastLowLightValue != extended_face_metadata.needLLS) {
+        mPostProcDoneCallback->lowLightDetected(extended_face_metadata.needLLS);
+        mLastLowLightValue = extended_face_metadata.needLLS;
+    }
+
+    // ...and send face info towards the application
     mpListener->facesDetected(&extended_face_metadata);
 
     return OK;

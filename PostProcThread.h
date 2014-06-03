@@ -38,6 +38,7 @@ public:
     virtual ~ICallbackPostProc() {}
     virtual void facesDetected(const ia_face_state *faceState) = 0;
     virtual void postProcCaptureTrigger() = 0;
+    virtual void lowLightDetected(bool needLLS) = 0;
 };
 
 
@@ -250,6 +251,7 @@ private:
     bool mIsBackCamera;
     int mCameraId;
     bool mAutoLowLightReporting;
+    bool mLastLowLightValue;
 }; // class PostProcThread
 
 }; // namespace android
