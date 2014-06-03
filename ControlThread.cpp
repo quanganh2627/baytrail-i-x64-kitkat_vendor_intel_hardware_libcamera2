@@ -1603,6 +1603,32 @@ status_t ControlThread::captureSdvSoC(bool fullsize)
     return status;
 }
 
+status_t ControlThread::captureStillPicFromPreview()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    mCallbacksThread->requestTakePicture(false, true);
+    mPictureThread->initialize(mParameters, mHwcg.mIspCI->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
+
+    // allocate buffer struct
+    AtomBuffer snapshotBuffer
+        = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
+    mPreviewThread->getPreviewBufferById(snapshotBuffer);
+
+    // encode a frame
+    PictureThread::MetaData picMetaData;
+    fillPicMetaData(picMetaData, false);
+    LOG1("TEST-TRACE: starting picture encode: Time: %lld", systemTime());
+    status = mPictureThread->encode(picMetaData, &snapshotBuffer, NULL);
+    if (status != NO_ERROR) {
+        picMetaData.free(m3AControls);
+        LOGE("@%s: failed to call PictureThread to encode", __FUNCTION__);
+    }
+
+    return status;
+}
+
 status_t ControlThread::captureSdv(bool offline)
 {
     LOG1("@%s: %s", __FUNCTION__, offline ? "offline" : "online");
@@ -3090,7 +3116,10 @@ status_t ControlThread::handleMessageTakePicture() {
     switch(mShootingMode) {
 
         case SHOOTING_MODE_SINGLE:
-            status = captureStillPic();
+            if (PlatformData::isExtendedCamera(mCameraId))
+                status = captureStillPicFromPreview();
+            else
+                status = captureStillPic();
             break;
 
         case SHOOTING_MODE_ZSL:

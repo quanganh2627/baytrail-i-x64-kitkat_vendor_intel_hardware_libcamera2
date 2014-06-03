@@ -682,6 +682,7 @@ private:
     status_t burstCaptureSkipFrames();
 
     status_t captureStillPic();
+    status_t captureStillPicFromPreview();
     status_t captureBurstPic(bool clientRequest);
     status_t captureFixedBurstPic(bool clientRequest);
     status_t capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffer &postviewBuffer);

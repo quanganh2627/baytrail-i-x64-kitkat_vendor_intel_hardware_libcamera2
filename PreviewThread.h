@@ -168,6 +168,7 @@ public:
     status_t pausePreviewFrameUpdate();
     status_t resumePreviewFrameUpdate();
     status_t setPreviewFrameCaptureId(int count);
+    status_t getPreviewBufferById(AtomBuffer &buff);
 
     // IBufferOwner override
     virtual void returnBuffer(AtomBuffer* buff);

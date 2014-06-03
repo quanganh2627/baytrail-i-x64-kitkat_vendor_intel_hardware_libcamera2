@@ -2155,11 +2155,37 @@ void PreviewThread::getEffectiveDimensions(int *w, int *h)
     }
 }
 
+status_t PreviewThread::getPreviewBufferById(AtomBuffer &buff)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    bool find = false;
+
+    Vector<AtomBuffer>::iterator it = mPreviewBufferQueue.begin();
+    for(; it != mPreviewBufferQueue.end(); ++it) {
+        if (it->sensorFrameId == mPreviewFrameId) {
+            find = true;
+            LOG2("find captured preview frame, frame count = %d", mPreviewFrameId);
+            break;
+        }
+    }
+
+    // if don't find matching frame count, return the last one to finish takepicture operation.
+    if (find) {
+        buff = *it;
+    } else {
+        buff = mPreviewBufferQueue.top();
+    }
+
+    return status;
+}
+
 AtomBuffer* PreviewThread::handlePreviewBufferQueue(AtomBuffer* buff)
 {
     LOG1("@%s", __FUNCTION__);
 
     int maxQueueSize = PlatformData::getMaxDepthPreviewBufferQueueSize(mCameraId);
+
     // If max queue size is less than 0 or larger than preview buffer number, don't hold buffer.
     if (!mPreviewBufferQueueUpdate || ((maxQueueSize <= 0) && (maxQueueSize >= mPreviewBufferNum))) {
         LOG2("Queue size is [%d], Preview buffer number is [%d].", maxQueueSize, mPreviewBufferNum);
