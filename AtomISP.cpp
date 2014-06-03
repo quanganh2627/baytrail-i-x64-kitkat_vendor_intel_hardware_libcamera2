@@ -1027,7 +1027,8 @@ status_t AtomISP::allocateBuffers(AtomMode mode)
          * We will restore this when we stop the preview. see stopPreview()
          **/
         if (mPreviewTooBigForVFPP || mHALZSLEnabled) {
-            mPreviewDevice = mMainDevice;
+            //mPreviewDevice = mMainDevice;
+            ;
         }
         if ((status = allocatePreviewBuffers()) != NO_ERROR)
             mPreviewDevice->stop();
@@ -1716,7 +1717,7 @@ status_t AtomISP::configureContinuousSOC()
     int ret = 0;
     status_t status = OK;
 
-    mPreviewDevice = mMainDevice;
+    //mPreviewDevice = mMainDevice;
 
     if (!mPreviewDevice->isOpen()) {
         ret = mPreviewDevice->open();
@@ -3116,8 +3117,10 @@ int AtomISP::atomisp_set_capture_mode(int deviceMode)
     int vfpp_mode = ATOMISP_VFPP_ENABLE;
     if (deviceMode == CI_MODE_PREVIEW && mPreviewTooBigForVFPP)
         vfpp_mode = ATOMISP_VFPP_DISABLE_SCALER;
+    /*
     else if(mHALZSLEnabled)
         vfpp_mode = ATOMISP_VFPP_DISABLE_LOWLAT;
+    */
 
     CLEAR(parm);
 
