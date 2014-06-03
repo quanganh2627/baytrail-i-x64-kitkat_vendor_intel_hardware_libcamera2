@@ -168,6 +168,8 @@ LOCAL_SHARED_LIBRARIES := \
 	libiacp \
 	libia_exc
 
+LOCAL_SHARED_LIBRARIES += libintlc libsvml libimf libirng
+
 ifeq ($(USE_INTEL_METABUFFER),true)
 LOCAL_SHARED_LIBRARIES += \
 	libintelmetadatabuffer
@@ -222,4 +224,3 @@ include $(BUILD_SHARED_LIBRARY)
 
 endif  #ifeq ($(USE_CAMERA_HAL2),true)
 endif #ifeq ($(USE_CAMERA_STUB),false)
-
