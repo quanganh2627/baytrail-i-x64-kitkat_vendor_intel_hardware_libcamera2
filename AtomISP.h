@@ -333,6 +333,7 @@ private:
     AtomBuffer* findMatchingHALZSLPreviewFrame(int frameCounter);
     void copyOrScaleHALZSLBuffer(const AtomBuffer &captureBuf, const AtomBuffer *previewBuf,
             AtomBuffer *targetBuf, const AtomBuffer &localBuf, float zoomFactor) const;
+    status_t copyStrideBuffer(AtomBuffer &dst, const AtomBuffer &src) const;
     status_t getHALZSLSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf);
     bool waitForHALZSLBuffer(Vector<AtomBuffer> &vector, bool snapshot);
     void dumpHALZSLBufs();

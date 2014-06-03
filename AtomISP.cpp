@@ -1740,7 +1740,7 @@ status_t AtomISP::configureContinuousSOC()
     mConfig.HALZSL.height = zslSize.height;
     mConfig.HALZSL.fourcc = PlatformData::getPreviewPixelFormat();
     mConfig.HALZSL.bpl = SGXandDisplayBpl(mConfig.HALZSL.fourcc, mConfig.HALZSL.width);
-    mConfig.HALZSL.size = frameSize(mConfig.HALZSL.fourcc, mConfig.HALZSL.width, mConfig.HALZSL.height);
+    mConfig.HALZSL.size = frameSize(mConfig.HALZSL.fourcc, bytesToPixels(mConfig.HALZSL.fourcc, mConfig.HALZSL.bpl), mConfig.HALZSL.height);
 
 
     // fix the Preview bpl to have gfx bpl, as preview never goes to ISP
@@ -3560,7 +3560,7 @@ void AtomISP::copyOrScaleHALZSLBuffer(const AtomBuffer &captureBuf, const AtomBu
     targetBuf->height = localBuf.height;
     targetBuf->fourcc = localBuf.fourcc;
     targetBuf->size = localBuf.size;
-    targetBuf->bpl = SGXandDisplayBpl(V4L2_PIX_FMT_NV12, localBuf.width);
+    targetBuf->bpl = localBuf.bpl;
     targetBuf->type = localBuf.type;
     targetBuf->gfxInfo = localBuf.gfxInfo;
     targetBuf->buff = localBuf.buff;
@@ -3572,12 +3572,29 @@ void AtomISP::copyOrScaleHALZSLBuffer(const AtomBuffer &captureBuf, const AtomBu
     // FIXME, even if buffer can be copy directly, HW copy should be faster than memcpy. So maybe we can use HW copy instead.
     if (zoomFactor == 1.0f && targetBuf->fourcc == mConfig.HALZSL.fourcc &&
             targetBuf->width == mConfig.HALZSL.width && targetBuf->height == mConfig.HALZSL.height) {
-        memcpy(targetBuf->dataPtr, captureBuf.dataPtr, captureBuf.size);
+        copyStrideBuffer(*targetBuf, captureBuf);
     } else if (targetBuf->width == mConfig.preview.width && targetBuf->height == mConfig.preview.height &&
             previewBuf != NULL && targetBuf->fourcc == mConfig.HALZSL.fourcc) {
-        memcpy(targetBuf->dataPtr, previewBuf->dataPtr, previewBuf->size);
+        copyStrideBuffer(*targetBuf, *previewBuf);
     } else
         mScaler->scaleAndZoom(&captureBuf, targetBuf, zoomFactor);
+}
+
+status_t AtomISP::copyStrideBuffer(AtomBuffer &dst, const AtomBuffer &src) const
+{
+    int i;
+    int bpl_valid = pixelsToBytes(src.fourcc, src.width);
+    int lines = int(src.size / src.bpl);
+    if (bpl_valid > dst.bpl){
+        LOGE("%s:Invlid buffer size, require bpl %d, actual %d",__FUNCTION__, bpl_valid, dst.bpl);
+        return -1;
+    }
+    for (i=0; i<lines; i++){
+        char* src_ptr = (char*)src.dataPtr + i*src.bpl;
+        char* dst_ptr = (char*)dst.dataPtr + i*dst.bpl;
+        memcpy(dst_ptr, src_ptr, bpl_valid);
+    }
+    return NO_ERROR;
 }
 
 status_t AtomISP::getHALZSLSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
@@ -4085,7 +4102,11 @@ status_t AtomISP::allocateSnapshotBuffers()
         for (int i = 0; i < mConfig.num_snapshot; i++) {
             mSnapshotBuffers[i] = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
 
-            MemoryUtils::allocateAtomBuffer(mSnapshotBuffers[i], mConfig.snapshot, mCallbacks);
+            if (mHALZSLEnabled) {
+                MemoryUtils::allocateGraphicBuffer(mSnapshotBuffers[i], mConfig.snapshot);
+            } else {
+                MemoryUtils::allocateAtomBuffer(mSnapshotBuffers[i], mConfig.snapshot, mCallbacks);
+            }
             if (mSnapshotBuffers[i].dataPtr == NULL) {
                 LOGE("Error allocation memory for snapshot buffers!");
                 status = NO_MEMORY;
@@ -4093,6 +4114,9 @@ status_t AtomISP::allocateSnapshotBuffers()
             }
             allocatedSnaphotBufs++;
             bufPool[i] = mSnapshotBuffers[i].dataPtr;
+
+            if (mHALZSLEnabled)
+                mScaler->registerBuffer(mSnapshotBuffers[i], ScalerService::SCALER_OUTPUT);
         }
     } // if (mUsingClientSnapshotBuffers)
     if (!mHALZSLEnabled)
@@ -4338,8 +4362,11 @@ status_t AtomISP::freeSnapshotBuffers()
         return NO_ERROR;
     }
 
-    for (int i = 0 ; i < mConfig.num_snapshot; i++)
+    for (int i = 0 ; i < mConfig.num_snapshot; i++){
+        if (mHALZSLEnabled)
+            mScaler->unRegisterBuffer(mSnapshotBuffers[i], ScalerService::SCALER_OUTPUT);
         MemoryUtils::freeAtomBuffer(mSnapshotBuffers[i]);
+    }
 
     return NO_ERROR;
 }
