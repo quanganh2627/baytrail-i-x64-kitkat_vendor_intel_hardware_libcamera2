@@ -59,10 +59,13 @@ PreviewThread::PreviewThread(sp<CallbacksThread> callbacksThread, Callbacks* cal
     ,mTransferingBuffer(NULL)
     ,mCallbacks(callbacks)
     ,mCameraId(cameraId)
+    ,mMinUndequeued(0)
     ,mBuffersInWindow(0)
     ,mNumOfPreviewBuffers(0)
     ,mFetchDone(false)
     ,mDebugFPS(new DebugFrameRate())
+    ,mCallbackPreviewWidth(0)
+    ,mCallbackPreviewHeight(0)
     ,mPreviewWidth(0)
     ,mPreviewHeight(0)
     ,mPreviewBpl(0)
@@ -1580,6 +1583,12 @@ status_t PreviewThread::handleSetPreviewConfig(MessageSetPreviewConfig *msg)
 
     if ( mMinUndequeued < 0 || mMinUndequeued > bufferCount - 1) {
         LOGE("unexpected min undeueued requirement %d", mMinUndequeued);
+        freeLocalPreviewBuf();
+        setState(STATE_STOPPED);
+        mPreviewWidth = 0;
+        mPreviewHeight = 0;
+        mPreviewBpl = 0;
+        mMinUndequeued = 0;
         return INVALID_OPERATION;
     }
 

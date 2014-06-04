@@ -1922,13 +1922,13 @@ status_t ControlThread::startPreviewCore(bool videoMode)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    int width;
-    int height;
-    int cb_fourcc;
-    int bpl;
-    int fps;
-    State state;
-    AtomMode mode;
+    int width(0);
+    int height(0);
+    int cb_fourcc(0);
+    int bpl(0);
+    int fps(0);
+    State state(STATE_STOPPED);
+    AtomMode mode(MODE_NONE);
 
     if (mState != STATE_STOPPED) {
         LOGE("Must be in STATE_STOPPED to start preview");
@@ -2104,7 +2104,12 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     mPreviewThread->setPreviewConfig(width, height, cb_fourcc, useSharedGfxBuffers, mHALVideoStabilization && videoMode, mNumBuffers);
 
     // Get the preview size from PreviewThread and pass the configuration to AtomISP.
-    mPreviewThread->fetchPreviewBufferGeometry(&width, &height, &bpl);
+    status = mPreviewThread->fetchPreviewBufferGeometry(&width, &height, &bpl);
+    if (status != NO_ERROR) {
+        LOGE("Error fetch preview buffer geometry");
+        return status;
+    }
+
     mISP->setPreviewFrameFormat(width, height, bpl);
 
     if (useSharedGfxBuffers) {
