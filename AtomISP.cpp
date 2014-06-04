@@ -2513,8 +2513,8 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
 			}
 
 			if(((previewWidth == 720)&& (previewHeight == 480)) || ((previewWidth == 1272)&& (previewHeight == 848))) {
-				LOGD("480p recording change preview size to 1272x848 and video size to 720x480");
-				params->setPreviewSize(1272,848);
+				LOGD("480p recording change preview size to 1600x1064 and video size to 720x480");
+				params->setPreviewSize(1600,1064);
 			}
 		}
 
@@ -2529,6 +2529,18 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
                 params->setVideoSize(624,464);
             }
         }
+
+		const char manUsensorFNameBF3A20[] = "bf3a20";
+		if (strncmp(mSensorHW.getSensorName(), manUsensorFNameBF3A20, sizeof(manUsensorFNameBF3A20) - 1) == 0) {
+			if (((previewWidth == 1280)&& (previewHeight == 720))) {
+				LOGD("720p recording change preview size to 1600 and 900 video size to 1280x720");
+				params->setPreviewSize(1600,900);
+			}else if(((previewWidth == 720)&& (previewHeight == 480)) ) {
+				LOGD("480p recording change preview size to 1600x1064 and video size to 720x480");
+				params->setPreviewSize(1600,1064);
+			}
+			
+		}
 
         //Workaround 2, detail refer to the function description
         params->getPreviewSize(&previewWidth, &previewHeight);
