@@ -338,9 +338,19 @@ status_t AtomISP::init()
     AtomBuffer formatDescriptorPv
             = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR, V4L2_PIX_FMT_NV12, RESOLUTION_POSTVIEW_WIDTH, RESOLUTION_POSTVIEW_HEIGHT);
     // Initialize the frame sizes
-    setPreviewFrameFormat(RESOLUTION_VGA_WIDTH, RESOLUTION_VGA_HEIGHT,
-                          pixelsToBytes(PlatformData::getPreviewPixelFormat(mCameraId), RESOLUTION_VGA_WIDTH),
+    int width  = 0;
+    int height = 0;
+    const char *size = PlatformData::defaultPreviewSize(mCameraId);
+    if (!size) {
+        LOGE("No default preview size from platformdata. mCameraId(%d) must be bad.", mCameraId);
+        return NO_INIT;
+    }
+
+    IntelCameraParameters::parseResolution(size, width, height);
+    setPreviewFrameFormat(width, height,
+                          pixelsToBytes(PlatformData::getPreviewPixelFormat(mCameraId), width),
                           PlatformData::getPreviewPixelFormat(mCameraId));
+
     setPostviewFrameFormat(formatDescriptorPv);
 
     AtomBuffer formatDescriptorSs
@@ -353,7 +363,16 @@ status_t AtomISP::init()
      */
     setSnapshotFrameFormat(formatDescriptorSs);
 
-    setVideoFrameFormat(mConfig.recordingLimits.maxWidth, mConfig.recordingLimits.maxHeight, V4L2_PIX_FMT_NV12);
+    width  = 0;
+    height = 0;
+    size = PlatformData::defaultVideoSize(mCameraId);
+    if (!size) {
+        LOGE("No default video size from platformdata. mCameraId(%d) must be bad.", mCameraId);
+        return NO_INIT;
+    }
+
+    IntelCameraParameters::parseResolution(size, width, height);
+    setVideoFrameFormat(width, height, V4L2_PIX_FMT_NV12);
 
     status = computeZoomRatios();
     fetchIspVersions();

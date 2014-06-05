@@ -283,10 +283,10 @@ namespace android {
     static void getPanoramaLivePreviewSize(int &width, int &height, const CameraParameters &params);
     static const char* getSupportedPanoramaLivePreviewSizes(const CameraParameters &params);
     static void parseResolutionList(const char *sizeStr, Vector<Size> &sizes);
+    static status_t parseResolution(const char *p, int &width, int &height, char **endptr = NULL);
   private:
       IntelCameraParameters(void) {}
 
-      static status_t parseResolution(const char *p, int &width, int &height, char **endptr = NULL);
   };
 }; // ns android
 

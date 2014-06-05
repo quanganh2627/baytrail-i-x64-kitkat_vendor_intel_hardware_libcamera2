@@ -195,8 +195,12 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         pCurrentCam->supportedPreviewSizes = atts[1];
     } else if (strcmp(name, "supportedVideoSizes") == 0) {
         pCurrentCam->supportedVideoSizes = atts[1];
-    }else if (strcmp(name, "videoPreviewSizePref") == 0) {
+    } else if (strcmp(name, "videoPreviewSizePref") == 0) {
         pCurrentCam->mVideoPreviewSizePref = atts[1];
+    } else if (strcmp(name, "defaultPreviewSize") == 0) {
+        pCurrentCam->defaultPreviewSize = atts[1];
+    } else if (strcmp(name, "defaultVideoSize") == 0) {
+        pCurrentCam->defaultVideoSize = atts[1];
     } else if (strcmp(name, "supportedSceneModes") == 0) {
         pCurrentCam->supportedSceneModes = atts[1];
     } else if (strcmp(name, "defaultSceneMode") == 0) {

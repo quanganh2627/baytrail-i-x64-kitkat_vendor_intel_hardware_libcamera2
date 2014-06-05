@@ -294,6 +294,20 @@ class PlatformData {
     static const char* preferredPreviewSizeForVideo(int cameraId);
 
     /**
+     * Returns string describing default preview size
+     *
+     * \return string following getParameter value notation
+     */
+    static const char* defaultPreviewSize(int cameraId);
+
+    /**
+     * Returns string describing default video size
+     *
+     * \return string following getParameter value notation
+     */
+    static const char* defaultVideoSize(int cameraId);
+
+    /**
      * Whether the camera supports Digital Video Stabilization or not
      *
      * \param cameraId identifier passed to android.hardware.Camera.open()
@@ -1391,6 +1405,8 @@ protected:
             supportedPreviewFPSRange = "(10500,30304),(11000,30304),(11500,30304)";
             defaultPreviewFPSRange = "10500,30304";
             supportedVideoSizes = "176x144,320x240,352x288,640x480,720x480,720x576,1280x720,1920x1080";
+            defaultPreviewSize = "640x480";
+            defaultVideoSize = "1920x1080";
             //full resolution SDV
             supportedSdvSizes = "";
             // Leaving this empty. NOTE: values need to be given in derived classes.
@@ -1540,6 +1556,8 @@ protected:
         String8 defaultPreviewUpdateMode;
         String8 supportedVideoSizes;
         String8 mVideoPreviewSizePref;
+        String8 defaultPreviewSize;
+        String8 defaultVideoSize;
         // For high speed recording, slow motion playback
         bool hasSlowMotion;
         String8 supportedHighSpeedResolutionFps;

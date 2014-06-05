@@ -248,6 +248,24 @@ const char* PlatformData::preferredPreviewSizeForVideo(int cameraId)
     return getInstance()->mCameras[getActiveCamIdx(cameraId)].mVideoPreviewSizePref;
 }
 
+const char* PlatformData::defaultPreviewSize(int cameraId)
+{
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return NULL;
+    }
+
+    return getInstance()->mCameras[cameraId].defaultPreviewSize;
+}
+
+const char* PlatformData::defaultVideoSize(int cameraId)
+{
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return NULL;
+    }
+
+    return getInstance()->mCameras[cameraId].defaultVideoSize;
+}
+
 const char* PlatformData::supportedVideoSizes(int cameraId)
 {
     const char *sPtr;
