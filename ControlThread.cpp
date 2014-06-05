@@ -105,8 +105,8 @@ const char* ControlThread::sCaptureSubstateStrings[]= {
       "STARTED",
       "ENCODING_DONE",
       "PICTURE_DONE",
-      "IDLE"
-      "CONTINOUS_SHOOTING"
+      "IDLE",
+      "CONTINUOUS_SHOOTING"
 };
 
 ControlThread::ControlThread(int cameraId) :
@@ -3081,7 +3081,7 @@ status_t ControlThread::handleMessageTakePicture() {
     status_t status = NO_ERROR;
 
     mShootingMode = selectShootingMode();
-    LOG1("CaptureSubState %s -> STARTED ", sCaptureSubstateStrings[mCaptureSubState]);
+    LOG1("CaptureSubState %s -> STARTED", sCaptureSubstateStrings[mCaptureSubState]);
     mCaptureSubState = STATE_CAPTURE_STARTED;
 
     switch(mShootingMode) {
