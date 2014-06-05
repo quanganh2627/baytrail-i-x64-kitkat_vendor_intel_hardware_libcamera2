@@ -420,25 +420,29 @@ status_t PictureThread::handleMessageCapture(MessageCapture *msg)
 {
     LOG2("@%s", __FUNCTION__);
 
-    /******* temporary logging of jpeginfo and metainfo - todo cjc remove */
+    /*******
+     * TODO: Remove when capture-related bugs are fixed
+     *
+     * temporary logging of jpeginfo and JPEG metainfo
+     */
     char array[16];
-    unsigned char *meta = ((unsigned char*)msg->captureBuf.dataPtr)+0x800;
+    unsigned char *meta = ((unsigned char*)msg->captureBuf.dataPtr) + JPEG_INFO_START;
     strncpy(array, (char*) meta, 15);
     array[15] = 0;
     uint32_t yuvFrameIdDebug  = *(uint32_t*)(meta+0x17);
     yuvFrameIdDebug = be32toh(yuvFrameIdDebug);
     meta += 15;
 
-    LOG2("@%s JPEGINFO '%s'(%d) %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx", __FUNCTION__, array, yuvFrameIdDebug,
+    LOG2("@%s JPEGINFO '%s' yuvID(%d) mode: %02hhx count: %02hhx reserved: %02hhx %02hhx length: %02hhx %02hhx %02hhx %02hhx yuvID: %02hhx %02hhx %02hhx %02hhx thumbID: %02hhx %02hhx %02hhx %02hhx", __FUNCTION__, array, yuvFrameIdDebug,
          meta[0] , meta[1], meta[2], meta[3], meta[4], meta[5], meta[6], meta[7], meta[8] , meta[9], meta[10], meta[11], meta[12], meta[13], meta[14], meta[15]);
 
-    meta = ((unsigned char*)msg->captureBuf.dataPtr)+0x1000;
+    meta = ((unsigned char*)msg->captureBuf.dataPtr) + NV12_META_START;
     strncpy(array, (char *) meta, 14);
     array[14] = 0;
     meta += 14;
     uint32_t frameCount = *(uint32_t*)(meta);
     frameCount = be32toh(frameCount);
-    LOG2("@%s METAINFO '%s'(%d) %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx ", __FUNCTION__, array, frameCount,
+    LOG2("@%s NV12METAINFO '%s' framecount(%d) %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx ", __FUNCTION__, array, frameCount,
          meta[0] , meta[1], meta[2], meta[3], meta[4], meta[5], meta[6], meta[7], meta[8] , meta[9], meta[10], meta[11], meta[12], meta[13], meta[14], meta[15]);
     /******* end temporary logging */
 
@@ -459,11 +463,13 @@ status_t PictureThread::handleMessageCapture(MessageCapture *msg)
     uint32_t yuvFrameId(getU32fromFrame(jpeginfo, JPEG_INFO_YUV_FRAME_ID_ADDR));
     uint32_t thumbnailFrameId(getU32fromFrame(jpeginfo, JPEG_INFO_THUMBNAIL_FRAME_ID_ADDR));
     uint32_t nv12metaFrameCount(getU32fromFrame(nv12meta, NV12_META_FRAME_COUNT_ADDR));
+    // TODO: remove AF state debug along with the above "temporary" debug trace.
+    uint16_t afState(getU16fromFrame(nv12meta, NV12_META_AF_STATE_ADDR));
 
     uint16_t qValue(getU16fromFrame(jpeginfo, JPEG_INFO_Q_VALUE_ADDR));
     uint32_t jpegSizeQValue(getU32fromFrame(jpeginfo, JPEG_INFO_JPEG_SIZE_Q_VALUE_ADDR));
 
-    LOG2("@%s: yuvFrameId = %d, thumbnailFrameId = %d, nv12metaFrameCount = %d", __FUNCTION__, yuvFrameId, thumbnailFrameId , nv12metaFrameCount);
+    LOG2("@%s: yuvFrameId = %d, thumbnailFrameId = %d, nv12metaFrameCount = %d, nv12AfState = 0x%x", __FUNCTION__, yuvFrameId, thumbnailFrameId , nv12metaFrameCount, afState);
 
     switch (jpeginfo[JPEG_INFO_MODE_ADDR]) {
     case JPEG_FRAME_TYPE_META:
@@ -621,7 +627,7 @@ status_t PictureThread::assembleJpeg(AtomBuffer *mainBuf, AtomBuffer *mainBuf2)
 
     MemoryUtils::freeAtomBuffer(postviewBuf);
 
-    LOG2("@%s: part one frame count = %u", __FUNCTION__,
+    LOG2("@%s: part one JPEG frame count = %u", __FUNCTION__,
          getU32fromFrame((uint8_t*) mainBuf->dataPtr, JPEG_META_START + JPEG_META_FRAME_COUNT_ADDR));
 
     // skip SOI MARKER start of JPEG data because it is already in EXIF
@@ -631,7 +637,7 @@ status_t PictureThread::assembleJpeg(AtomBuffer *mainBuf, AtomBuffer *mainBuf2)
     } else {
         mainSize2 = getJpegDataSize(mainBuf2->dataPtr);
         mainSize = mainSize1 + mainSize2;
-        LOG2("@%s: part two frame count = %u", __FUNCTION__,
+        LOG2("@%s: part two JPEG frame count = %u", __FUNCTION__,
              getU32fromFrame((uint8_t*) mainBuf2->dataPtr, JPEG_META_START + JPEG_META_FRAME_COUNT_ADDR));
     }
 
