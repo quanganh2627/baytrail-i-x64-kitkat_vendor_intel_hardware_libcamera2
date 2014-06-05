@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013 Intel Corporation.
+ * Copyright (c) 2013-2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -48,7 +48,10 @@ AtomSoc3A::AtomSoc3A(int cameraId, HWControlGroup &hwcg) :
     ,mMaxNumAfAreas(0)
 {
     LOG2("@%s", __FUNCTION__);
-    mMaxNumAfAreas = PlatformData::getMaxNumFocusAreas(mCameraId);
+    // fixed focus cameras cannot support focus areas
+    if (!PlatformData::isFixedFocusCamera(mCameraId)) {
+        mMaxNumAfAreas = PlatformData::getMaxNumFocusAreas(mCameraId);
+    }
 }
 
 AtomSoc3A::~AtomSoc3A()
