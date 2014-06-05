@@ -3199,16 +3199,6 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int fourcc)
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    /**
-     * Workaround: When video size is 1080P(1920x1080), because video HW codec
-     * requests 16x16 pixel block as sub-block to encode, So whatever apps set recording
-     * size to 1080P, ISP always outputs 1920x1088
-     * for encoder.
-     * In current supported list of video size, only height 1080(1920x1080) isn't multiple of 16
-     */
-    if(height % 16)
-        height = (height + 15) / 16 * 16;
-
     if(fourcc == 0)
          fourcc = mConfig.recording.fourcc;
     if (mConfig.recording.width == width &&
