@@ -665,6 +665,7 @@ status_t PictureThread::assembleJpeg(AtomBuffer *mainBuf, AtomBuffer *mainBuf2)
     destBuf.frameCounter = mainBuf->frameCounter;
     destBuf.id = thumbnailId;
 
+    mCallbacksThread->rawFrameDone(NULL);
     mCallbacksThread->compressedFrameDone(&destBuf, NULL, NULL);
 
     return status;
