@@ -175,6 +175,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mDepthMode(false)
     ,mContShootingState(CONT_SHOOTING_NONE)
     ,mContShootingEnabled(false)
+    ,mContShootingSkipFirstFrame(false)
     ,mContinuousPicsReady(0)
 {
     // DO NOT PUT ANY ALLOCATION CODE IN THIS METHOD!!!
@@ -2012,6 +2013,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     if (!mISP->isDeviceInitialized())
         mISP->init();
 
+    mContShootingSkipFirstFrame = false; // reset this in preview start
     mHALVideoStabilization = false; // do not use hal stabilization by default
     mISP->setHALVideoStabilization(mHALVideoStabilization); // set it off from ISP also
     if (videoMode) {
@@ -4343,6 +4345,9 @@ status_t ControlThread::finalizeContinuousShooting()
     cancelPictureThread();
     forceRestoreSnapshotPostviewBuffers();
     mContinuousPicsReady = 0;
+    // Call to finalizeContinuousShooting means first time continuous shooting has finished
+    // User released the capture button. Now we will skip first frame in the next time continuous shooting
+    mContShootingSkipFirstFrame = true;
     return NO_ERROR;
 }
 
@@ -4397,6 +4402,26 @@ status_t ControlThread::captureContinuousShooting(bool clientRequest = false)
             LOGE("Error while waiting for capture to start");
             stopOfflineCapture();
             return status;
+        }
+
+        /**
+         * FIXME: remove the code of skipping one frame when FW bug:3039 is fixed.
+         */
+        if (mContShootingSkipFirstFrame) {
+            status = getSnapshot(&snapshotBuffer, &postviewBuffer);
+            if (status != NO_ERROR) {
+                LOGE("%s Error in grabbing snapshot!", __FUNCTION__);
+                stopOfflineCapture();
+                return status;
+            }
+
+            LOG1("Continuous shooting skip the first buffer exp id:%d", snapshotBuffer.expId);
+
+            status = putSnapshot(&snapshotBuffer, &postviewBuffer);
+            if (status != NO_ERROR) {
+                LOGE("Error %d in putting snapshot buffer:%p for continuous shooting", status,
+                        snapshotBuffer.dataPtr);
+            }
         }
     }
 

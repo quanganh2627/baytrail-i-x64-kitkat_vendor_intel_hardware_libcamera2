@@ -875,6 +875,12 @@ private:
     // continuous capture
     ContinuousShootingState mContShootingState;   /*!< continuous shooting state */
     bool mContShootingEnabled;                    /*!< app controls to enable of disable continuous shooting mode*/
+    // FIXME: remove this when CSS able to clear all old frames
+    bool mContShootingSkipFirstFrame;           /*!< This is a workaround for FW bug 2477. We get remaining frames when set
+                                                     number_capture to -1. FW can clear all the tagger buffer but still
+                                                     has one buffer which has already been processing in capture
+                                                     pipe can't be retrieved safely. In camera HAL currently we need to skip
+                                                     this frame to avoid getting old frame */
     int mContinuousPicsReady;                     /*!< number buffer ready*/
 
     /*----------- Debugging helpers --------------------*/
