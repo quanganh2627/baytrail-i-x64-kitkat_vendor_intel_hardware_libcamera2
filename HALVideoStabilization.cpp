@@ -27,8 +27,15 @@ namespace android {
 void HALVideoStabilization::getEnvelopeSize(int previewWidth, int previewHeight, int &envelopeWidth, int &envelopeHeight, int &bpl)
 {
     LOG1("@%s", __FUNCTION__);
-    envelopeWidth = (previewWidth * ENVELOPE_MULTIPLIER) / ENVELOPE_DIVIDER;
-    envelopeHeight = (previewHeight * ENVELOPE_MULTIPLIER) / ENVELOPE_DIVIDER;
+    if (previewWidth == 176 && previewHeight == 144) {
+        // qcif support currently through halvs only, using memcpy, so make
+        // the envelope equal preview size
+        envelopeWidth = 176;
+        envelopeHeight = 144;
+    } else {
+        envelopeWidth = (previewWidth * ENVELOPE_MULTIPLIER) / ENVELOPE_DIVIDER;
+        envelopeHeight = (previewHeight * ENVELOPE_MULTIPLIER) / ENVELOPE_DIVIDER;
+    }
 
     bpl = ALIGN64(envelopeWidth);
 
@@ -44,7 +51,6 @@ void HALVideoStabilization::process(const AtomBuffer *inBuf, AtomBuffer *outBuf)
     unsigned char *nv12meta = ((unsigned char*)inBuf->auxBuf->dataPtr) + NV12_META_START;
 
     if (inBuf->width == outBuf->width) {
-        // todo remove this if-statement when we have working non-dvs scaling multi-output from driver
         memcpy((char *)outBuf->dataPtr, (const char*)inBuf->dataPtr, outBuf->size);
         return;
     }

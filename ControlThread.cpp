@@ -1824,7 +1824,10 @@ ControlThread::ShootingMode ControlThread::selectShootingMode()
     switch (mState) {
         case STATE_PREVIEW_STILL:
         case STATE_PREVIEW_VIDEO:
-            ret = SHOOTING_MODE_SINGLE;
+            if (PlatformData::supportsContinuousJpegCapture(mCameraId))
+                ret = SHOOTING_MODE_JPEG;
+            else
+                ret = SHOOTING_MODE_SINGLE;
             break;
 
         case STATE_RECORDING:
@@ -2646,7 +2649,11 @@ status_t ControlThread::handleMessageStartPreview()
     } else if (mState == STATE_CONTINUOUS_CAPTURE || mState == STATE_JPEG_CAPTURE) {
         // already in continuous-state
         status = handleContinuousPreviewForegrounding();
+    } else if (mState == STATE_PREVIEW_VIDEO && PlatformData::supportsContinuousJpegCapture(mCameraId)) {
+        // nothing to do, we didn't maybe stop preview after capture so just ignore the start
+        status = OK;
     } else {
+        LOGE("Invalid state for startPreview: %d", mState);
         status = INVALID_OPERATION;
     }
 
@@ -2882,7 +2889,8 @@ status_t ControlThread::handleMessageStartRecording()
         }
         mState = STATE_RECORDING;
     } else if (mState == STATE_PREVIEW_STILL ||
-               mState == STATE_CONTINUOUS_CAPTURE) {
+               mState == STATE_CONTINUOUS_CAPTURE ||
+               mState == STATE_JPEG_CAPTURE) {
         /* We are in PREVIEW_STILL mode; in order to start recording
          * we first need to stop AtomISP and restart it with MODE_VIDEO
          */
@@ -3620,10 +3628,12 @@ bool ControlThread::selectSdvSize(int &width, int &height)
         }
     }
 
-    // todo remove this block when ext-isp has 2:1 capture size(s) available
+    // todo remove this block when ext-isp has proper aspect capture size(s) available
     if (PlatformData::supportsContinuousJpegCapture(mCameraId) &&
-        vidWidth == 720 && vidHeight == 480 && supportedSizes.size() > 0) {
-        // since there is no proper 2:1 capture yet, we will have to just pick
+        ((vidWidth == 720 && vidHeight == 480) ||
+         (vidWidth == 176 && vidHeight == 144)) &&
+        supportedSizes.size() > 0) {
+        // since there is no proper aspect ratio capture yet, we will have to just pick
         // one for the ext-isp case
         width = supportedSizes[0].width;
         height = supportedSizes[0].height;
@@ -5795,7 +5805,7 @@ int ControlThread::getNeededSnapshotBufNum(bool videoMode)
     LOG1("@%s video mode:%d", __FUNCTION__, videoMode);
     int maxNum, recommendedNum, contShootingLimit, clipTo;
 
-    if (!videoMode && PlatformData::supportsContinuousJpegCapture(mCameraId)) {
+    if (PlatformData::supportsContinuousJpegCapture(mCameraId)) {
         // In continuousJpegCapture use buffers allocated in AtomISP
         return 0;
     }
@@ -5889,7 +5899,7 @@ status_t ControlThread::allocateSnapshotAndPostviewBuffers(bool videoMode)
      * then the format changes to RGB adn JPEG encoding breaks (i.e. image is
      * green) this is a known limitation of the raw capture sequence in ISP fW
      */
-    if (!videoMode && PlatformData::supportsContinuousJpegCapture(mCameraId))
+    if (PlatformData::supportsContinuousJpegCapture(mCameraId))
         formatDescriptorSs.fourcc = V4L2_PIX_FMT_CONTINUOUS_JPEG;
     else if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW))
         formatDescriptorSs.fourcc = mHwcg.mSensorCI->getRawFormat();
@@ -8385,7 +8395,8 @@ status_t ControlThread::handleMessageStoreMetaDataInBuffers(MessageStoreMetaData
     if (mState != STATE_STOPPED &&
             mState != STATE_PREVIEW_VIDEO &&
             mState != STATE_PREVIEW_STILL &&
-            mState != STATE_CONTINUOUS_CAPTURE) {
+            mState != STATE_CONTINUOUS_CAPTURE &&
+            mState != STATE_JPEG_CAPTURE) {
         LOGE("Cannot configure metadata buffers in this state: %d", mState);
         status = BAD_VALUE;
         mMessageQueue.reply(MESSAGE_ID_STORE_METADATA_IN_BUFFER, status);

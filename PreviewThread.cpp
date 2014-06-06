@@ -919,7 +919,6 @@ PreviewThread::GfxAtomBuffer* PreviewThread::dequeueFromWindow()
 
     if (mHALVideoStabilization) {
         lockMode = GRALLOC_USAGE_SW_READ_OFTEN |
-                   GRALLOC_USAGE_HW_COMPOSER   |
                    GRALLOC_USAGE_HW_TEXTURE;
     }
 
