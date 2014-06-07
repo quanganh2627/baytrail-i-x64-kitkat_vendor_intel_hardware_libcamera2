@@ -121,7 +121,7 @@ public:
     virtual status_t startStillAf() { return INVALID_OPERATION; }
     virtual status_t stopStillAf() { return INVALID_OPERATION; }
     virtual AfStatus isStillAfComplete() { return CAM_AF_STATUS_FAIL; }
-    virtual status_t applyPreFlashProcess(FlashStage stage, int orientation) { return INVALID_OPERATION; }
+    virtual status_t applyPreFlashProcess(FlashStage stage, struct timeval captureTimestamp, int orientation) { return INVALID_OPERATION; }
     virtual status_t getGBCEResults(ia_aiq_gbce_results *gbce_results) { return INVALID_OPERATION; }
     virtual status_t getExposureParameters(ia_aiq_exposure_parameters *exposure) { return INVALID_OPERATION; }
 
