@@ -394,7 +394,7 @@ public:
     status_t startStillAf();
     status_t stopStillAf();
     AfStatus isStillAfComplete();
-    status_t applyPreFlashProcess(FlashStage stage);
+    status_t applyPreFlashProcess(FlashStage stage, struct timeval captureTimestamp);
 
     // Makernote
     ia_binary_data *get3aMakerNote(ia_mkn_trg mode);

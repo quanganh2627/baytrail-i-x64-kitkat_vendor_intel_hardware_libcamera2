@@ -248,7 +248,7 @@ public:
     virtual status_t startStillAf() = 0;
     virtual status_t stopStillAf() = 0;
     virtual AfStatus isStillAfComplete() = 0;
-    virtual status_t applyPreFlashProcess(FlashStage stage) = 0;
+    virtual status_t applyPreFlashProcess(FlashStage stage, struct timeval captureTimestamp) = 0;
 
     // Makernote
     virtual ia_binary_data *get3aMakerNote(ia_mkn_trg mode) = 0;

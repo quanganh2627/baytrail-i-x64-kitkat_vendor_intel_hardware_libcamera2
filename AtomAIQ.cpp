@@ -1168,16 +1168,11 @@ status_t AtomAIQ::getManualIso(int *ret)
     return status;
 }
 
-status_t AtomAIQ::applyPreFlashProcess(FlashStage stage)
+status_t AtomAIQ::applyPreFlashProcess(FlashStage stage, struct timeval captureTimestamp)
 {
     LOG2("@%s", __FUNCTION__);
 
     status_t ret = NO_ERROR;
-
-    /* AEC needs some timestamp to detect if frame is the same. */
-    struct timeval dummy_time;
-    dummy_time.tv_sec = stage;
-    dummy_time.tv_usec = 0;
 
     // Upper layer is skipping frames for exposure delay,
     // setting feedback delay to 0.
@@ -1200,7 +1195,7 @@ status_t AtomAIQ::applyPreFlashProcess(FlashStage stage)
 
         mAeInputParameters.frame_use = ia_aiq_frame_use_still;
 
-        ret = apply3AProcess(true, &dummy_time);
+        ret = apply3AProcess(true, &captureTimestamp);
 
         mAeInputParameters.frame_use = m3aState.frame_use;
 
@@ -1211,7 +1206,7 @@ status_t AtomAIQ::applyPreFlashProcess(FlashStage stage)
     }
     else
     {
-        ret = apply3AProcess(true, &dummy_time);
+        ret = apply3AProcess(true, &captureTimestamp);
 
         if (mAwbResults)
             mAwbStoredResults = *mAwbResults;

@@ -185,7 +185,7 @@ private:
     void updateULLTrigger(void);
 
     // flash sequence handler
-    bool handleFlashSequence(FrameBufferStatus frameStatus);
+    bool handleFlashSequence(FrameBufferStatus frameStatus, struct timeval capture_timestamp);
 
     // main message function
     status_t waitForAndExecuteMessage();

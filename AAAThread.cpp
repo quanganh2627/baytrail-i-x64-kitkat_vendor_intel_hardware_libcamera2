@@ -399,7 +399,7 @@ status_t AAAThread::handleMessageFlashStage(MessageFlashStage *msg)
  * returns true if sequence is running and normal 3A should
  * not be executed
  */
-bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus)
+bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus, struct timeval capture_timestamp)
 {
     // TODO: Make aware of frame sync and changes in exposure to
     //       reduce unneccesary skipping and consider processing for
@@ -428,7 +428,7 @@ bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus)
             // Enter Stage 1
             mFramesTillExposed = 0;
             mSkipForEv = m3AControls->getExposureDelay();
-            status = m3AControls->applyPreFlashProcess(CAM_FLASH_STAGE_NONE);
+            status = m3AControls->applyPreFlashProcess(CAM_FLASH_STAGE_NONE, capture_timestamp);
             mFlashStage = FLASH_STAGE_PRE_PHASE1;
             break;
         case FLASH_STAGE_PRE_PHASE1:
@@ -441,7 +441,7 @@ bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus)
             }
             // Enter Stage 2
             mSkipForEv = m3AControls->getExposureDelay();
-            status = m3AControls->applyPreFlashProcess(CAM_FLASH_STAGE_PRE);
+            status = m3AControls->applyPreFlashProcess(CAM_FLASH_STAGE_PRE, capture_timestamp);
             mFlashStage = FLASH_STAGE_PRE_PHASE2;
             break;
         case FLASH_STAGE_PRE_PHASE2:
@@ -464,7 +464,7 @@ bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus)
             mFramesTillExposed++;
             if (frameStatus == FRAME_STATUS_FLASH_EXPOSED) {
                 m3AControls->setFlash(0);
-                m3AControls->applyPreFlashProcess(CAM_FLASH_STAGE_MAIN);
+                m3AControls->applyPreFlashProcess(CAM_FLASH_STAGE_MAIN, capture_timestamp);
                 if (mFlashStage == FLASH_STAGE_SHOT_WAITING) {
                     LOG1("ShotFlash@Frame %d: SUCCESS    (stopping...)", mFramesTillExposed);
                     mFlashStage = FLASH_STAGE_SHOT_EXPOSED;
@@ -529,7 +529,7 @@ bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus)
 status_t AAAThread::handleMessageNewFrame(MessageNewFrame *msg)
 {
     LOG1("@%s: status: %d", __FUNCTION__,msg->status);
-    handleFlashSequence(msg->status);
+    handleFlashSequence(msg->status, msg->capture_timestamp);
     return NO_ERROR;
 }
 
