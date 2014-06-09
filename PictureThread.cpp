@@ -587,6 +587,8 @@ status_t PictureThread::assembleJpeg(AtomBuffer *mainBuf, AtomBuffer *mainBuf2)
         mCallbacks->allocateMemory(&mOutBuf, EXIF_SIZE_LIMITATION);
     }
 
+    // prepare EXIF data (focal length etc)
+    mExifMaker->setDriverData(mMakerInfo);
     // Read exif info from META data
     setupExifWithNv12Meta(mainBuf);
 
@@ -1105,6 +1107,22 @@ status_t PictureThread::handleMessageFlush()
     return status;
 }
 
+void PictureThread::setMakerNote(atomisp_makernote_info makerNote)
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_SET_MAKERNOTE;
+    msg.data.maker.makerNote = makerNote;
+    mMessageQueue.send(&msg);
+}
+
+status_t PictureThread::handleMessageSetMakernote(MessageSetMakernote *msg)
+{
+    LOG1("@%s", __FUNCTION__);
+    mMakerInfo = msg->makerNote;
+    return OK;
+}
+
 status_t PictureThread::waitForAndExecuteMessage()
 {
     LOG2("@%s", __FUNCTION__);
@@ -1120,6 +1138,10 @@ status_t PictureThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_ENCODE:
             status = handleMessageEncode(&msg.data.encode);
+            break;
+
+        case MESSAGE_ID_SET_MAKERNOTE:
+            status = handleMessageSetMakernote(&msg.data.maker);
             break;
 
         case MESSAGE_ID_ALLOC_BUFS:

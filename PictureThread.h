@@ -90,6 +90,7 @@ public:
                                   Vector<AtomBuffer> *bufs,
                                   bool registerToScaler);
 
+    void setMakerNote(atomisp_makernote_info makerNote);
 
     status_t wait(); // wait to finish queued messages (sync)
     status_t flushBuffers();
@@ -112,6 +113,7 @@ private:
         MESSAGE_ID_WAIT,
         MESSAGE_ID_FLUSH,
         MESSAGE_ID_INITIALIZE,
+        MESSAGE_ID_SET_MAKERNOTE,
         MESSAGE_ID_CAPTURE,
 
         // max number of messages
@@ -139,6 +141,10 @@ private:
         MetaData metaData;
     };
 
+    struct MessageSetMakernote {
+        atomisp_makernote_info makerNote;
+    };
+
     struct MessageParam {
         const CameraParameters *params;
         int zoomRatio;
@@ -152,6 +158,7 @@ private:
         MessageAllocBufs alloc;
         MessageParam param;
         MessageCapture capture;
+        MessageSetMakernote maker;
     };
 
     // message id and message data
@@ -172,6 +179,7 @@ private:
     status_t handleMessageFlush();
     status_t handleMessageInitialize(MessageParam *msg);
     status_t handleMessageCapture(MessageCapture *msg);
+    status_t handleMessageSetMakernote(MessageSetMakernote *msg);
 
     // main message function
     status_t waitForAndExecuteMessage();
@@ -255,6 +263,8 @@ private:
     // for flushing buffers
     ICallbackPicture *mPictureDoneCallback;
     int mCameraId;
+
+    atomisp_makernote_info mMakerInfo;
 }; // class PictureThread
 
 }; // namespace android

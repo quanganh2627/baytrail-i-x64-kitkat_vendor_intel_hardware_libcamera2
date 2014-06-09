@@ -3246,8 +3246,9 @@ void ControlThread::fillPicMetaData(PictureThread::MetaData &metaData, bool flas
         }
     } else {
         memset(aeConfig, 0, sizeof(SensorAeConfig));
-        if (mHwcg.mSensorCI->getExposureTime(&aeConfig->expTime))
-            aeConfig->expTime = 0;
+        if (!PlatformData::supportsContinuousJpegCapture(mCameraId)) // getExposureTime not available with ext-isp
+            if (mHwcg.mSensorCI->getExposureTime(&aeConfig->expTime))
+                aeConfig->expTime = 0;
     }
 
     //       SensorAeConfig information, so setting as NULL on purpose
@@ -4786,9 +4787,13 @@ status_t ControlThread::captureJpegPic()
     // TODO CJC
     stopFaceDetection();
 
+    PictureThread::MetaData picMetaData;
+    fillPicMetaData(picMetaData, false);
+    mPictureThread->setMakerNote(*picMetaData.atomispMkNote);
+
     // Notify CallbacksThread that a picture was requested, so grab one from queue
     bool syncJpegCbWithPostview = false;
-    bool requestPostviewCallback = false; // TODO CJC: true; 
+    bool requestPostviewCallback = false; // TODO CJC: true;
     bool requestRawCallback = true;
     mCallbacksThread->requestTakePicture(requestPostviewCallback, requestRawCallback, syncJpegCbWithPostview);
 
