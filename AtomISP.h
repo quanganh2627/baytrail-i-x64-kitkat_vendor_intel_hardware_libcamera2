@@ -415,6 +415,7 @@ private:
     status_t stopRecording();
     status_t configureCapture();
     status_t configureContinuousMode(bool enable);
+    status_t configureDepthMode(bool enable);
     status_t configureContinuousRingBuffer();
     status_t configureContinuous();
     status_t configureContinuousJpegCapture();

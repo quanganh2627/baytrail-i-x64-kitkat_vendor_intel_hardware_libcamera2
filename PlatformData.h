@@ -1236,6 +1236,7 @@ class PlatformData {
      */
     static void useExtendedCamera(bool val);
 
+    static bool isExtendedCameras(void);
     /**
      * it will check if the current cameraId camera is the extended camera
      * \return true or false

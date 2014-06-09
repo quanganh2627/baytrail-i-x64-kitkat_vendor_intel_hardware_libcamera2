@@ -1385,6 +1385,8 @@ status_t AtomISP::configurePreview()
         return NO_INIT;
     }
 
+    configureDepthMode(PlatformData::isExtendedCameras());
+
     ret = configureDevice(
             mPreviewDevice.get(),
             CI_MODE_PREVIEW,
@@ -1820,6 +1822,20 @@ status_t AtomISP::requestContCapture(int numCaptures, int offset, unsigned int s
     return NO_ERROR;
 }
 
+/**
+ * Configures the ISP depth mode
+ *
+ * This takes effect in kernel when preview is started.
+ */
+status_t AtomISP::configureDepthMode(bool enable)
+{
+    LOG2("@%s", __FUNCTION__);
+    if (mMainDevice->setControl(V4L2_CID_DEPTH_MODE,
+                              enable, "Depth mode") < 0)
+            return UNKNOWN_ERROR;
+
+    return NO_ERROR;
+}
 /**
  * Configures the ISP continuous capture mode
  *

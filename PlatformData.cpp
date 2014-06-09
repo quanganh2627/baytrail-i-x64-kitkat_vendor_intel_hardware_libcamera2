@@ -1611,7 +1611,13 @@ bool PlatformData::useMultiStreamsForSoC(int cameraId)
 void PlatformData::useExtendedCamera(bool val)
 {
     LOG1("@useExtendedCamera val = %d", val);
-    getInstance()->mUseExtendedCamera = val;
+    if (supportExtendedCamera())
+        getInstance()->mUseExtendedCamera = val;
+}
+
+bool PlatformData::isExtendedCameras(void)
+{
+    return getInstance()->mUseExtendedCamera;
 }
 
 bool PlatformData::isExtendedCamera(int cameraId)
