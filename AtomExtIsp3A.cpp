@@ -160,6 +160,9 @@ AfMode AtomExtIsp3A::getAfMode()
             break;
     }
 
+    if(PlatformData::isFixedFocusCamera(mCameraId))
+        mode = CAM_AF_MODE_FIXED;
+
     return mode;
 }
 
