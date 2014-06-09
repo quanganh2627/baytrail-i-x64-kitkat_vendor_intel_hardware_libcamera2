@@ -1143,6 +1143,7 @@ status_t AtomAIQ::applyEv(float bias)
     }
     if (mAEBracketingResult != NULL) {
         struct atomisp_exposure exposure;
+        CLEAR(exposure);
         exposure.integration_time[0] = mAEBracketingResult->exposures[0].sensor_exposure->coarse_integration_time;
         exposure.integration_time[1] = mAEBracketingResult->exposures[0].sensor_exposure->fine_integration_time;
         exposure.gain[0] = mAEBracketingResult->exposures[0].sensor_exposure->analog_gain_code_global;
@@ -1253,6 +1254,7 @@ status_t AtomAIQ::applyPreFlashProcess(FlashStage stage)
 
     /* AEC needs some timestamp to detect if frame is the same. */
     struct timeval dummy_time;
+    CLEAR(dummy_time);
     dummy_time.tv_sec = stage;
     dummy_time.tv_usec = 0;
 
@@ -1475,6 +1477,7 @@ void AtomAIQ::get3aGridInfo(struct atomisp_grid_info *pgrid)
 status_t AtomAIQ::getGridWindow(AAAWindowInfo& window)
 {
     struct atomisp_grid_info gridInfo;
+    CLEAR(gridInfo);
 
     // Get the 3A grid info
     get3aGridInfo(&gridInfo);
@@ -1750,9 +1753,22 @@ bool AtomAIQ::changeSensorMode(void)
     getSensorFrameParams(&m3aState.sensor_frame_params);
 
     struct atomisp_sensor_mode_data sensor_mode_data;
-    mSensorCI->getModeInfo(&sensor_mode_data);
-    if (mISP->getIspParameters(&m3aState.results.isp_params) < 0)
+    CLEAR(sensor_mode_data);
+
+    if (mSensorCI->getModeInfo(&sensor_mode_data) < 0) {
+        LOGE("Get mode info failed");
         return false;
+    }
+
+    if (sensor_mode_data.binning_factor_y == 0) {
+        LOGE("error: binning factor y is zero!");
+        return false;
+    }
+
+    if (mISP->getIspParameters(&m3aState.results.isp_params) < 0) {
+        LOGE("get isp parameters failed");
+        return false;
+    }
 
     struct morph_table *gdc_table = getGdcTable(sensor_mode_data.output_width, sensor_mode_data.output_height);
     if (gdc_table) {
@@ -1798,6 +1814,7 @@ bool AtomAIQ::changeSensorMode(void)
         m3aState.stats->grid_info = m3aState.curr_grid_info;
         m3aState.stats_valid  = false;
     } else {
+        LOGE("Statistics memory allocation failed");
         return false;
     }
 
@@ -2598,6 +2615,8 @@ void AtomAIQ::getSensorFrameParams(ia_aiq_frame_params *frame_params)
     LOG2("@%s", __FUNCTION__);
 
     struct atomisp_sensor_mode_data sensor_mode_data;
+    CLEAR(sensor_mode_data);
+
     if(mSensorCI->getModeInfo(&sensor_mode_data) < 0) {
         sensor_mode_data.crop_horizontal_start = 0;
         sensor_mode_data.crop_vertical_start = 0;
