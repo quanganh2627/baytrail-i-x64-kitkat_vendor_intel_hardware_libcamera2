@@ -77,6 +77,7 @@ public:
     void panoramaDisplUpdate(camera_panorama_metadata_t &metadata);
     void panoramaSnapshot(const AtomBuffer &livePreview);
     void extispFrame(const AtomBuffer &yuvBuf, int offset, int size);
+    void resumePreviewCallbacks();
     status_t requestULLPicture(int id);
     status_t ullTriggered(int id);
     status_t postviewRendered();
@@ -138,6 +139,7 @@ private:
 
         // ExtIsp
         MESSAGE_ID_EXTISP_FRAME,
+        MESSAGE_ID_RESUME_PREVIEW_CALLBACKS,
 
         // Send frame Id
         MESSAGE_ID_SEND_FRAME_ID,
@@ -328,6 +330,7 @@ private:
     status_t handleMessageAccManagerArgumentBuffer(MessageAccManager *msg);
     status_t handleMessageAccManagerMetadataBuffer(MessageAccManager *msg);
     status_t handleMessageSendFrameId(MessageFrameId *msg);
+    status_t handleMessageResumePreviewCallbacks();
     // main message function
     status_t waitForAndExecuteMessage();
 
@@ -366,6 +369,7 @@ private:
     Vector<MessageCompressed> mBuffers;
     extended_frame_metadata_t mFaceMetadata;
     int mCameraId;
+    bool mPausePreviewCallbacks;
 
 // public data
 public:

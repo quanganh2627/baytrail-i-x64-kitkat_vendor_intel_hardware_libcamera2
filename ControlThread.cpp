@@ -2581,6 +2581,7 @@ status_t ControlThread::handleMessageStartPreview()
     status_t status = NO_ERROR;
 
     PERFORMANCE_TRACES_BREAKDOWN_STEP_NOPARAM();
+    mCallbacksThread->resumePreviewCallbacks();
     if (mState == STATE_CAPTURE) {
         status = stopCapture();
         if (status != NO_ERROR) {
@@ -7946,7 +7947,8 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
             status = stopCapture();
         }
         else if (mState == STATE_PREVIEW_STILL ||
-                 mState == STATE_CONTINUOUS_CAPTURE) {
+                 mState == STATE_CONTINUOUS_CAPTURE ||
+                 mState == STATE_JPEG_CAPTURE) {
 
             // Preview needs to be restarted if the preview mode changes, or
             // with any picture size change when in continuous mode.

@@ -600,6 +600,7 @@ status_t CallbacksThread::handleMessageJpegDataReady(MessageCompressed *msg)
             CameraDump::dumpAtom2File(&jpegBuf, jpegDumpName.string());
         }
 
+        mPausePreviewCallbacks = true;
         mCallbacks->compressedFrameDone(&jpegBuf);
         if (jpegBuf.buff == NULL) {
             LOGW("CallbacksThread received NULL jpegBuf.buff, which should not happen");
@@ -638,6 +639,7 @@ status_t CallbacksThread::handleMessageJpegDataRequest(MessageDataRequest *msg)
         if (msg->rawCallback) {
             mCallbacks->rawFrameDone(&snapshotBuf);
         }
+        mPausePreviewCallbacks = true;
         mCallbacks->compressedFrameDone(&jpegBuf);
 
         LOG1("Releasing jpegBuf.buff %p, dataPtr %p", jpegBuf.buff, jpegBuf.dataPtr);
@@ -804,7 +806,9 @@ status_t CallbacksThread::handleMessagePreviewDone(MessageFrame *msg)
 {
     LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    mCallbacks->previewFrameDone(&(msg->frame));
+    if (!mPausePreviewCallbacks)
+        mCallbacks->previewFrameDone(&(msg->frame));
+
     return status;
 }
 
@@ -919,6 +923,21 @@ status_t CallbacksThread::handleMessageAccManagerMetadataBuffer(MessageAccManage
     return status;
 }
 
+void CallbacksThread::resumePreviewCallbacks()
+{
+    LOG1("@%s",__FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_RESUME_PREVIEW_CALLBACKS;
+    mMessageQueue.send(&msg);
+}
+
+status_t CallbacksThread::handleMessageResumePreviewCallbacks()
+{
+    LOG1("@%s",__FUNCTION__);
+    mPausePreviewCallbacks = false;
+    return OK;
+}
+
 status_t CallbacksThread::waitForAndExecuteMessage()
 {
     LOG2("@%s", __FUNCTION__);
@@ -942,6 +961,10 @@ status_t CallbacksThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_CALLBACK_SHUTTER:
             status = handleMessageCallbackShutter();
+            break;
+
+        case MESSAGE_ID_RESUME_PREVIEW_CALLBACKS:
+            status = handleMessageResumePreviewCallbacks();
             break;
 
         case MESSAGE_ID_JPEG_DATA_READY:
