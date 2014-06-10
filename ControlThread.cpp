@@ -2212,6 +2212,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     status = mISP->configure(mode);
     if (status != NO_ERROR) {
         LOGE("Error configuring ISP");
+        mPreviewThread->returnPreviewBuffers();
         return status;
     }
 
@@ -2222,6 +2223,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     status = mISP->allocateBuffers(mode);
     if (status != NO_ERROR) {
         LOGE("Error allocate buffers in ISP");
+        mPreviewThread->returnPreviewBuffers();
         return status;
     }
 
@@ -2760,7 +2762,12 @@ status_t ControlThread::handleMessageSetPreviewWindow(MessagePreviewWindow *msg)
         && (msg->window != NULL)) {
         status = mPreviewThread->setPreviewWindow(msg->window);
         // Start preview if it was already requested by user
-        startPreviewCore(videoMode);
+        status = startPreviewCore(videoMode);
+        if (status != NO_ERROR) {
+            // When start preview failed, just send out error to app
+            LOGW("When start preview failed, send error to application.");
+            mCallbacksThread->sendError(CAMERA_ERROR_SERVER_DIED);
+        }
     } else if (msg->window != NULL
         && mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_WINDOWLESS
         && currentState != PreviewThread::STATE_STOPPED) {
