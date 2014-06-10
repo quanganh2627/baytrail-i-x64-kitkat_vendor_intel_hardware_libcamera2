@@ -158,9 +158,9 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
     if (status == NO_ERROR) {
        mainBuf = &mScaledPic;
     }
-
-    // Start encoding main picture using HW encoder
-    if (mainBuf->type != ATOM_BUFFER_PANORAMA) {
+    // Start encoding main picture using HW encoder (except for panorama && ull)
+    if (mainBuf->type != ATOM_BUFFER_PANORAMA &&
+        mainBuf->type != ATOM_BUFFER_ULL) {
         status = startHwEncoding(mainBuf);
         if(status != NO_ERROR)
             failback = true;
