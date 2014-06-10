@@ -19,6 +19,7 @@
 #include "LogHelper.h"
 #include "ia_cmc_parser.h"
 #include "SensorEmbeddedMetaData.h"
+#include "PlatformData.h"
 
 namespace android {
 
@@ -43,16 +44,19 @@ SensorEmbeddedMetaData::~SensorEmbeddedMetaData()
     ia_emd_decoder_deinit(mEmbeddedMetaDecoderHandler);
 }
 
-status_t SensorEmbeddedMetaData::init()
+status_t SensorEmbeddedMetaData::init(int cameraId)
 {
     LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    //ToDo: pass offset table in CPF into decoder
-    ia_binary_data *decoder_config = NULL;
-    if (decoder_config == NULL)
-        return UNKNOWN_ERROR;
 
-    mEmbeddedMetaDecoderHandler = ia_emd_decoder_init(decoder_config);
+    ia_binary_data cpfData;
+    CLEAR(cpfData);
+    if (PlatformData::AiqConfig[cameraId]) {
+        cpfData.data = PlatformData::AiqConfig[cameraId].ptr();
+        cpfData.size = PlatformData::AiqConfig[cameraId].size();
+        mEmbeddedMetaDecoderHandler = ia_emd_decoder_init(&cpfData);
+    }
+
     if (mEmbeddedMetaDecoderHandler == NULL)
         return UNKNOWN_ERROR;
 

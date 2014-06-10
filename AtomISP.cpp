@@ -1182,7 +1182,7 @@ status_t AtomISP::start()
      * malloc the buffer, but the size should be ready after format setting.
      */
     if (mSensorEmbeddedMetaData) {
-        mSensorEmbeddedMetaData->init();
+        mSensorEmbeddedMetaData->init(mCameraId);
         mSensorEmbeddedMetaDataSupported = mSensorEmbeddedMetaData->isSensorEmbeddedMetaDataSupported();
     }
 
