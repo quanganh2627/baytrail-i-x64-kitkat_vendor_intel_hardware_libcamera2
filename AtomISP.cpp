@@ -34,6 +34,7 @@
 #include <linux/atomisp.h>
 #include "HALVideoStabilization.h"
 #include "PerformanceTraces.h"
+#include "exif/Exif.h"
 
 #define DEFAULT_SENSOR_FPS      15.0
 #define DEFAULT_PREVIEW_FPS     30.0
@@ -547,7 +548,8 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
      */
     // TODO: Probably this should come from PlatformData:CPF
     atomisp_makernote_info makerNote;
-    getMakerNote(&makerNote);
+    if (getMakerNote(&makerNote) != NO_ERROR)
+        makerNote.focal_length = ((EXIF_DEF_FOCAL_LEN_NUM << 16) | (EXIF_DEF_FOCAL_LEN_DEN & 0xFFFF));
     float focal_length = ((float)((makerNote.focal_length>>16) & 0xFFFF)) /
         ((float)(makerNote.focal_length & 0xFFFF));
     char focalLength[100] = {0};
