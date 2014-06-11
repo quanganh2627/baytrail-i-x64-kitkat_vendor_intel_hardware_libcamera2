@@ -83,16 +83,16 @@ status_t AtomExtIsp3A::setAfMode(AfMode mode)
             break;
     }
 
-    // TODO: Set FACE mode in setFaceDetection function
-
-    // TODO: If the sensor does not support the setting, we should return NO_ERROR
-
-    // TODO: Check do we need setAfEnabled() always when AF mode changes?
-
     int ret = mSensorCI->setAfMode(modeTmp);
     if (ret != 0) {
         LOGE("Error setting AF  mode (%d) in the driver", modeTmp);
         status = UNKNOWN_ERROR;
+    }
+
+    if (status == NO_ERROR && mode == CAM_AF_MODE_CONTINUOUS) {
+        // For other modes (auto, macro), explicit autoFocus() call from app is
+        // needed to start AF. CAF needs to be started now.
+        status = mSensorCI->setAfEnabled(true);
     }
 
     mDrvAfMode = modeTmp;
