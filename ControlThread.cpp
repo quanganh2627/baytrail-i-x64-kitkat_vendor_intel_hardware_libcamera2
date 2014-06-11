@@ -176,7 +176,6 @@ ControlThread::ControlThread(int cameraId) :
     ,mContShootingState(CONT_SHOOTING_NONE)
     ,mContShootingEnabled(false)
     ,mContinuousPicsReady(0)
-    ,mUseTakePictureDuringContinuousShooting(false)
 {
     // DO NOT PUT ANY ALLOCATION CODE IN THIS METHOD!!!
     // Put all init code in the init() method.
@@ -1079,7 +1078,7 @@ void ControlThread::atPostviewPresent() {
         }
     }
 
-    if (mJpegContinuousShootingRunning && !mUseTakePictureDuringContinuousShooting) {
+    if (mJpegContinuousShootingRunning) {
         LOG2("@%s: request next continuous shooting picture", __FUNCTION__);
         mCallbacksThread->requestTakePicture(false, false , false);
     }
@@ -4282,8 +4281,10 @@ status_t ControlThread::prepareContinuousShooting()
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    if (PlatformData::supportsContinuousJpegCapture(mCameraId))
+    if (PlatformData::supportsContinuousJpegCapture(mCameraId)) {
+        stopFaceDetection();
         return startJpegPicContinuousShooting();
+    }
 
     if (mState != STATE_CONTINUOUS_CAPTURE || !mContShootingEnabled) {
         LOGE("Invalid calling for preparing continuous capture in state:%d enabled:%d",
@@ -4342,7 +4343,6 @@ status_t ControlThread::finalizeContinuousShooting()
     cancelPictureThread();
     forceRestoreSnapshotPostviewBuffers();
     mContinuousPicsReady = 0;
-    mUseTakePictureDuringContinuousShooting = false;
     return NO_ERROR;
 }
 
@@ -4749,10 +4749,9 @@ status_t ControlThread::captureJpegPic()
 
     // in continuous mode we already take pictures as fast we can
     if (mJpegContinuousShootingRunning) {
-        LOG2("@%s: request continuous shooting picture, requestTakePicture = %s", __FUNCTION__, mUseTakePictureDuringContinuousShooting ? "true" : "false");
-        if (mUseTakePictureDuringContinuousShooting) {
-            mCallbacksThread->requestTakePicture(false, false, false);
-        }
+        LOG2("TakePicture called during Continuous shooting.");
+        mCallbacksThread->requestTakePicture(false, false, false);
+        mCallbacksThread->shutterSound();
         return NO_ERROR;
     }
 
@@ -4865,9 +4864,7 @@ status_t ControlThread::startJpegPicContinuousShooting()
     mPictureThread->initialize(mParameters, mHwcg.mIspCI->zoomRatio(mParameters.getInt(CameraParameters::KEY_ZOOM)));
 
     // Notify CallbacksThread that a picture was requested, so grab one from queue
-    if (!mUseTakePictureDuringContinuousShooting) {
-        mCallbacksThread->requestTakePicture(false, false, false);
-    }
+    mCallbacksThread->requestTakePicture(false, false, false);
 
     // TODO: do we need somekind of shutter sound
 
@@ -8047,7 +8044,6 @@ status_t ControlThread::handleMessageCommand(MessageCommand* msg)
     case CAMERA_CMD_BURST_START:
     case CAMERA_CMD_START_CONTINUOUS_SHOOTING:
         mContShootingEnabled = true;
-        mUseTakePictureDuringContinuousShooting = (msg->cmd_id == CAMERA_CMD_BURST_START);
         mCallbacks->setContShooting(mContShootingEnabled,
             mParameters.get(IntelCameraParameters::KEY_CONTINUOUS_SHOOTING_FILEPATH));
         status = prepareContinuousShooting();
