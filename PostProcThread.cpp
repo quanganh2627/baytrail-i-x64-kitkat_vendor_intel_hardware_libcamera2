@@ -780,7 +780,6 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
         }
 
         camera_face_t faces[num_faces];
-        camera_frame_metadata_t face_metadata;
         extended_frame_metadata_t extended_face_metadata;
 
         ia_face_state faceState;
@@ -790,9 +789,8 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
             return NO_MEMORY;
         }
 
-        face_metadata.number_of_faces = mFaceDetector->getFaces(faces, frameData.width, frameData.height);
-        face_metadata.faces = faces;
-        extended_face_metadata.cameraFrameMetadata = face_metadata;
+        extended_face_metadata.number_of_faces = mFaceDetector->getFaces(faces, frameData.width, frameData.height);
+        extended_face_metadata.faces = faces;
         mFaceDetector->getFaceState(&faceState, frameData.width, frameData.height, mZoomRatio);
 
         // Find recognized faces from the data (ID is positive), and pick the first one:
@@ -814,15 +812,15 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
         }
 
         // Swap also the face in face metadata going to the application to match the swapped faceState info
-        if (face_metadata.number_of_faces > 0 && faceForFocusInd > 0) {
-            camera_face_t faceMetaTmp = face_metadata.faces[0];
-            face_metadata.faces[0] = face_metadata.faces[faceForFocusInd];
-            face_metadata.faces[faceForFocusInd] = faceMetaTmp;
+        if (extended_face_metadata.number_of_faces > 0 && faceForFocusInd > 0) {
+            camera_face_t faceMetaTmp = extended_face_metadata.faces[0];
+            extended_face_metadata.faces[0] = extended_face_metadata.faces[faceForFocusInd];
+            extended_face_metadata.faces[faceForFocusInd] = faceMetaTmp;
         }
 
         // pass face info to the callback listener (to be used for 3A)
-        if (face_metadata.number_of_faces > 0 || mLastReportedNumberOfFaces != 0) {
-            mLastReportedNumberOfFaces = face_metadata.number_of_faces;
+        if (extended_face_metadata.number_of_faces > 0 || mLastReportedNumberOfFaces != 0) {
+            mLastReportedNumberOfFaces = extended_face_metadata.number_of_faces;
             mPostProcDoneCallback->facesDetected(&faceState);
         }
 
@@ -895,11 +893,9 @@ status_t PostProcThread::handleExtIspFaceDetection(AtomBuffer *auxBuf)
     }
 
     camera_face_t faces[numFaces];
-    camera_frame_metadata_t face_metadata;
     extended_frame_metadata_t extended_face_metadata;
-    face_metadata.faces = faces;
-    face_metadata.number_of_faces = numFaces;
-    extended_face_metadata.cameraFrameMetadata = face_metadata;
+    extended_face_metadata.faces = faces;
+    extended_face_metadata.number_of_faces = numFaces;
 
     for (int i = 0, addr = 0; i < numFaces; i++) {
         // unsupported fields

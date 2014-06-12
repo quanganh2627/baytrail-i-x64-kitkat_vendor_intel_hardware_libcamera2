@@ -140,7 +140,8 @@ enum {
 };
 
 struct extended_frame_metadata_t {
-    camera_frame_metadata_t cameraFrameMetadata;
+    int32_t number_of_faces;
+    camera_face_t *faces;
     int32_t needLLS;
 };
 
