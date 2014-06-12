@@ -2727,6 +2727,13 @@ status_t ControlThread::handleMessageTimeout()
         if (status != NO_ERROR) {
             LOGE("Error initializing ISP");
         } else {
+            if (!PlatformData::useHALVS(mCameraId)) {
+                status = mISP->initDVS();
+                if (status != NO_ERROR) {
+                    LOGE("Error in initializing DVS");
+                    return status;
+                }
+            }
             bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
             status = startPreviewCore(videoMode);
             if (status)

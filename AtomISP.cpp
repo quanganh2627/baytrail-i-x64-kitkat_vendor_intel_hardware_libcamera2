@@ -214,7 +214,7 @@ status_t AtomISP::initDevice()
 
 status_t AtomISP::initDVS()
 {
-
+    LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     HWControlGroup hwcg;
     hwcg.mIspCI = (IHWIspControl*) this;
@@ -244,12 +244,12 @@ status_t AtomISP::initDVS()
  */
 void AtomISP::deInitDevice()
 {
+    LOG1("@%s", __FUNCTION__);
     if (mDvs != NULL) {
         delete mDvs;
         mDvs = NULL;
     }
 
-    LOG1("@%s", __FUNCTION__);
     mMainDevice->close();
 }
 
