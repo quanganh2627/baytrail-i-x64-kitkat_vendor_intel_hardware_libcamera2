@@ -860,7 +860,8 @@ private:
     Vector<AtomBuffer> mPostviewBuffersInISP;     /*!< Current set of postview buffers in ISP*/
 
     bool mSaveMirrored;
-    bool mHALVideoStabilization;    /*!< HAL video stabilization being used (implies also single-output video) */
+    ExtIspActionHint mExtIspAction; /*!< Expected action for external ISP such as HAL video stabilization
+                                         and external ISP video high speed */
     int mCurrentOrientation;        /*!< Current orientation of the device. Used in case the image is
                                          saved as mirrored. The image will be mirrored based on the
                                          camera sensor orientation and device orientation. */

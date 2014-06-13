@@ -125,6 +125,7 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService, Callbacks *callb
     ,mScaler(scalerService)
     ,mObserverManager()
     ,mHALVideoStabilization(false)
+    ,mExtIspVideoHighSpeed(false)
     ,mNoiseReductionEdgeEnhancement(true)
     ,mFlashIsOn(false)
 {
@@ -986,14 +987,29 @@ status_t AtomISP::getIspParameters(struct atomisp_parm *isp_param) const
     return status;
 }
 
+/**
+ * This method is for external ISP only.
+ * Needs to inform AtomISP if any special feature is going to run on external ISP
+ * So that the external ISP configuration could pay attention to the hint
+ *
+ * External ISP video high speed has only 1 stream output. we extend this
+ * configuration on the continuous jpeg capture mode. Just skip to operate
+ * the main device.
+ */
+void AtomISP::setExternalIspActionHint(ExtIspActionHint hint)
+{
+    mHALVideoStabilization = hint & EXT_ISP_ACTION_HALVS;
+    mExtIspVideoHighSpeed  = hint & EXT_ISP_ACTION_VIDEOHS;
+    LOG1("@%s hal video stabilization:%d external ISP video high speed:%d",
+            __FUNCTION__, mHALVideoStabilization, mExtIspVideoHighSpeed);
+}
+
 //Set device fps base on device mode and platform
 bool AtomISP::isAllowedToSetFps(V4L2VideoNode *device, int deviceMode) const
 {
     if (device->mId == V4L2_RECORDING_DEVICE && deviceMode == CI_MODE_VIDEO) {
         return true;
-    } else if (mHALVideoStabilization &&
-            deviceMode == CI_MODE_PREVIEW &&
-            device->mId == V4L2_PREVIEW_DEVICE) {
+    } else if (mExtIspVideoHighSpeed && device->mId == V4L2_PREVIEW_DEVICE) {
         return true;
     } else
         return false;
@@ -1195,6 +1211,11 @@ status_t AtomISP::allocateBuffers(AtomMode mode)
             mPreviewDevice->stop();
             return status;
         }
+
+        // external ISP video high speed mode doesn't need to allocate snapshot buffer
+        if (mExtIspVideoHighSpeed)
+            break;
+
         if ((status = allocateSnapshotBuffers()) != NO_ERROR) {
             return status;
         }
@@ -1440,7 +1461,8 @@ status_t AtomISP::startPreview()
         LOG1("Disabled NREE in %s", __func__);
     }
 
-    if (mContinuousJpegCaptureEnabled || (mHALZSLEnabled && mUseMultiStreamsForSoC)) {
+    if ((mContinuousJpegCaptureEnabled && !mExtIspVideoHighSpeed) ||
+            (mHALZSLEnabled && mUseMultiStreamsForSoC)) {
         ret = mMainDevice->start(mConfig.num_snapshot_buffers, mInitialSkips);
         if (ret < 0) {
             LOGE("start capture on first device failed!");
@@ -1494,7 +1516,7 @@ status_t AtomISP::stopPreview()
     if (mPreviewDevice->isStarted())
         mPreviewDevice->stop();
 
-    if (mContinuousJpegCaptureEnabled) {
+    if (mContinuousJpegCaptureEnabled && !mExtIspVideoHighSpeed) {
         mMainDevice->stop();
         freeSnapshotBuffers();
     }
@@ -2055,21 +2077,22 @@ status_t AtomISP::configureContinuousJpegCapture()
     int ret(0);
 
     mContinuousJpegCaptureEnabled = true;
-
     // configure the main device
     mConfig.snapshot.fourcc = V4L2_PIX_FMT_CONTINUOUS_JPEG;
     mConfig.snapshot.bpl = SGXandDisplayBpl(mConfig.snapshot.fourcc, mConfig.snapshot.width);
     mConfig.snapshot.size = frameSize(mConfig.snapshot.fourcc, mConfig.snapshot.width, mConfig.snapshot.height);
     LOG1("@%s configured main %dx%d bpl %d size %d", __FUNCTION__, mConfig.snapshot.width, mConfig.snapshot.height, mConfig.snapshot.bpl,  mConfig.snapshot.size);
 
-    ret = configureDevice(
-        mMainDevice.get(),
-        CI_MODE_PREVIEW,
-        &(mConfig.snapshot),
-        isDumpRawImageReady());
-    if (ret < 0) {
-        LOGE("@%s, configure main device failed!", __FUNCTION__);
-        return UNKNOWN_ERROR;
+    if (!mExtIspVideoHighSpeed) {
+        ret = configureDevice(
+                mMainDevice.get(),
+                CI_MODE_PREVIEW,
+                &(mConfig.snapshot),
+                isDumpRawImageReady());
+        if (ret < 0) {
+            LOGE("@%s, configure main device failed!", __FUNCTION__);
+            return UNKNOWN_ERROR;
+        }
     }
 
     // configure the preview device
@@ -2097,9 +2120,11 @@ status_t AtomISP::configureContinuousJpegCapture()
         return UNKNOWN_ERROR;
     }
 
-    mConfig.num_snapshot = NUM_OF_JPEG_CAPTURE_SNAPSHOT_BUF;
-    mConfig.num_snapshot_buffers = NUM_OF_JPEG_CAPTURE_SNAPSHOT_BUF;
-    mUsingClientSnapshotBuffers = false;
+    if (!mExtIspVideoHighSpeed) {
+        mConfig.num_snapshot = NUM_OF_JPEG_CAPTURE_SNAPSHOT_BUF;
+        mConfig.num_snapshot_buffers = NUM_OF_JPEG_CAPTURE_SNAPSHOT_BUF;
+        mUsingClientSnapshotBuffers = false;
+    }
 
     return status;
 }
@@ -4278,6 +4303,12 @@ status_t AtomISP::getJpegCapturePreviewFrame(AtomBuffer *buff)
     --mNumPreviewBuffersQueued;
     dumpPreviewFrame(previewIndex);
 
+    // external ISP high speed only has 1 stream output
+    if (mExtIspVideoHighSpeed) {
+        *buff = mPreviewBuffers[previewIndex];
+        return NO_ERROR;
+    }
+
     // get the capture buffers
     CLEAR(bufInfo);
     snapshotIndex = mMainDevice->grabFrame(&bufInfo);
@@ -5547,6 +5578,9 @@ status_t AtomISP::allocateMetaDataBuffers(AtomBuffer *buffers, int numBuffers)
                 if (mHALVideoStabilization) {
                     metaDataBuf->SetType(IntelMetadataBufferTypeGrallocSource);
                     metaDataBuf->SetValue((uint32_t)*buffers[i].gfxInfo.gfxBufferHandle);
+                } else if (mExtIspVideoHighSpeed) {
+                    initMetaDataBuf(metaDataBuf);
+                    metaDataBuf->SetValue((uint32_t)buffers[i].dataPtr);
                 } else {
                     initMetaDataBuf(metaDataBuf);
 #ifdef INTEL_VIDEO_XPROC_SHARING
@@ -6851,7 +6885,8 @@ try_again:
             }
             msg->data.frameBuffer.buff.owner = mISP;
             msg->id = IAtomIspObserver::MESSAGE_ID_FRAME;
-            if (mISP->checkSkipFrame(msg->data.frameBuffer.buff.frameCounter, mISP->mConfig.preview_fps)
+            if (mISP->checkSkipFrame(msg->data.frameBuffer.buff.frameCounter,
+                       mISP->mExtIspVideoHighSpeed ? mISP->mConfig.recording_fps : mISP->mConfig.preview_fps)
                 || mISP->checkSkipFrameForVideoZoom())
                 msg->data.frameBuffer.buff.status = FRAME_STATUS_SKIPPED;
         }

@@ -242,6 +242,12 @@ enum AAAFlags {
     AAA_FLAG_ALL = AAA_FLAG_AE | AAA_FLAG_AF | AAA_FLAG_AWB
 };
 
+enum ExtIspActionHint {
+    EXT_ISP_ACTION_NA = 0x0,
+    EXT_ISP_ACTION_HALVS = 0x1,
+    EXT_ISP_ACTION_VIDEOHS = 0x2
+};
+
 struct CameraWindow {
     int x_left;
     int x_right;

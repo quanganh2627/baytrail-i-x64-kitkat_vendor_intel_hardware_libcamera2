@@ -115,7 +115,7 @@ public:
     status_t rawBufferUnlock(int expId);
     status_t rawBufferCapture(int expId);
 
-    void setHALVideoStabilization(bool value) { mHALVideoStabilization = value; }
+    void setExternalIspActionHint(ExtIspActionHint hint);
 
     status_t returnRecordingBuffers();
     bool isSharedPreviewBufferConfigured(bool *reserved = NULL) const;
@@ -665,6 +665,7 @@ private:
     int mIspHwMinorVersion;
 
     bool mHALVideoStabilization;
+    bool mExtIspVideoHighSpeed;
     bool mNoiseReductionEdgeEnhancement;
 
     // Sensor helper fields

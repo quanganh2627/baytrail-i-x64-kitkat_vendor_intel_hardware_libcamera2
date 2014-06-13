@@ -163,7 +163,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mStillCaptureInProgress(false)
     ,mPreviewUpdateMode(IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD)
     ,mSaveMirrored(false)
-    ,mHALVideoStabilization(false)
+    ,mExtIspAction(EXT_ISP_ACTION_NA)
     ,mCurrentOrientation(0)
     ,mFullSizeSdv(false)
     ,mRawBufferLockMode(false)
@@ -2015,29 +2015,34 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         mISP->init();
 
     mContShootingSkipFirstFrame = false; // reset this in preview start
-    mHALVideoStabilization = false; // do not use hal stabilization by default
-    mISP->setHALVideoStabilization(mHALVideoStabilization); // set it off from ISP also
+    mExtIspAction = EXT_ISP_ACTION_NA;
+    mISP->setExternalIspActionHint(EXT_ISP_ACTION_NA); // set it off from ISP also
     if (videoMode) {
         state = STATE_PREVIEW_VIDEO;
 
-        fps = mISP->getRecordingFramerate();
+        if (mIntelParamsAllowed) {
+            // Update fps value to cover the case that preview restart due to ISP timeout
+            fps = mParameters.getInt(IntelCameraParameters::KEY_RECORDING_FRAME_RATE);
+            mISP->setRecordingFramerate(fps);
+        }
+
         mParameters.getVideoSize(&width, &height);
-
-        // set halVideoStabilization on if it is configured and settings allow
-        int previewWidth, previewHeight;
-        mParameters.getPreviewSize(&previewWidth, &previewHeight);
-        mHALVideoStabilization = PlatformData::useHALVS(mCameraId) &&
-                                 width == previewWidth &&
-                                 height == previewHeight &&
-                                 mDvsEnable;
-
-        mISP->setHALVideoStabilization(mHALVideoStabilization);
-
         // Video size is updated later than other parameters, so validate high speed  params here
         if (!validateHighSpeedResolutionFps(width, height, fps)) {
             return BAD_VALUE;
         }
 
+        int previewWidth, previewHeight;
+        mParameters.getPreviewSize(&previewWidth, &previewHeight);
+        if (PlatformData::supportsContinuousJpegCapture(mCameraId) && fps > DEFAULT_RECORDING_FPS) {
+            // external ISP video high speed
+            mExtIspAction = EXT_ISP_ACTION_VIDEOHS;
+        } else if(PlatformData::useHALVS(mCameraId) && mDvsEnable &&
+                width == previewWidth && height == previewHeight) {
+            // HAL video stabilization for external ISP
+            mExtIspAction = EXT_ISP_ACTION_HALVS;
+        }
+        mISP->setExternalIspActionHint(mExtIspAction);
         mISP->setVideoFrameFormat(width, height);
 
         /**
@@ -2060,7 +2065,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         LOG1("Starting preview in %s mode", mode == MODE_VIDEO? "video":"continuous video");
         initSdv(mFullSizeSdv);
 
-        if (mHALVideoStabilization) {
+        if (mExtIspAction != EXT_ISP_ACTION_NA) {
             mode = MODE_CONTINUOUS_JPEG;
             status = mHwcg.mIspCI->setDVS(false); // disable isp stabilization, use hal version
         } else {
@@ -2175,13 +2180,13 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         useNV21 = true;
     }
 
-    if (mHALVideoStabilization) {
+    if (mExtIspAction == EXT_ISP_ACTION_HALVS) {
         // hal video stabilization needs bigger capture buffers of its own, so
         // it can't use the smaller preview buffers for capturing -> sharing off
         useSharedGfxBuffers = false;
     }
 
-    mPreviewThread->setPreviewConfig(width, height, cb_fourcc, useSharedGfxBuffers, mHALVideoStabilization && videoMode, mNumBuffers);
+    mPreviewThread->setPreviewConfig(width, height, cb_fourcc, useSharedGfxBuffers, mExtIspAction == EXT_ISP_ACTION_HALVS, mNumBuffers);
 
     // Get the preview size from PreviewThread and pass the configuration to AtomISP.
     status = mPreviewThread->fetchPreviewBufferGeometry(&width, &height, &bpl);
@@ -2239,9 +2244,11 @@ status_t ControlThread::startPreviewCore(bool videoMode)
 
         mISP->attachObserver(m3AThread.get(), OBSERVE_3A_STAT_READY);
     } else {
-        if (PlatformData::supportsContinuousJpegCapture(mCameraId))
+        if (PlatformData::supportsContinuousJpegCapture(mCameraId) &&
+                mExtIspAction != EXT_ISP_ACTION_VIDEOHS) {
             // For ext-isp, let's listen to frame events for auto-focus handling.
             mISP->attachObserver(m3AThread.get(), OBSERVE_PREVIEW_STREAM);
+        }
 
         // We need to recieve Sensor Metadata event, then get some informations of sensor frame.
         if (PlatformData::supportedSensorMetadata(mCameraId))
@@ -2293,10 +2300,11 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     // preview buffer data for encoding, the handler for the recording buffer
     // dequeue has run before the preview return buffer handler runs.
     mISP->attachObserver(this, OBSERVE_PREVIEW_STREAM);
-    if (videoMode && !mHALVideoStabilization)
+    if (videoMode && mExtIspAction == EXT_ISP_ACTION_NA)
         mISP->attachObserver(mVideoThread.get(), OBSERVE_PREVIEW_STREAM);
     mISP->attachObserver(mPreviewThread.get(), OBSERVE_PREVIEW_STREAM);
-    if (state == STATE_JPEG_CAPTURE || (videoMode && (mode == MODE_CONTINUOUS_JPEG || mode == MODE_CONTINUOUS_JPEG_VIDEO))) {
+    if (state == STATE_JPEG_CAPTURE || (videoMode && mExtIspAction != EXT_ISP_ACTION_VIDEOHS &&
+            (mode == MODE_CONTINUOUS_JPEG || mode == MODE_CONTINUOUS_JPEG_VIDEO))) {
         mISP->attachObserver(mPictureThread.get(), OBSERVE_PREVIEW_STREAM);
     }
 
@@ -2304,7 +2312,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
 
         mPreviewThread->detachCallback(NULL, ICallbackPreview::OUTPUT_WITH_DATA);
 
-        if (mHALVideoStabilization) {
+        if (mExtIspAction != EXT_ISP_ACTION_NA) {
             // PreviewThread->VideoThread is special flow for HAL video stabilization.
             // This can be done, since in our normal case video mode does not use post proc (Face detection etc, for now..)
             // In the normal flow VideoThread "pulls" the buffers from AtomISP,
@@ -2337,7 +2345,8 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         LOGE("Error starting ISP!");
         mPreviewThread->returnPreviewBuffers();
         mISP->detachObserver(mPreviewThread.get(), OBSERVE_PREVIEW_STREAM);
-        if (state == STATE_JPEG_CAPTURE || (videoMode && (mode == MODE_CONTINUOUS_JPEG || mode == MODE_CONTINUOUS_JPEG_VIDEO)))
+        if (state == STATE_JPEG_CAPTURE || (videoMode && mExtIspAction != EXT_ISP_ACTION_VIDEOHS &&
+                    (mode == MODE_CONTINUOUS_JPEG || mode == MODE_CONTINUOUS_JPEG_VIDEO)))
             mISP->detachObserver(mPictureThread.get(), OBSERVE_PREVIEW_STREAM);
         mISP->detachObserver(this, OBSERVE_PREVIEW_STREAM);
         if (videoMode)
@@ -2346,7 +2355,8 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         if (m3AControls->isIntel3A()) {
             mISP->detachObserver(m3AThread.get(), OBSERVE_3A_STAT_READY);
         } else {
-            if (PlatformData::supportsContinuousJpegCapture(mCameraId))
+            if (PlatformData::supportsContinuousJpegCapture(mCameraId) &&
+                mExtIspAction != EXT_ISP_ACTION_VIDEOHS)
                 mISP->detachObserver(m3AThread.get(), OBSERVE_PREVIEW_STREAM);
             if (PlatformData::supportedSensorMetadata(mCameraId))
                 mISP->detachObserver(m3AThread.get(), OBSERVE_3A_STAT_READY);
@@ -2376,6 +2386,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         // stop monitoring in normal fps case
         mParameters.getVideoSize(&width, &height);
         if (mISP->getRecordingFramerate() > DEFAULT_RECORDING_FPS
+                        && mExtIspAction != EXT_ISP_ACTION_VIDEOHS
                         && height == RESOLUTION_1080P_HEIGHT) {
             mThermalThrottleThread->startMonitoring();
         } else if (mThermalThrottleThread->isMonitoring()) {
@@ -2432,9 +2443,11 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
 
     mISP->detachObserver(mPreviewThread.get(), OBSERVE_PREVIEW_STREAM);
 
-    if (oldState == STATE_JPEG_CAPTURE || mHALVideoStabilization ||
+    if (oldState == STATE_JPEG_CAPTURE || mExtIspAction == EXT_ISP_ACTION_HALVS ||
         ((oldState == STATE_PREVIEW_VIDEO || oldState == STATE_RECORDING) && PlatformData::supportsContinuousJpegCapture(mCameraId))) {
-        mISP->detachObserver(mPictureThread.get(), OBSERVE_PREVIEW_STREAM);
+        // External ISP video high speed doesn't need observing this stream
+        if (mExtIspAction != EXT_ISP_ACTION_VIDEOHS)
+            mISP->detachObserver(mPictureThread.get(), OBSERVE_PREVIEW_STREAM);
     }
 
     // we only need to attach the 3AThread to preview stream for RAW type of cameras
