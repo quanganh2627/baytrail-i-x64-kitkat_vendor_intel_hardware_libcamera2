@@ -266,6 +266,10 @@ namespace android {
     const char IntelCameraParameters::KEY_INTELLIGENT_MODE[] = "intelligent-mode";
     const char IntelCameraParameters::KEY_SUPPORTED_INTELLIGENT_MODE[] = "intelligent-mode-values";
 
+    // color-bar preview test pattern
+    const char IntelCameraParameters::KEY_COLORBAR[] = "color-bar-preview";
+    const char IntelCameraParameters::KEY_SUPPORTED_COLORBAR[] = "color-bar-preview-values";
+
     // Others
     const char IntelCameraParameters::REC_BUFFER_SHARING_SESSION_ID[] = "buffer-sharing-session-id";
 

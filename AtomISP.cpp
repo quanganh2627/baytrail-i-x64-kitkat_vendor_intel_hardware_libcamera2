@@ -798,6 +798,14 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     // intelligent mode
     intel_params->set(IntelCameraParameters::KEY_INTELLIGENT_MODE, "false");
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_INTELLIGENT_MODE, PlatformData::supportedIntelligentMode(cameraId));
+
+    // color-bar mode
+    intel_params->set(IntelCameraParameters::KEY_COLORBAR, CameraParameters::FALSE);
+    if (PlatformData::supportsColorBarPreview(cameraId))
+        intel_params->set(IntelCameraParameters::KEY_SUPPORTED_COLORBAR, "true,false");
+    else
+        intel_params->set(IntelCameraParameters::KEY_SUPPORTED_COLORBAR, CameraParameters::FALSE);
+
 }
 
 Size AtomISP::getHALZSLResolution()
@@ -5468,6 +5476,15 @@ errorFree:
 
     freePostviewBuffers();
     return status;
+}
+
+status_t AtomISP::setColorBarPattern(bool enable)
+{
+    LOG1("@%s: %d", __FUNCTION__, (int) enable);
+
+    mMainDevice->setControl(V4L2_CID_TEST_PATTERN, enable, "SetColorBarPattern");
+
+    return NO_ERROR;
 }
 
 #ifdef ENABLE_INTEL_METABUFFER

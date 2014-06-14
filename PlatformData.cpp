@@ -1476,6 +1476,14 @@ bool PlatformData::ispSupportContinuousCaptureMode(int cameraId)
     return getInstance()->mCameras[getActiveCamIdx(cameraId)].mISPSupportContinuousCaptureMode;
 }
 
+bool PlatformData::supportsColorBarPreview(int cameraId)
+{
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return true;
+    }
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].mSupportsColorBarPreview;
+}
+
 const char* PlatformData::supportedDvsSizes(int cameraId)
 {
     if (!validCameraId(cameraId, __FUNCTION__)) {

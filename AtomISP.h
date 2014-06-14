@@ -206,6 +206,8 @@ public:
 
     AtomBuffer getPostviewDescriptor() const { return mConfig.postview; }
 
+    status_t setColorBarPattern(bool enable);
+
 protected:
     /* [BEGIN] IHWFlashControl overloads, */
     status_t setFlash(int numFrames);

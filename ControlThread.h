@@ -570,6 +570,8 @@ private:
             CameraParameters *newParams, bool &restartNeeded);
     status_t processParamXNR_ANR(const CameraParameters *oldParams,
             CameraParameters *newParams, bool &restartNeeded);
+    status_t processParamColorBar(const CameraParameters *oldParams,
+            CameraParameters *newParams, bool &restartNeeded);
     status_t processParamAntiBanding(const CameraParameters *oldParams,
                                            CameraParameters *newParams);
     status_t processParamFocusMode(const CameraParameters *oldParams,

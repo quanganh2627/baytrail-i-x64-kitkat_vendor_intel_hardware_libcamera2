@@ -382,6 +382,8 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         pCurrentCam->mSupportsPostviewOutput = ((strcmp(atts[1], "true") == 0) ? true : false);
     } else if (strcmp(name, "ispSupportContinuousCaptureMode") == 0) {
         pCurrentCam->mISPSupportContinuousCaptureMode = ((strcmp(atts[1], "true") == 0) ? true : false);
+    } else if (strcmp(name, "supportsColorBarPreview") == 0) {
+        pCurrentCam->mSupportsColorBarPreview = ((strcmp(atts[1], "true") == 0) ? true : false);
     }
 }
 

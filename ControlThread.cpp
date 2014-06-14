@@ -6102,6 +6102,35 @@ status_t ControlThread::processParamXNR_ANR(const CameraParameters *oldParams,
     return status;
 }
 
+ /**
+ *  Switch ISP to color-bar test pattern.
+ *
+ *  "on" is set ISP to color-bar preview output
+ *  "off" is set ISP to normal preview output
+ */
+status_t ControlThread::processParamColorBar(const CameraParameters *oldParams,
+        CameraParameters *newParams, bool &restartNeeded)
+{
+    LOG1("@%s", __FUNCTION__);
+
+    String8 pattern = paramsReturnNewIfChanged(oldParams, newParams,
+                                               IntelCameraParameters::KEY_COLORBAR);
+    if (!pattern.isEmpty()) {
+        if (pattern == CameraParameters::TRUE) {
+            mISP->setColorBarPattern(true);
+        } else if (pattern == CameraParameters::FALSE) {
+            mISP->setColorBarPattern(false);
+        } else {
+            // color-bar maybe not set
+            return NO_ERROR;
+        }
+
+        restartNeeded = true;
+    }
+
+    return NO_ERROR;
+}
+
 /**
  * Processing of antibanding parameters
  * it checks if the parameter changed and then it selects the correct
@@ -7808,6 +7837,11 @@ status_t ControlThread::processStaticParameters(CameraParameters *oldParams,
     if (status == NO_ERROR) {
         // xnr/anr
         status = processParamXNR_ANR(oldParams, newParams, restartNeeded);
+    }
+
+    if (PlatformData::supportsColorBarPreview(mCameraId) && (status == NO_ERROR)) {
+        // set color-bar test pattern
+        status = processParamColorBar(oldParams, newParams, restartNeeded);
     }
 
     return status;

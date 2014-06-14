@@ -614,6 +614,14 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
         return BAD_VALUE;
     }
 
+    // color-bar mode
+    const char* colorbarMode = params->get(IntelCameraParameters::KEY_COLORBAR);
+    const char* colorbarModes = params->get(IntelCameraParameters::KEY_SUPPORTED_COLORBAR);
+    if (!validateString(colorbarMode, colorbarModes)) {
+        LOGE("bad colorbar mode: %s", colorbarMode);
+        return BAD_VALUE;
+    }
+
     return NO_ERROR;
 }
 

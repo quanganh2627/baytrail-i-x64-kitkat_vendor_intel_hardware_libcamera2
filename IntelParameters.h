@@ -271,6 +271,12 @@ namespace android {
     static const char KEY_CONTINUOUS_SHOOTING_SUPPORTED[];
     static const char KEY_CONTINUOUS_SHOOTING_FILEPATH[];
 
+    // Color-bar test pattern
+    static const char KEY_COLORBAR[];
+    static const char KEY_SUPPORTED_COLORBAR[];
+    static const char KEY_COLORBAR_TRUE[];
+    static const char KEY_COLORBAR_FALSE[];
+
     // Others
     static const char REC_BUFFER_SHARING_SESSION_ID[];
 

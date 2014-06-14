@@ -1121,6 +1121,13 @@ class PlatformData {
     static bool ispSupportContinuousCaptureMode(int cameraId);
 
     /**
+     * Whether color-bar preview is supported?
+     *
+     * \return true if supported
+     */
+    static bool supportsColorBarPreview(int cameraId);
+
+    /**
      * This value is configured by product. When continuous ISP timeout count
      * reach the max ISP timeout count, Camera HAL will try to recover preview.
      *
@@ -1445,6 +1452,7 @@ protected:
             maxDepthPreviewBufferQueueSize = 0;
             mSupportsPostviewOutput = true;
             mISPSupportContinuousCaptureMode = true;
+            mSupportsColorBarPreview = false;
         }
 
         String8 sensorName;
@@ -1624,6 +1632,9 @@ protected:
 
         // Isp support continuous capture mode setting.
         bool mISPSupportContinuousCaptureMode;
+
+        // Color-bar preview support.
+        bool mSupportsColorBarPreview;
     };
 
     // note: Android NDK does not yet support C++11 and
