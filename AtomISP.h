@@ -395,6 +395,7 @@ private:
 // private methods
 private:
     status_t initDevice();
+    bool isPostviewInitialized() const;
 
     void computeZoomRatiosLinear();
     void computeZoomRatiosFactor();
@@ -492,6 +493,7 @@ private:
 
     void initBufferArray(AtomBuffer *buffers, AtomBuffer &formatDescriptor, void **bufPool, int bufPoolNum);
     status_t configureMultiStreamsContinuousSOC();
+    status_t configurePreviewAndCaptureStreamsSOC();
     status_t allocateMultiStreamsHALZSLBuffers();
     status_t freeMultiStreamsHALZSLBuffers();
     status_t getMultiStreamsHALZSLPreviewFrame(AtomBuffer *buff);

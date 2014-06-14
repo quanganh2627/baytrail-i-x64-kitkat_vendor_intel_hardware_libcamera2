@@ -1107,6 +1107,20 @@ class PlatformData {
     static int defaultDepthFocalLength(int cameraId);
 
     /**
+     * Whether Postview output is supported?
+     *
+     * \return true if supported
+     */
+    static bool supportsPostviewOutput(int cameraId);
+
+    /**
+     * Whether ISP supported continuous capture mode setting ?
+     *
+     * \return true if supported
+     */
+    static bool ispSupportContinuousCaptureMode(int cameraId);
+
+    /**
      * This value is configured by product. When continuous ISP timeout count
      * reach the max ISP timeout count, Camera HAL will try to recover preview.
      *
@@ -1429,6 +1443,8 @@ protected:
             mPreviewFourcc = V4L2_PIX_FMT_NV12;
             defaultDepthFocalLength = 0;
             maxDepthPreviewBufferQueueSize = 0;
+            mSupportsPostviewOutput = true;
+            mISPSupportContinuousCaptureMode = true;
         }
 
         String8 sensorName;
@@ -1602,6 +1618,12 @@ protected:
 
         int defaultDepthFocalLength;
         int maxDepthPreviewBufferQueueSize;
+
+        // Postview output support
+        bool mSupportsPostviewOutput;
+
+        // Isp support continuous capture mode setting.
+        bool mISPSupportContinuousCaptureMode;
     };
 
     // note: Android NDK does not yet support C++11 and

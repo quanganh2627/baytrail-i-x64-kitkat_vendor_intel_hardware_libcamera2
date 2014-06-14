@@ -1460,6 +1460,22 @@ int PlatformData::defaultDepthFocalLength(int cameraId)
     return getInstance()->mCameras[getActiveCamIdx(cameraId)].defaultDepthFocalLength;
 }
 
+bool PlatformData::supportsPostviewOutput(int cameraId)
+{
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return true;
+    }
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].mSupportsPostviewOutput;
+}
+
+bool PlatformData::ispSupportContinuousCaptureMode(int cameraId)
+{
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return true;
+    }
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].mISPSupportContinuousCaptureMode;
+}
+
 const char* PlatformData::supportedDvsSizes(int cameraId)
 {
     if (!validCameraId(cameraId, __FUNCTION__)) {

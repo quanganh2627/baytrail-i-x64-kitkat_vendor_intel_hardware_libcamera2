@@ -1845,6 +1845,20 @@ ControlThread::ShootingMode ControlThread::selectShootingMode()
                 ret = SHOOTING_MODE_SMARTSTABILIZATION;
                 break;
             }
+            else if (!PlatformData::ispSupportContinuousCaptureMode(mCameraId))
+                /*
+                 * Note: Althrough we enable continuousCapture in camera_profiles.xml for
+                 * the follow capture mode, but it is not real ZSL mode. Previwe is stopped
+                 * for a while during capture. So SHOOTING_MODE_SINGLE is used for clarify
+                 *
+                 * Why we don't use online capture and preview? Because preview can not be stopped
+                 * during the capture, and the sequence of the mode is the same as continuousCapture
+                 *
+                 * Another difference is that ISP doesn't support Continuous mode, so we don't set
+                 * ISP to continuous mode by setting <ispSupportContinuousCaptureMode value="false"/>
+                 * in camera_profiles.xml
+                 */
+                ret = SHOOTING_MODE_SINGLE;
             else
                 ret = SHOOTING_MODE_ZSL;
             // Trigger ULL in single capture only when user did not force flash

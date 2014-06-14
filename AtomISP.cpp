@@ -158,7 +158,13 @@ status_t AtomISP::initDevice()
 
     mMainDevice = new V4L2VideoNode(devName[mGroupIndex].dev[V4L2_MAIN_DEVICE], V4L2_MAIN_DEVICE);
     mPreviewDevice = new V4L2VideoNode(devName[mGroupIndex].dev[V4L2_PREVIEW_DEVICE], V4L2_PREVIEW_DEVICE);
-    mPostViewDevice = new V4L2VideoNode(devName[mGroupIndex].dev[V4L2_POSTVIEW_DEVICE], V4L2_POSTVIEW_DEVICE);
+
+    /**
+     * needn't to initialize the postview device, if platform doesn't supports postview output
+     */
+    if (PlatformData::supportsPostviewOutput(mCameraId))
+        mPostViewDevice = new V4L2VideoNode(devName[mGroupIndex].dev[V4L2_POSTVIEW_DEVICE], V4L2_POSTVIEW_DEVICE);
+
     mRecordingDevice = new V4L2VideoNode(devName[mGroupIndex].dev[V4L2_RECORDING_DEVICE], V4L2_RECORDING_DEVICE);
     mFileInjectDevice = new V4L2VideoNode(devName[mGroupIndex].dev[V4L2_INJECT_DEVICE], V4L2_INJECT_DEVICE,
                                           V4L2VideoNode::OUTPUT_VIDEO_NODE);
@@ -260,6 +266,15 @@ bool AtomISP::isDeviceInitialized() const
 {
     LOG1("@%s", __FUNCTION__);
     return mMainDevice->isOpen();
+}
+
+/**
+ * Checks if postview device is initialized.
+ */
+bool AtomISP::isPostviewInitialized() const
+{
+    LOG1("@%s", __FUNCTION__);
+    return (mPostViewDevice != NULL);
 }
 
 status_t AtomISP::init()
@@ -1413,11 +1428,13 @@ status_t AtomISP::startPreview()
             goto err;
         }
 
-        ret = mPostViewDevice->start(mConfig.num_postview_buffers, mInitialSkips);
-        if (ret < 0) {
-            LOGE("start capture on second device failed!");
-            status = UNKNOWN_ERROR;
-            goto err;
+        if (isPostviewInitialized()) {
+            ret = mPostViewDevice->start(mConfig.num_postview_buffers, mInitialSkips);
+            if (ret < 0) {
+                LOGE("start capture on second device failed!");
+                status = UNKNOWN_ERROR;
+                goto err;
+            }
         }
     }
 
@@ -1446,8 +1463,11 @@ status_t AtomISP::stopPreview()
 
     if (mHALZSLEnabled && mUseMultiStreamsForSoC) {
         mMainDevice->stop();
-        mPostViewDevice->stop();
-        mPostViewDevice->close();
+        if (isPostviewInitialized()) {
+            mPostViewDevice->stop();
+            mPostViewDevice->close();
+        }
+
 
         // TODO: BZ: 179405. the current YUVPP pipe has bug for 3 streams output. remove the recording device when the fw has fixed this bug.
         mRecordingDevice->stop();
@@ -1579,11 +1599,13 @@ status_t AtomISP::startRecording()
                 goto err;
             }
 
-            ret = mPostViewDevice->start(mConfig.num_postview_buffers, mInitialSkips);
-            if (ret < 0) {
-                LOGE("start capture on second device failed!");
-                status = UNKNOWN_ERROR;
-                goto err;
+            if (isPostviewInitialized()) {
+                ret = mPostViewDevice->start(mConfig.num_postview_buffers, mInitialSkips);
+                if (ret < 0) {
+                    LOGE("start capture on second device failed!");
+                    status = UNKNOWN_ERROR;
+                    goto err;
+                }
             }
         }
 
@@ -1641,8 +1663,10 @@ status_t AtomISP::stopRecording()
 
     if (mHALSDVEnabled && mUseMultiStreamsForSoC) {
         mMainDevice->stop();
-        mPostViewDevice->stop();
-        mPostViewDevice->close();
+        if (isPostviewInitialized()) {
+            mPostViewDevice->stop();
+            mPostViewDevice->close();
+        }
     }
 
     return NO_ERROR;
@@ -1670,29 +1694,31 @@ status_t AtomISP::configureCapture()
     if (isDumpRawImageReady())
         goto nopostview;
 
-    ret = mPostViewDevice->open();
-    if (ret < 0) {
-        LOGE("Open second device failed!");
-        status = UNKNOWN_ERROR;
-        goto errorFreeBuf;
-    }
+    if (isPostviewInitialized()) {
+        ret = mPostViewDevice->open();
+        if (ret < 0) {
+            LOGE("Open second device failed!");
+            status = UNKNOWN_ERROR;
+            goto errorFreeBuf;
+        }
 
-    struct v4l2_capability aCap;
-    status = mPostViewDevice->queryCap(&aCap);
-    if (status != NO_ERROR) {
-        LOGE("Failed basic capability check failed!");
-        return NO_INIT;
-    }
+        struct v4l2_capability aCap;
+        status = mPostViewDevice->queryCap(&aCap);
+        if (status != NO_ERROR) {
+            LOGE("Failed basic capability check failed!");
+            return NO_INIT;
+        }
 
-    ret = configureDevice(
-            mPostViewDevice.get(),
-            CI_MODE_STILL_CAPTURE,
-            &(mConfig.postview),
-            false);
-    if (ret < 0) {
-        LOGE("configure second device failed!");
-        status = UNKNOWN_ERROR;
-        goto errorCloseSecond;
+        ret = configureDevice(
+                mPostViewDevice.get(),
+                CI_MODE_STILL_CAPTURE,
+                &(mConfig.postview),
+                false);
+        if (ret < 0) {
+            LOGE("configure second device failed!");
+            status = UNKNOWN_ERROR;
+            goto errorCloseSecond;
+        }
     }
 
 nopostview:
@@ -1708,7 +1734,9 @@ nopostview:
     return status;
 
 errorCloseSecond:
-    mPostViewDevice->close();
+    if (isPostviewInitialized()) {
+        mPostViewDevice->close();
+    }
 errorFreeBuf:
     freeSnapshotBuffers();
     freePostviewBuffers();
@@ -1728,6 +1756,10 @@ errorFreeBuf:
 status_t AtomISP::requestContCapture(int numCaptures, int offset, unsigned int skip)
 {
     LOG2("@%s", __FUNCTION__);
+
+    if (!PlatformData::ispSupportContinuousCaptureMode(mCameraId)) {
+        return NO_ERROR;
+    }
 
     struct atomisp_cont_capture_conf conf;
 
@@ -1755,6 +1787,11 @@ status_t AtomISP::requestContCapture(int numCaptures, int offset, unsigned int s
 status_t AtomISP::configureContinuousMode(bool enable)
 {
     LOG2("@%s", __FUNCTION__);
+
+    if (!PlatformData::ispSupportContinuousCaptureMode(mCameraId)) {
+        return NO_ERROR;
+    }
+
     if (mMainDevice->setControl(V4L2_CID_ATOMISP_CONTINUOUS_MODE,
                               enable, "Continuous mode") < 0)
             return UNKNOWN_ERROR;
@@ -2011,6 +2048,65 @@ status_t AtomISP::configureContinuousJpegCapture()
 }
 
 /**
+ * Configures the ISP to work on a mode which only support two streams output in the HAL.
+ * One is preview output, and another is capture output. In this mode, postview output is
+ * also not supported, so the postview and thumbnail are generated by GPU.
+ */
+status_t AtomISP::configurePreviewAndCaptureStreamsSOC()
+{
+    LOG1("@%s", __FUNCTION__);
+
+    int ret = 0;
+    status_t status = OK;
+    struct v4l2_capability aCap;
+
+    // configure the main device
+    Size zslSize = getHALZSLResolution();
+    mConfig.snapshot.width = zslSize.width;
+    mConfig.snapshot.height = zslSize.height;
+    mConfig.snapshot.bpl = SGXandDisplayBpl(mConfig.snapshot.fourcc, mConfig.snapshot.width);
+    mConfig.snapshot.size = frameSize(mConfig.snapshot.fourcc, mConfig.snapshot.width, mConfig.snapshot.height);
+    LOG1("@%s configured %dx%d bpl %d", __FUNCTION__, mConfig.snapshot.width, mConfig.snapshot.height, mConfig.snapshot.bpl);
+
+    ret = configureDevice(
+            mMainDevice.get(),
+            CI_MODE_STILL_CAPTURE,
+            &(mConfig.snapshot),
+            isDumpRawImageReady());
+    if (ret < 0) {
+        LOGE("@%s, configure main device failed!", __FUNCTION__);
+        return UNKNOWN_ERROR;
+    }
+
+    // configure the preview device
+    ret = mPreviewDevice->open();
+    if (ret < 0) {
+        LOGE("Open preview device failed!");
+        status = UNKNOWN_ERROR;
+        return NO_INIT;
+    }
+
+    status = mPreviewDevice->queryCap(&aCap);
+    if (status != NO_ERROR) {
+        LOGE("Failed basic capability check failed!");
+        return NO_INIT;
+    }
+
+    mConfig.preview.bpl = SGXandDisplayBpl(mConfig.preview.fourcc, mConfig.preview.width);
+    ret = configureDevice(
+            mPreviewDevice.get(),
+            CI_MODE_PREVIEW,
+            &(mConfig.preview),
+            false);
+    if (ret < 0) {
+        LOGE("@%s, configure preview device failed!", __FUNCTION__);
+        return UNKNOWN_ERROR;
+    }
+
+    return status;
+}
+
+/**
  * Configures the ISP to work on a mode where Continuous capture is implemented
  * in the HAL. This is currently only available for SoC sensors, hence the name.
  * the difference with the configureContinuousSOC() is that the configureContinuousSOC() just use one stream from driver
@@ -2052,27 +2148,29 @@ status_t AtomISP::configureMultiStreamsContinuousSOC()
         return UNKNOWN_ERROR;
     }
 
-    // configure the postview device
-    ret = mPostViewDevice->open();
-    if (ret < 0) {
-        LOGE("@%s, open postview device failed!", __FUNCTION__);
-        return UNKNOWN_ERROR;
-    }
+    if (isPostviewInitialized()) {
+        // configure the postview device
+        ret = mPostViewDevice->open();
+        if (ret < 0) {
+            LOGE("@%s, open postview device failed!", __FUNCTION__);
+            return UNKNOWN_ERROR;
+        }
 
-    status = mPostViewDevice->queryCap(&aCap);
-    if (status != NO_ERROR) {
-        LOGE("@%s, query postview device failed!", __FUNCTION__);
-        return NO_INIT;
-    }
+        status = mPostViewDevice->queryCap(&aCap);
+        if (status != NO_ERROR) {
+            LOGE("@%s, query postview device failed!", __FUNCTION__);
+            return NO_INIT;
+        }
 
-    ret = configureDevice(
-            mPostViewDevice.get(),
-            CI_MODE_VIDEO,
-            &(mConfig.postview),
-            false);
-    if (ret < 0) {
-        LOGE("@%s, configure postview device failed!", __FUNCTION__);
-        return UNKNOWN_ERROR;
+        ret = configureDevice(
+                mPostViewDevice.get(),
+                CI_MODE_VIDEO,
+                &(mConfig.postview),
+                false);
+        if (ret < 0) {
+            LOGE("@%s, configure postview device failed!", __FUNCTION__);
+            return UNKNOWN_ERROR;
+        }
     }
 
     // configure the preview device
@@ -2218,30 +2316,32 @@ status_t AtomISP::configureMultiStreamsContinuousVideoSOC()
         return UNKNOWN_ERROR;
     }
 
-    // configure the postview device
-    ret = mPostViewDevice->open();
-    if (ret < 0) {
-        LOGE("@%s, open postview device failed!", __FUNCTION__);
-        return UNKNOWN_ERROR;
+    if (isPostviewInitialized()) {
+        // configure the postview device
+        ret = mPostViewDevice->open();
+        if (ret < 0) {
+            LOGE("@%s, open postview device failed!", __FUNCTION__);
+            return UNKNOWN_ERROR;
+        }
+
+        status = mPostViewDevice->queryCap(&aCap);
+        if (status != NO_ERROR) {
+            LOGE("@%s, query postview device failed!", __FUNCTION__);
+            return NO_INIT;
+        }
+
+        ret = configureDevice(
+                mPostViewDevice.get(),
+                CI_MODE_VIDEO,
+                &(mConfig.postview),
+                false);
+        if (ret < 0) {
+            LOGE("@%s, configure postview device failed!", __FUNCTION__);
+            return UNKNOWN_ERROR;
+        }
     }
 
-    status = mPostViewDevice->queryCap(&aCap);
-    if (status != NO_ERROR) {
-        LOGE("@%s, query postview device failed!", __FUNCTION__);
-        return NO_INIT;
-    }
-
-    ret = configureDevice(
-            mPostViewDevice.get(),
-            CI_MODE_VIDEO,
-            &(mConfig.postview),
-            false);
-    if (ret < 0) {
-        LOGE("@%s, configure postview device failed!", __FUNCTION__);
-        return UNKNOWN_ERROR;
-    }
-
-     return status;
+    return status;
 }
 
 status_t AtomISP::configureContinuousVideo()
@@ -2289,29 +2389,31 @@ status_t AtomISP::configureContinuousVideo()
         return status;
     }
 
-    ret = mPostViewDevice->open();
-    if (ret < 0) {
-        LOGE("Open second device failed!");
-        status = UNKNOWN_ERROR;
-        goto errorFreeBuf;
-    }
+    if (isPostviewInitialized()) {
+        ret = mPostViewDevice->open();
+        if (ret < 0) {
+            LOGE("Open second device failed!");
+            status = UNKNOWN_ERROR;
+            goto errorFreeBuf;
+        }
 
-    struct v4l2_capability aCap;
-    status = mPostViewDevice->queryCap(&aCap);
-    if (status != NO_ERROR) {
-        LOGE("Failed basic capability check failed!");
-        return NO_INIT;
-    }
+        struct v4l2_capability aCap;
+        status = mPostViewDevice->queryCap(&aCap);
+        if (status != NO_ERROR) {
+            LOGE("Failed basic capability check failed!");
+            return NO_INIT;
+        }
 
-    ret = configureDevice(
-            mPostViewDevice.get(),
-            CI_MODE_VIDEO,
-            &(mConfig.postview),
-            false);
-    if (ret < 0) {
-        LOGE("configure second device failed!");
-        status = UNKNOWN_ERROR;
-        goto errorCloseSecond;
+        ret = configureDevice(
+                mPostViewDevice.get(),
+                CI_MODE_VIDEO,
+                &(mConfig.postview),
+                false);
+        if (ret < 0) {
+            LOGE("configure second device failed!");
+            status = UNKNOWN_ERROR;
+            goto errorCloseSecond;
+        }
     }
 
     // need to resend the current zoom value
@@ -2326,7 +2428,9 @@ status_t AtomISP::configureContinuousVideo()
     return status;
 
 errorCloseSecond:
-    mPostViewDevice->close();
+    if (isPostviewInitialized()) {
+        mPostViewDevice->close();
+    }
 errorFreeBuf:
     freeSnapshotBuffers();
     freePostviewBuffers();
@@ -2389,7 +2493,9 @@ status_t AtomISP::configureHALVSVideo()
         return status;
 
     errorCloseSecond:
-        mPostViewDevice->close();
+        if (isPostviewInitialized()) {
+            mPostViewDevice->close();
+        }
     errorFreeBuf:
         freeSnapshotBuffers();
         freePostviewBuffers();
@@ -2415,9 +2521,13 @@ status_t AtomISP::configureContinuous()
     updateCaptureParams();
 
     if(mSensorType == SENSOR_TYPE_SOC) {
-        return mUseMultiStreamsForSoC
-                ? configureMultiStreamsContinuousSOC()
-                : configureContinuousSOC();
+        if (!PlatformData::supportsPostviewOutput(mCameraId)) {
+            return configurePreviewAndCaptureStreamsSOC();
+        } else {
+            return mUseMultiStreamsForSoC
+                    ? configureMultiStreamsContinuousSOC()
+                    : configureContinuousSOC();
+        }
     }
 
     ret = configureContinuousMode(true);
@@ -2450,29 +2560,31 @@ status_t AtomISP::configureContinuous()
         return status;
     }
 
-    ret = mPostViewDevice->open();
-    if (ret < 0) {
-        LOGE("Open second device failed!");
-        status = UNKNOWN_ERROR;
-        goto errorFreeBuf;
-    }
+    if (isPostviewInitialized()) {
+        ret = mPostViewDevice->open();
+        if (ret < 0) {
+            LOGE("Open second device failed!");
+            status = UNKNOWN_ERROR;
+            goto errorFreeBuf;
+        }
 
-    struct v4l2_capability aCap;
-    status = mPostViewDevice->queryCap(&aCap);
-    if (status != NO_ERROR) {
-        LOGE("Failed basic capability check failed!");
-        return NO_INIT;
-    }
+        struct v4l2_capability aCap;
+        status = mPostViewDevice->queryCap(&aCap);
+        if (status != NO_ERROR) {
+            LOGE("Failed basic capability check failed!");
+            return NO_INIT;
+        }
 
-    ret = configureDevice(
-            mPostViewDevice.get(),
-            CI_MODE_PREVIEW,
-            &(mConfig.postview),
-            false);
-    if (ret < 0) {
-        LOGE("configure second device failed!");
-        status = UNKNOWN_ERROR;
-        goto errorCloseSecond;
+        ret = configureDevice(
+                mPostViewDevice.get(),
+                CI_MODE_PREVIEW,
+                &(mConfig.postview),
+                false);
+        if (ret < 0) {
+            LOGE("configure second device failed!");
+            status = UNKNOWN_ERROR;
+            goto errorCloseSecond;
+        }
     }
 
     // need to resend the current zoom value
@@ -2490,7 +2602,9 @@ status_t AtomISP::configureContinuous()
     return status;
 
 errorCloseSecond:
-    mPostViewDevice->close();
+    if (isPostviewInitialized()) {
+        mPostViewDevice->close();
+    }
 errorFreeBuf:
     freeSnapshotBuffers();
     freePostviewBuffers();
@@ -2558,12 +2672,13 @@ status_t AtomISP::startCapture()
         goto nopostview;
     }
 
-
-    ret = mPostViewDevice->start(snapNum, initialSkips);
-    if (ret < 0) {
-        LOGE("start capture on second device failed!");
-        status = UNKNOWN_ERROR;
-        goto errorStopFirst;
+    if (isPostviewInitialized()) {
+        ret = mPostViewDevice->start(snapNum, initialSkips);
+        if (ret < 0) {
+            LOGE("start capture on second device failed!");
+            status = UNKNOWN_ERROR;
+            goto errorStopFirst;
+        }
     }
 
     for (i = 0; i < initialSkips; i++) {
@@ -2580,7 +2695,9 @@ nopostview:
 errorStopFirst:
     mMainDevice->stop();
 errorCloseSecond:
-    mPostViewDevice->close();
+    if (isPostviewInitialized()) {
+        mPostViewDevice->close();
+    }
 errorFreeBuf:
     freeSnapshotBuffers();
     freePostviewBuffers();
@@ -2765,7 +2882,9 @@ status_t AtomISP::stopOfflineCapture()
         return OK;
 
     mMainDevice->stop(false);
-    mPostViewDevice->stop(false);
+    if (isPostviewInitialized()) {
+        mPostViewDevice->stop(false);
+    }
     mContCaptPrepared = true;
     return NO_ERROR;
 }
@@ -4069,23 +4188,25 @@ status_t AtomISP::getMultiStreamsHALZSLPreviewFrame(AtomBuffer *buff)
     mMultiStreamsHALZSLCaptureBuffers[snapshotIndex].status = (FrameBufferStatus)bufInfo.vbuffer.reserved;
     mMultiStreamsHALZSLCaptureBuffersQueue.push_front(mMultiStreamsHALZSLCaptureBuffers[snapshotIndex]);
 
-    // get the postview buffers
-    CLEAR(bufInfo);
-    postviewIndex = mPostViewDevice->grabFrame(&bufInfo);
-    LOG2("@%s, postviewIndex = %d", __FUNCTION__, postviewIndex);
-    if (postviewIndex < 0) {
-        LOGE("@%s, Error in grabbing postview frame!", __FUNCTION__);
-        // If we failed with the second device, return the frame to the first device
-        mMainDevice->putFrame(snapshotIndex);
-        return BAD_INDEX;
-    }
-    LOG2("Device: %d. Grabbed frame of size: %d", mPostViewDevice->mId, bufInfo.vbuffer.bytesused);
+    if (isPostviewInitialized()) {
+        // get the postview buffers
+        CLEAR(bufInfo);
+        postviewIndex = mPostViewDevice->grabFrame(&bufInfo);
+        LOG2("@%s, postviewIndex = %d", __FUNCTION__, postviewIndex);
+        if (postviewIndex < 0) {
+            LOGE("@%s, Error in grabbing postview frame!", __FUNCTION__);
+            // If we failed with the second device, return the frame to the first device
+            mMainDevice->putFrame(snapshotIndex);
+            return BAD_INDEX;
+        }
+        LOG2("Device: %d. Grabbed frame of size: %d", mPostViewDevice->mId, bufInfo.vbuffer.bytesused);
 
-    mMultiStreamsHALZSLPostviewBuffers[postviewIndex].id = postviewIndex;
-    mMultiStreamsHALZSLPostviewBuffers[postviewIndex].capture_timestamp = bufInfo.vbuffer.timestamp;
-    mMultiStreamsHALZSLPostviewBuffers[postviewIndex].frameSequenceNbr = bufInfo.vbuffer.sequence;
-    mMultiStreamsHALZSLPostviewBuffers[postviewIndex].status = (FrameBufferStatus)bufInfo.vbuffer.reserved;
-    mMultiStreamsHALZSLPostviewBuffersQueue.push_front(mMultiStreamsHALZSLPostviewBuffers[postviewIndex]);
+        mMultiStreamsHALZSLPostviewBuffers[postviewIndex].id = postviewIndex;
+        mMultiStreamsHALZSLPostviewBuffers[postviewIndex].capture_timestamp = bufInfo.vbuffer.timestamp;
+        mMultiStreamsHALZSLPostviewBuffers[postviewIndex].frameSequenceNbr = bufInfo.vbuffer.sequence;
+        mMultiStreamsHALZSLPostviewBuffers[postviewIndex].status = (FrameBufferStatus)bufInfo.vbuffer.reserved;
+        mMultiStreamsHALZSLPostviewBuffersQueue.push_front(mMultiStreamsHALZSLPostviewBuffers[postviewIndex]);
+    }
 
     // TODO: BZ: 179405. the current YUVPP pipe has bug for 3 streams output. remove the recording device when the fw has fixed this bug.
     // get and put the recording buffers
@@ -4268,15 +4389,17 @@ status_t AtomISP::putMultiStreamsHALZSLPreviewFrame(AtomBuffer *buff)
         }
     }
 
-    // put postview
-    size = mMultiStreamsHALZSLPostviewBuffersQueue.size();
-    LOG2("@%s: mMultiStreamsHALZSLPostviewBuffersQueue size was %d", __FUNCTION__, size);
-    if (size > sMaxHALZSLBuffersHeldInHAL) {
-        AtomBuffer buf = mMultiStreamsHALZSLPostviewBuffersQueue.top();
-        mMultiStreamsHALZSLPostviewBuffersQueue.pop();
-        if (mPostViewDevice->putFrame(buf.id) < 0) {
-            LOGE("@%s, mPostViewDevice, putFrame fail, id:%d", __FUNCTION__, buf.id);
-            return UNKNOWN_ERROR;
+    if (isPostviewInitialized()) {
+        // put postview
+        size = mMultiStreamsHALZSLPostviewBuffersQueue.size();
+        LOG2("@%s: mMultiStreamsHALZSLPostviewBuffersQueue size was %d", __FUNCTION__, size);
+        if (size > sMaxHALZSLBuffersHeldInHAL) {
+            AtomBuffer buf = mMultiStreamsHALZSLPostviewBuffersQueue.top();
+            mMultiStreamsHALZSLPostviewBuffersQueue.pop();
+            if (mPostViewDevice->putFrame(buf.id) < 0) {
+                LOGE("@%s, mPostViewDevice, putFrame fail, id:%d", __FUNCTION__, buf.id);
+                return UNKNOWN_ERROR;
+            }
         }
     }
 
@@ -4620,7 +4743,7 @@ status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
 {
     LOG1("@%s", __FUNCTION__);
     struct v4l2_buffer_info vinfo;
-    int snapshotIndex, postviewIndex;
+    int snapshotIndex = 0, postviewIndex = 0;
 
     if (mMode != MODE_CAPTURE && !inContinuousMode())
         return INVALID_OPERATION;
@@ -4644,30 +4767,34 @@ status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
     mSnapshotBuffers[snapshotIndex].status = (FrameBufferStatus)(vinfo.vbuffer.reserved & FRAME_STATUS_MASK);
     mSnapshotBuffers[snapshotIndex].expId = (vinfo.vbuffer.reserved >> 16) & 0xFFFF;
 
-    if (isDumpRawImageReady() || postviewBuf == NULL) {
+    if (isDumpRawImageReady() || postviewBuf == NULL || !isPostviewInitialized()) {
         postviewIndex = snapshotIndex;
         goto nopostview;
     }
 
-    postviewIndex = mPostViewDevice->grabFrame(&vinfo);
-    if (postviewIndex < 0) {
-        LOGE("Error in grabbing frame from 2'nd device!");
-        // If we failed with the second device, return the frame to the first device
-        mMainDevice->putFrame(snapshotIndex);
-        return BAD_INDEX;
-    }
-    LOG1("Device: %d. Grabbed frame of size: %d", V4L2_POSTVIEW_DEVICE, vinfo.vbuffer.bytesused);
+    if (isPostviewInitialized()) {
+        postviewIndex = mPostViewDevice->grabFrame(&vinfo);
+        if (postviewIndex < 0) {
+            LOGE("Error in grabbing frame from 2'nd device!");
+            // If we failed with the second device, return the frame to the first device
+            mMainDevice->putFrame(snapshotIndex);
+            return BAD_INDEX;
+        }
+        LOG1("Device: %d. Grabbed frame of size: %d", V4L2_POSTVIEW_DEVICE, vinfo.vbuffer.bytesused);
 
-    mPostviewBuffers.editItemAt(postviewIndex).capture_timestamp = vinfo.vbuffer.timestamp;
-    mPostviewBuffers.editItemAt(postviewIndex).frameSequenceNbr = vinfo.vbuffer.sequence;
-    mPostviewBuffers.editItemAt(postviewIndex).status = (FrameBufferStatus)(vinfo.vbuffer.reserved & FRAME_STATUS_MASK);
+        mPostviewBuffers.editItemAt(postviewIndex).capture_timestamp = vinfo.vbuffer.timestamp;
+        mPostviewBuffers.editItemAt(postviewIndex).frameSequenceNbr = vinfo.vbuffer.sequence;
+        mPostviewBuffers.editItemAt(postviewIndex).status = (FrameBufferStatus)(vinfo.vbuffer.reserved & FRAME_STATUS_MASK);
+    }
 
     if (snapshotIndex != postviewIndex ||
             snapshotIndex >= MAX_V4L2_BUFFERS) {
         LOGE("Indexes error! snapshotIndex = %d, postviewIndex = %d", snapshotIndex, postviewIndex);
         // Return the buffers back to driver
         mMainDevice->putFrame(snapshotIndex);
-        mPostViewDevice->putFrame(postviewIndex);
+        if (isPostviewInitialized()) {
+            mPostViewDevice->putFrame(postviewIndex);
+        }
         return BAD_INDEX;
     }
 
@@ -4682,7 +4809,7 @@ nopostview:
     snapshotBuf->size = mConfig.snapshot.size;
     snapshotBuf->bpl = mConfig.snapshot.bpl;
 
-    if (postviewBuf) {
+    if (isPostviewInitialized() && postviewBuf) {
         mPostviewBuffers.editItemAt(postviewIndex).id = postviewIndex;
         mPostviewBuffers.editItemAt(postviewIndex).frameCounter = mPostViewDevice->getFrameCount();
         mPostviewBuffers.editItemAt(postviewIndex).ispPrivate = mSessionId;
@@ -4719,7 +4846,7 @@ status_t AtomISP::putSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
 
     ret0 = mMainDevice->putFrame(snapshotBuf->id);
 
-    if (mConfig.snapshot.fourcc == mSensorHW->getRawFormat() || postviewBuf == NULL) {
+    if (mConfig.snapshot.fourcc == mSensorHW->getRawFormat() || postviewBuf == NULL || !isPostviewInitialized()) {
         // for RAW captures we do not dequeue the postview, therefore we do
         // not need to return it.
         ret1 = 0;
@@ -5073,9 +5200,11 @@ status_t AtomISP::allocateMultiStreamsHALZSLBuffers()
         return status;
     }
 
-    mPostViewDevice->setBufferPool((void**)&bufPool, sNumHALZSLBuffers,
-                                      &mConfig.postview, false);
-    mConfig.num_postview_buffers = sNumHALZSLBuffers;
+    if (isPostviewInitialized()) {
+        mPostViewDevice->setBufferPool((void**)&bufPool, sNumHALZSLBuffers,
+                                          &mConfig.postview, false);
+        mConfig.num_postview_buffers = sNumHALZSLBuffers;
+    }
 
     return status;
 }
@@ -5327,7 +5456,7 @@ status_t AtomISP::allocateSnapshotBuffers()
         }
     }
     // In case of Raw capture we do not get postview, so no point in setting up the pool
-    if (!mContinuousJpegCaptureEnabled && !mHALZSLEnabled && !mHALSDVEnabled && !isBayerFormat(mConfig.snapshot.fourcc))
+    if (isPostviewInitialized() && !mContinuousJpegCaptureEnabled && !mHALZSLEnabled && !mHALSDVEnabled && !isBayerFormat(mConfig.snapshot.fourcc))
         mPostViewDevice->setBufferPool((void**)&bufPool,mPostviewBuffers.size(),
                                         &mConfig.postview, true);
     return status;
