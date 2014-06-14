@@ -4807,6 +4807,9 @@ status_t ControlThread::captureJpegPic()
 {
     LOG1("@%s", __FUNCTION__);
 
+    status_t status = NO_ERROR;
+    int retryCount = 3;
+
     // in continuous mode we already take pictures as fast we can
     if (mJpegContinuousShootingRunning) {
         LOG2("TakePicture called during Continuous shooting.");
@@ -4834,9 +4837,14 @@ status_t ControlThread::captureJpegPic()
     // Send request to play the Shutter Sound
     mCallbacksThread->shutterSound();
 
-    mISP->requestJpegCapture();
+    m3AControls->setAfEnabled(false);
 
-    return NO_ERROR;
+    //Retry to send Jpeg request command when device busy.
+    do {
+        status = mISP->requestJpegCapture();
+    } while(status != NO_ERROR && retryCount--);
+
+    return status;
 }
 
 /**
