@@ -2050,7 +2050,8 @@ status_t ControlThread::startPreviewCore(bool videoMode)
          *    if the setting is valid, we should disable continuous video.
          * 2. Currently bayer downcaling + yuv downscaling can not downscale to a too small size
          */
-        const char *sdvValue = mIntelParameters.get(IntelCameraParameters::KEY_SDV);
+        const char *sdvValue = mIntelParamsAllowed ? mParameters.get(IntelCameraParameters::KEY_SDV):
+                                                mIntelParameters.get(IntelCameraParameters::KEY_SDV);
         String8 sdvParam (sdvValue, (sdvValue == NULL ? 0 : strlen(sdvValue)));
         mFullSizeSdv = PlatformData::isFullResSdvSupported(mCameraId) && // platform supported
             !mDualVideo && // not dual video
