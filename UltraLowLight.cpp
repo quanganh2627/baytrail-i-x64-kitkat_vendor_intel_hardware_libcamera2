@@ -623,7 +623,6 @@ status_t UltraLowLight::processIntelULL()
     AtomToIaFrameBuffer(&mOutputPostView, &out_pv);
 
     mIntelUllCfg->zoom_factor = mZoomFactor;
-    mIntelUllCfg->imreg_fallback = NULL;
 
     LOG1("Intel ULL processing...");
     ia_err error = ia_cp_ull_compose(&out, &out_pv, input, postview, mInputBuffers.size(), mIntelUllCfg);
