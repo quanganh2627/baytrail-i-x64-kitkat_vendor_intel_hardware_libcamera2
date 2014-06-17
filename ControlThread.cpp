@@ -1815,7 +1815,7 @@ ControlThread::ShootingMode ControlThread::selectShootingMode()
             break;
 
         case STATE_RECORDING:
-            if (PlatformData::supportsContinuousJpegCapture(mCameraId))
+            if (PlatformData::supportsContinuousJpegCapture(mCameraId) && mExtIspAction != EXT_ISP_ACTION_VIDEOHS)
                 ret = SHOOTING_MODE_JPEG;
             else
                 ret = SHOOTING_MODE_VIDEO_SNAP;
@@ -3190,6 +3190,8 @@ status_t ControlThread::handleMessageTakePicture() {
             if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_SOC
                     && PlatformData::useMultiStreamsForSoC(mCameraId))
                 status = captureSdvSoC(mFullSizeSdv);
+            else if (mExtIspAction == EXT_ISP_ACTION_VIDEOHS)
+                status = captureSdv(false);
             else
                 status = captureSdv(mFullSizeSdv);
             break;
@@ -5262,7 +5264,7 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
         msg->snapshotBuf.owner->returnBuffer(&msg->postviewBuf);
     } else if (mState == STATE_RECORDING) {
         if (!mFullSizeSdv) { //online sdv or continuous JpegCapture mode
-            if (!PlatformData::supportsContinuousJpegCapture(mCameraId))
+            if (!PlatformData::supportsContinuousJpegCapture(mCameraId) || mExtIspAction == EXT_ISP_ACTION_VIDEOHS)
                 mVideoThread->putVideoSnapshot(&msg->snapshotBuf);
         } else { //offline SDV
             if (findBufferByData(&msg->snapshotBuf, &mAllocatedSnapshotBuffers) == NULL) {

@@ -1236,12 +1236,8 @@ status_t PictureThread::startHwEncoding(AtomBuffer* mainBuf)
 
     PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("In",mainBuf->frameCounter);
     inBuf.clear();
-    if (mainBuf->shared) {
-        inBuf.buf = (unsigned char *) *((char **)mainBuf->dataPtr);
-    } else {
-        inBuf.buf = (unsigned char *) mainBuf->dataPtr;
-    }
 
+    inBuf.buf = (unsigned char *) mainBuf->dataPtr;
     inBuf.width = mainBuf->width;
     inBuf.height = mainBuf->height;
     inBuf.fourcc = mainBuf->fourcc;
@@ -1369,14 +1365,10 @@ status_t PictureThread::doSwEncode(AtomBuffer *mainBuf, AtomBuffer* destBuf)
 
     PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("In",mainBuf->frameCounter);
     inBuf.clear();
-    if (mainBuf->shared) {
-        inBuf.buf = (unsigned char *) *((char **)mainBuf->dataPtr);
-    } else {
-        inBuf.buf = (unsigned char *) mainBuf->dataPtr;
-    }
 
     int realWidth = (mainBuf->bpl > mainBuf->width)? mainBuf->bpl:
                                                        mainBuf->width;
+    inBuf.buf = (unsigned char *) mainBuf->dataPtr;
     inBuf.width = realWidth;
     inBuf.height = mainBuf->height;
     inBuf.fourcc = mainBuf->fourcc;
