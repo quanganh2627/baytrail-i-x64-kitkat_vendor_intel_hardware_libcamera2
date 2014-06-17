@@ -5525,7 +5525,6 @@ status_t ControlThread::processParamDualCameraMode(CameraParameters *oldParams,
                 }
 
                 newParams->set(CameraParameters::KEY_FOCUS_MODE, "infinity");
-                newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "infinity");
 
                 // set focus mode to fixed too in old parameter and let focus don't set again.
                 oldParams->set(CameraParameters::KEY_FOCUS_MODE, "infinity");
@@ -5557,7 +5556,6 @@ status_t ControlThread::processParamDualCameraMode(CameraParameters *oldParams,
 
                 LOG2("restore focus mode = %s", mSavedFocusMode.string());
                 newParams->set(CameraParameters::KEY_FOCUS_MODE, mSavedFocusMode.string());
-                newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, PlatformData::supportedFocusModes(mCameraId));
 
                 // remove focus parameter in old parameter to force updating focus mode.
                 oldParams->remove(CameraParameters::KEY_FOCUS_MODE);
@@ -6745,18 +6743,12 @@ status_t ControlThread::processParamSceneMode(CameraParameters *oldParams,
             if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
                 if (!PlatformData::isFixedFocusCamera(mCameraId)) {
                     newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
-                    newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "auto,continuous-picture");
                 }
                 newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
-                newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
-                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ISO, PlatformData::defaultIso(mCameraId));
                 newParams->set(IntelCameraParameters::KEY_ISO, PlatformData::defaultIso(mCameraId));
-                newParams->set(IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES, "auto,center");
-                newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
-                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
                 newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
                 newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION, PlatformData::supportedDefaultEV(mCameraId));
                 newParams->set(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION, PlatformData::supportedMaxEV(mCameraId));
@@ -6774,18 +6766,13 @@ status_t ControlThread::processParamSceneMode(CameraParameters *oldParams,
             if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
                 if (!PlatformData::isFixedFocusCamera(mCameraId)) {
                     newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
-                    newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "infinity");
                 }
-                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ISO, PlatformData::defaultIso(mCameraId));
                 newParams->set(IntelCameraParameters::KEY_ISO, PlatformData::defaultIso(mCameraId));
                 newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
-                newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
                 newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-                newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
-                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
                 newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
                 newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION, PlatformData::supportedDefaultEV(mCameraId));
                 newParams->set(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION, PlatformData::supportedMaxEV(mCameraId));
@@ -6802,18 +6789,13 @@ status_t ControlThread::processParamSceneMode(CameraParameters *oldParams,
             if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
                 if (!PlatformData::isFixedFocusCamera(mCameraId)) {
                     newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
-                    newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "infinity");
                 }
-                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ISO, PlatformData::defaultIso(mCameraId));
                 newParams->set(IntelCameraParameters::KEY_ISO, PlatformData::defaultIso(mCameraId));
                 newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
-                newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
                 newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_OUTDOOR);
                 newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-                newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
-                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
                 newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
                 newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION, PlatformData::supportedDefaultEV(mCameraId));
                 newParams->set(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION, PlatformData::supportedMaxEV(mCameraId));
@@ -6830,18 +6812,13 @@ status_t ControlThread::processParamSceneMode(CameraParameters *oldParams,
             if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
                 if (!PlatformData::isFixedFocusCamera(mCameraId)) {
                     newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
-                    newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "infinity");
                 }
-                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ISO, PlatformData::defaultIso(mCameraId));
                 newParams->set(IntelCameraParameters::KEY_ISO, PlatformData::defaultIso(mCameraId));
                 newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
-                newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
                 newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-                newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true");
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::TRUE);
-                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "true");
                 newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::TRUE);
                 newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION, PlatformData::supportedDefaultEV(mCameraId));
                 newParams->set(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION, PlatformData::supportedMaxEV(mCameraId));
@@ -6858,18 +6835,13 @@ status_t ControlThread::processParamSceneMode(CameraParameters *oldParams,
             if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
                 if (!PlatformData::isFixedFocusCamera(mCameraId)) {
                     newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
-                    newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "auto,continuous-picture");
                 }
-                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ISO, PlatformData::defaultIso(mCameraId));
                 newParams->set(IntelCameraParameters::KEY_ISO, PlatformData::defaultIso(mCameraId));
                 newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
-                newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
                 newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-                newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true");
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::TRUE);
-                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "true");
                 newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::TRUE);
                 newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION, PlatformData::supportedDefaultEV(mCameraId));
                 newParams->set(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION, PlatformData::supportedMaxEV(mCameraId));
@@ -6887,15 +6859,11 @@ status_t ControlThread::processParamSceneMode(CameraParameters *oldParams,
                 if (!PlatformData::isFixedFocusCamera(mCameraId)) {
                     newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
                 }
-                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ISO, PlatformData::defaultIso(mCameraId));
                 newParams->set(IntelCameraParameters::KEY_ISO, PlatformData::defaultIso(mCameraId));
                 newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-                newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, PlatformData::supportedFocusModes(mCameraId));
                 newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
-                newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "false");
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
-                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
                 newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
                 newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION, "0");
                 newParams->set(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION, "0");
@@ -6912,18 +6880,13 @@ status_t ControlThread::processParamSceneMode(CameraParameters *oldParams,
             if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
                 if (!PlatformData::isFixedFocusCamera(mCameraId)) {
                     newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_INFINITY);
-                    newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "infinity");
                 }
-                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ISO, PlatformData::defaultIso(mCameraId));
                 newParams->set(IntelCameraParameters::KEY_ISO, PlatformData::defaultIso(mCameraId));
                 newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
-                newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
                 newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-                newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
-                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
                 newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
                 newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION, PlatformData::supportedDefaultEV(mCameraId));
                 newParams->set(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION, PlatformData::supportedMaxEV(mCameraId));
@@ -6940,18 +6903,13 @@ status_t ControlThread::processParamSceneMode(CameraParameters *oldParams,
             if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
                 if (!PlatformData::isFixedFocusCamera(mCameraId)) {
                     newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_MACRO);
-                    newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "macro,continuous-picture");
                 }
-                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ISO, PlatformData::defaultIso(mCameraId));
                 newParams->set(IntelCameraParameters::KEY_ISO, PlatformData::defaultIso(mCameraId));
                 newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
-                newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-                newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
-                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
                 newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
                 newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION, PlatformData::supportedDefaultEV(mCameraId));
                 newParams->set(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION, PlatformData::supportedMaxEV(mCameraId));
@@ -6982,19 +6940,13 @@ status_t ControlThread::processParamSceneMode(CameraParameters *oldParams,
             if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
                 if (!PlatformData::isFixedFocusCamera(mCameraId)) {
                     newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
-                    newParams->set(CameraParameters::KEY_SUPPORTED_FOCUS_MODES, "auto,infinity,fixed,macro,continuous-video,continuous-picture");
                 }
-                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ISO, PlatformData::supportedIso(mCameraId));
                 newParams->set(IntelCameraParameters::KEY_ISO, PlatformData::defaultIso(mCameraId));
                 newParams->set(CameraParameters::KEY_WHITE_BALANCE, CameraParameters::WHITE_BALANCE_AUTO);
-                newParams->set(CameraParameters::KEY_SUPPORTED_ANTIBANDING, "off,50hz,60hz,auto");
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
-                newParams->set(IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES, "auto,center,spot");
                 newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-                newParams->set(IntelCameraParameters::KEY_SUPPORTED_XNR, "true,false");
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
-                newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "true,false");
                 newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
                 newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION, PlatformData::supportedDefaultEV(mCameraId));
                 newParams->set(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION, PlatformData::supportedMaxEV(mCameraId));
