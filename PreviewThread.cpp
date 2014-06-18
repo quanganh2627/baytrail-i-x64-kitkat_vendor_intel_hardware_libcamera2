@@ -1521,6 +1521,7 @@ status_t PreviewThread::handleSetPreviewWindow(MessageSetPreviewWindow *msg)
                 // read-never: we do not use this buffer for callbacks. We never read from it
                 usage = GRALLOC_USAGE_SW_WRITE_OFTEN |
                         GRALLOC_USAGE_SW_READ_NEVER  |
+                        GRALLOC_USAGE_HW_CAMERA_MASK |
                         GRALLOC_USAGE_HW_COMPOSER    |
                         GRALLOC_USAGE_HW_RENDER      |
                         GRALLOC_USAGE_HW_TEXTURE;
@@ -1531,12 +1532,14 @@ status_t PreviewThread::handleSetPreviewWindow(MessageSetPreviewWindow *msg)
                 if (mPreviewCallbackMode == PREVIEW_CALLBACK_BEFORE_DISPLAY)
                     usage = GRALLOC_USAGE_SW_READ_RARELY |
                             GRALLOC_USAGE_SW_WRITE_OFTEN |
+                            GRALLOC_USAGE_HW_CAMERA_MASK |
                             GRALLOC_USAGE_HW_COMPOSER    |
                             GRALLOC_USAGE_HW_RENDER      |
                             GRALLOC_USAGE_HW_TEXTURE;
                 else
                     usage = GRALLOC_USAGE_SW_READ_RARELY |
                             GRALLOC_USAGE_SW_WRITE_NEVER |
+                            GRALLOC_USAGE_HW_CAMERA_MASK |
                             GRALLOC_USAGE_HW_COMPOSER    |
                             GRALLOC_USAGE_HW_RENDER      |
                             GRALLOC_USAGE_HW_TEXTURE;
