@@ -386,7 +386,7 @@ void AtomISP::initFrameConfig()
     mConfig.fps = DEFAULT_PREVIEW_FPS;
     mConfig.preview_fps = DEFAULT_PREVIEW_FPS;
     mConfig.recording_fps = 0; // Default is the same as preview
-    mConfig.num_snapshot = 1;
+    mConfig.num_snapshot = 0;
     mConfig.zoom = 0;
 
     if (mIsFileInject) {
