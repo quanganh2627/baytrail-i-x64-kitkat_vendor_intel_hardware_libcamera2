@@ -216,11 +216,12 @@ status_t validateParameters(const CameraParameters *params)
     // FLASH
     const char* flashMode = params->get(CameraParameters::KEY_FLASH_MODE);
     const char* flashModes = params->get(CameraParameters::KEY_SUPPORTED_FLASH_MODES);
-    if (!validateString(flashMode, flashModes)) {
-        LOGE("bad flash mode");
-        return BAD_VALUE;
+    if (flashModes) {
+        if (!validateString(flashMode, flashModes)) {
+            LOGE("bad flash mode");
+            return BAD_VALUE;
+        }
     }
-
     // SCENE MODE
     const char* sceneMode = params->get(CameraParameters::KEY_SCENE_MODE);
     const char* sceneModes = params->get(CameraParameters::KEY_SUPPORTED_SCENE_MODES);

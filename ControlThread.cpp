@@ -4739,7 +4739,8 @@ status_t ControlThread::processParamFlash(const CameraParameters *oldParams,
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
                                               CameraParameters::KEY_FLASH_MODE);
 
-    if (!newVal.isEmpty()) {
+    const char* supportedFlashModes = newParams->get(CameraParameters::KEY_SUPPORTED_FLASH_MODES);
+    if (!newVal.isEmpty() && supportedFlashModes) {
         FlashMode flash = CAM_AE_FLASH_MODE_AUTO;
         if(newVal == CameraParameters::FLASH_MODE_AUTO)
             flash = CAM_AE_FLASH_MODE_AUTO;
