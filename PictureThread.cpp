@@ -159,11 +159,19 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
     if (status == NO_ERROR) {
        mainBuf = &mScaledPic;
     }
+
     PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("frameEncode starting", mainBuf->frameCounter);
+
+    // TODO: Revert: This is a workaround to overcome
+    // JPEG HW encoder limitation of properly encoding
+    // pictures only with heights aligned to 8. So for non-8-aligned
+    // we use SW encoder.
+    const int JPEG_HEIGHT_ALIGN = 8;
+    bool isAligned = (mainBuf->height % JPEG_HEIGHT_ALIGN == 0);
 
     // Start encoding main picture using HW encoder (except for panorama, which
     // often has resolution which the HW-encoder can't handle
-    if (mainBuf->type != ATOM_BUFFER_PANORAMA) {
+    if (mainBuf->type != ATOM_BUFFER_PANORAMA && isAligned) {
         if (!dataHasBeenFlushed)
             MemoryUtils::flushMemory((char *)mainBuf->dataPtr, mainBuf->size);
 
