@@ -64,6 +64,7 @@ public:
                       int zoomRatio);
     int faceDetect(ia_frame *frame);
     void eyeDetect(ia_frame *frame);
+    void skinTypeDetect(ia_frame *frame);
     void setSmileThreshold(int threshold);
     bool smileDetect(ia_frame *frame);
     void setBlinkThreshold(int threshold);
@@ -125,6 +126,7 @@ private:
     }
     int faceDetect(ia_frame *frame) { return 0; }
     void eyeDetect(ia_frame *frame) {}
+    void skinTypeDetect(ia_frame *frame){}
     void setSmileThreshold(int threshold) {}
     bool smileDetect(ia_frame *frame) { return false; }
     bool blinkDetect(ia_frame *frame) { return true; }

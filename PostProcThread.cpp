@@ -768,6 +768,8 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
             frameData.rotation = rotation;
 
         num_faces = mFaceDetector->faceDetect(&frameData);
+        mFaceDetector->eyeDetect(&frameData);
+        mFaceDetector->skinTypeDetect(&frameData);
 
         if (mSmartShutter.smartRunning) {
             if (mSmartShutter.smileRunning)

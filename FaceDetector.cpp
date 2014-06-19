@@ -117,6 +117,13 @@ void FaceDetector::eyeDetect(ia_frame *frame)
     ia_face_eye_detect(mContext, frame);
 }
 
+void FaceDetector::skinTypeDetect(ia_frame *frame)
+{
+    LOG2("@%s", __FUNCTION__);
+    Mutex::Autolock lock(mLock);
+    ia_face_detect_skin(mContext, frame);
+}
+
 void FaceDetector::setSmileThreshold(int threshold)
 {
     LOG1("@%s", __FUNCTION__);
