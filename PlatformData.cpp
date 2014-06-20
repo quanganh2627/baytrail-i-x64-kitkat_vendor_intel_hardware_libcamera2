@@ -1468,6 +1468,14 @@ const char* PlatformData::supportedDvsSizes(int cameraId)
     return getInstance()->mCameras[getActiveCamIdx(cameraId)].supportedDvsSizes;
 }
 
+bool PlatformData::supportedSensorMetadata(int cameraId)
+{
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return false;
+    }
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].supportedSensorMetadata;
+}
+
 bool PlatformData::isGraphicGen(void)
 {
 #ifdef GRAPHIC_IS_GEN

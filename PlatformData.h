@@ -1131,6 +1131,14 @@ class PlatformData {
     static const char* supportedDvsSizes(int cameraId);
 
     /**
+     * supported sensor metadata
+     *
+     * \param cameraId identifier passed from android.hardware.Camera.open()
+     * \return true if supported sensor metadata. Return false, if don't supported.
+     */
+    static bool supportedSensorMetadata(int cameraId);
+
+    /**
      * Whether the graphic is GEN.
      * \return true if it's GEN. false, if it's not GEN.
      */
@@ -1413,6 +1421,7 @@ protected:
             captureWarmUpFrames = 0;
 
             mIntelligentMode = false;
+            supportedSensorMetadata = false;
 
             disable3A = false;
 
@@ -1573,6 +1582,9 @@ protected:
         // to store the intelligent mode
         // if it's true, the 3A should be disabled
         bool mIntelligentMode;
+
+        // sensor meta data
+        bool supportedSensorMetadata;
 
         // in some test purpose, we need to disable 3A.
         // if this is needed, please make the disable3A to true

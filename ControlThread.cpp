@@ -2237,9 +2237,14 @@ status_t ControlThread::startPreviewCore(bool videoMode)
             LOGE("Failed switching 3A at %.2f fps", mHwcg.mSensorCI->getFramerate());
 
         mISP->attachObserver(m3AThread.get(), OBSERVE_3A_STAT_READY);
-    } else if (PlatformData::supportsContinuousJpegCapture(mCameraId)) {
-        // For ext-isp, let's listen to frame events for auto-focus handling.
-        mISP->attachObserver(m3AThread.get(), OBSERVE_PREVIEW_STREAM);
+    } else {
+        if (PlatformData::supportsContinuousJpegCapture(mCameraId))
+            // For ext-isp, let's listen to frame events for auto-focus handling.
+            mISP->attachObserver(m3AThread.get(), OBSERVE_PREVIEW_STREAM);
+
+        // We need to recieve Sensor Metadata event, then get some informations of sensor frame.
+        if (PlatformData::supportedSensorMetadata(mCameraId))
+            mISP->attachObserver(m3AThread.get(), OBSERVE_3A_STAT_READY);
     }
 
 
@@ -2339,8 +2344,11 @@ status_t ControlThread::startPreviewCore(bool videoMode)
 
         if (m3AControls->isIntel3A()) {
             mISP->detachObserver(m3AThread.get(), OBSERVE_3A_STAT_READY);
-        } else if (PlatformData::supportsContinuousJpegCapture(mCameraId)) {
-            mISP->detachObserver(m3AThread.get(), OBSERVE_PREVIEW_STREAM);
+        } else {
+            if (PlatformData::supportsContinuousJpegCapture(mCameraId))
+                mISP->detachObserver(m3AThread.get(), OBSERVE_PREVIEW_STREAM);
+            if (PlatformData::supportedSensorMetadata(mCameraId))
+                mISP->detachObserver(m3AThread.get(), OBSERVE_3A_STAT_READY);
         }
     }
 
@@ -2435,8 +2443,11 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
         // might be a non-RAW sensor, or enabling failed on startPreviewCore().
         // It is OK to detach; if the observer is not attached, detachObserver()
         // returns BAD_VALUE.
-    } else if (PlatformData::supportsContinuousJpegCapture(mCameraId)) {
-        mISP->detachObserver(m3AThread.get(), OBSERVE_PREVIEW_STREAM);
+    } else {
+        if (PlatformData::supportsContinuousJpegCapture(mCameraId))
+            mISP->detachObserver(m3AThread.get(), OBSERVE_PREVIEW_STREAM);
+        if (PlatformData::supportedSensorMetadata(mCameraId))
+            mISP->detachObserver(m3AThread.get(), OBSERVE_3A_STAT_READY);
     }
     mISP->detachObserver(this, OBSERVE_PREVIEW_STREAM);
 

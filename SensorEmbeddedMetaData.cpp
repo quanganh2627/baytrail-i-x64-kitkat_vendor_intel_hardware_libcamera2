@@ -49,6 +49,9 @@ status_t SensorEmbeddedMetaData::init(int cameraId)
     LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
+    if(!PlatformData::supportedSensorMetadata(cameraId))
+        return NO_ERROR;
+
     ia_binary_data cpfData;
     CLEAR(cpfData);
     if (PlatformData::AiqConfig[cameraId]) {
