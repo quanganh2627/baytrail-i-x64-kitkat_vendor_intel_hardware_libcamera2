@@ -907,6 +907,13 @@ class PlatformData {
     static int defaultJpegThumbnailQuality(int cameraId);
 
     /**
+     * Returns the cpu cache line size
+     *
+     * \return int value with cache line size
+     */
+    static int cacheLineSize();
+
+    /**
      * Returns the name of the product
      * This is meant to be used in the EXIF metadata
      *
@@ -1287,6 +1294,7 @@ public:
         ,mSensorExposureLag(2)
         ,mUseIntelULL(false)
         ,mFaceCallbackDivider(1)
+        ,mCacheLineSize(64)
         ,mMaxISPTimeoutCount(60)
     {}
 
@@ -1717,6 +1725,9 @@ protected:
 
     // Used for reducing the frequency of face callbacks
     int mFaceCallbackDivider;
+
+    // cpu cache line size
+    int mCacheLineSize;
 
     // Max ISP timeout count
     int mMaxISPTimeoutCount;

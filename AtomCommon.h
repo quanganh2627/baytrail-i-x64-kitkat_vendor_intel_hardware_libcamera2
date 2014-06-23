@@ -72,6 +72,7 @@
 #define ALIGN64(x) (((x) + 63) & ~63)
 #define ALIGN128(x) (((x) + 127) & ~127)
 #define PAGE_ALIGN(x) ((x + 0xfff) & 0xfffff000)
+#define ALIGN_WIDTH(x, a) (((x) + ((a)-1)) & ~((a)-1))
 
 #define INTEL_FILE_INJECT_CAMERA_ID 2
 

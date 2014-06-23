@@ -76,7 +76,7 @@ public:
 // public methods
 public:
 
-    status_t encode(MetaData &metaData, AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf = NULL);
+    status_t encode(MetaData &metaData, AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf = NULL, bool dataHasBeenFlushed = true);
 
     void getDefaultParameters(CameraParameters *params, int cameraId);
     status_t initialize(const CameraParameters &params, int zoomRatio);
@@ -139,6 +139,7 @@ private:
         AtomBuffer snapshotBuf;
         AtomBuffer postviewBuf;
         MetaData metaData;
+        bool dataHasBeenFlushed;
     };
 
     struct MessageSetMakernote {
@@ -185,7 +186,7 @@ private:
     status_t waitForAndExecuteMessage();
 
     void setupExifWithMetaData(const MetaData &metaData);
-    status_t encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, AtomBuffer *destBuf);
+    status_t encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, AtomBuffer *destBuf, bool dataHasBeenFlushed);
 
     status_t allocateInputBuffers(AtomBuffer& formatDescriptor, int numBufs, bool registerToScaler);
     void     freeInputBuffers();

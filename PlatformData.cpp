@@ -1240,6 +1240,11 @@ const char* PlatformData::supportedSceneDetection(int cameraId)
     return i->mCameras[getActiveCamIdx(cameraId)].supportedSceneDetection;
 }
 
+int PlatformData::cacheLineSize()
+{
+    return getInstance()->mCacheLineSize;
+}
+
 const char* PlatformData::productName(void)
 {
     return getInstance()->mProductName;

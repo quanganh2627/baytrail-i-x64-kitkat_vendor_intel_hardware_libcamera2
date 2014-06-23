@@ -1050,7 +1050,7 @@ status_t ControlThread::handleMessagePanoramaFinalize(MessagePanoramaFinalize *m
 
     AtomBuffer *pPvBuff = msg->pvBuff.buff ? &(msg->pvBuff) : NULL;
 
-    status = mPictureThread->encode(picMetaData, &(msg->buff), pPvBuff);
+    status = mPictureThread->encode(picMetaData, &(msg->buff), pPvBuff, false);
     return status;
 }
 
@@ -8461,7 +8461,7 @@ status_t ControlThread::handleMessagePostCaptureProcessingDone(MessagePostCaptur
     postviewBuffer.status = FRAME_STATUS_OK;
     postviewBuffer.type = ATOM_BUFFER_ULL;
 
-    status = mPictureThread->encode(picMetaData, &processedBuffer, &postviewBuffer);
+    status = mPictureThread->encode(picMetaData, &processedBuffer, &postviewBuffer, false);
     if (status != NO_ERROR) {
         // normally this is done by PictureThread, but as no
         // encoding was done, free the allocated metadata
@@ -8753,7 +8753,7 @@ status_t ControlThread::hdrCompose()
         // pool of mAvailableSnapshotBuffers
         mHdr.outMainBuf.status = FRAME_STATUS_SKIPPED;
         mHdr.outPostviewBuf.status = FRAME_STATUS_SKIPPED;
-        status = mPictureThread->encode(hdrPicMetaData, &mHdr.outMainBuf, &mHdr.outPostviewBuf);
+        status = mPictureThread->encode(hdrPicMetaData, &mHdr.outMainBuf, &mHdr.outPostviewBuf, false);
         if (status == NO_ERROR) {
             doEncode = true;
         }

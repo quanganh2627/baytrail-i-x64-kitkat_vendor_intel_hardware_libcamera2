@@ -126,15 +126,16 @@ PictureThread::~PictureThread()
  * plus main picture
  * Input:  mainBuf  - buffer containing the main picture image
  *         thumbBuf - buffer containing the thumbnail image (optional, can be NULL)
+ *         dataHasBeenFlushed - bool indicating whether data has been flushed from CPU cache
  * Output: destBuf  - buffer containing the final JPEG image including EXIF header
  *         Note that, if present, thumbBuf will be included in EXIF header
  */
-status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, AtomBuffer *destBuf)
+status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, AtomBuffer *destBuf, bool dataHasBeenFlushed)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     nsecs_t startTime = systemTime();
-    bool failback = false;
+    bool swFallback = false;
 
     size_t bufferSize = (mainBuf->width * mainBuf->height * 2);
     if (mOutBuf.dataPtr != NULL && bufferSize != (size_t) mOutBuf.size) {
@@ -158,14 +159,23 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
     if (status == NO_ERROR) {
        mainBuf = &mScaledPic;
     }
-    // Start encoding main picture using HW encoder (except for panorama && ull)
-    if (mainBuf->type != ATOM_BUFFER_PANORAMA &&
-        mainBuf->type != ATOM_BUFFER_ULL) {
+    PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("frameEncode starting", mainBuf->frameCounter);
+
+    // Start encoding main picture using HW encoder (except for panorama, which
+    // often has resolution which the HW-encoder can't handle
+    if (mainBuf->type != ATOM_BUFFER_PANORAMA) {
+        if (!dataHasBeenFlushed)
+            MemoryUtils::flushMemory((char *)mainBuf->dataPtr, mainBuf->size);
+
         status = startHwEncoding(mainBuf);
-        if(status != NO_ERROR)
-            failback = true;
-    } else
-        failback = true;
+        if(status != NO_ERROR) {
+            LOG1("@%s, hw encoding failed", __FUNCTION__);
+            swFallback = true;
+        }
+    } else {
+        LOG1("@%s, using sw encoding", __FUNCTION__);
+        swFallback = true;
+    }
 
     // Convert and encode the thumbnail, if present and EXIF maker is initialized
     if (mExifMaker->isInitialized())
@@ -173,7 +183,7 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
         encodeExif(thumbBuf);
     }
 
-    if (failback) {  // Encode main picture with SW encoder
+    if (swFallback) {  // Encode main picture with SW encoder
         status = doSwEncode(mainBuf, destBuf);
     } else {
         status = completeHwEncode(mainBuf, destBuf);
@@ -193,13 +203,14 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
     return status;
 }
 
-status_t PictureThread::encode(MetaData &metaData, AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
+status_t PictureThread::encode(MetaData &metaData, AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf, bool dataHasBeenFlushed)
 {
     LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_ENCODE;
     msg.data.encode.metaData = metaData;
     msg.data.encode.snapshotBuf = *snapshotBuf;
+    msg.data.encode.dataHasBeenFlushed = dataHasBeenFlushed;
     mCallbacksThread->rawFrameDone(snapshotBuf);
     if (postviewBuf) {
         msg.data.encode.postviewBuf = *postviewBuf;
@@ -749,7 +760,7 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
             mirrorBuffer(postviewBuf, msg->metaData.currentOrientation, msg->metaData.cameraOrientation);
     }
 
-    status = encodeToJpeg(&msg->snapshotBuf, postviewBuf, &jpegBuf);
+    status = encodeToJpeg(&msg->snapshotBuf, postviewBuf, &jpegBuf, msg->dataHasBeenFlushed);
     if (status != NO_ERROR) {
         LOGE("Error generating JPEG image!");
         LOG1("Releasing jpegBuf @%p", jpegBuf.dataPtr);
