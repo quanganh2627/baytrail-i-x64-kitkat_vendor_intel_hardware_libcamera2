@@ -1525,14 +1525,6 @@ status_t AtomISP::startPreview()
     }
 
     if (mHALZSLEnabled && mUseMultiStreamsForSoC) {
-        // TODO: BZ: 179405. the current YUVPP pipe has bug for 3 streams output. remove the recording device when the fw has fixed this bug.
-        ret = mRecordingDevice->start(mConfig.num_recording_buffers, mInitialSkips + mDVSFrameSkips);
-        if (ret < 0) {
-            LOGE("Start preview device failed!");
-            status = UNKNOWN_ERROR;
-            goto err;
-        }
-
         if (isPostviewInitialized()) {
             ret = mPostViewDevice->start(mConfig.num_postview_buffers, mInitialSkips);
             if (ret < 0) {
@@ -1572,11 +1564,6 @@ status_t AtomISP::stopPreview()
             mPostViewDevice->stop();
             mPostViewDevice->close();
         }
-
-
-        // TODO: BZ: 179405. the current YUVPP pipe has bug for 3 streams output. remove the recording device when the fw has fixed this bug.
-        mRecordingDevice->stop();
-        mRecordingDevice->close();
     }
 
     freePreviewBuffers();
@@ -2267,7 +2254,7 @@ status_t AtomISP::configureMultiStreamsContinuousSOC()
 
     ret = configureDevice(
             mMainDevice.get(),
-            CI_MODE_VIDEO,
+            CI_MODE_PREVIEW,
             &(mConfig.snapshot),
             isDumpRawImageReady());
     if (ret < 0) {
@@ -2291,7 +2278,7 @@ status_t AtomISP::configureMultiStreamsContinuousSOC()
 
         ret = configureDevice(
                 mPostViewDevice.get(),
-                CI_MODE_VIDEO,
+                CI_MODE_PREVIEW,
                 &(mConfig.postview),
                 false);
         if (ret < 0) {
@@ -2317,42 +2304,11 @@ status_t AtomISP::configureMultiStreamsContinuousSOC()
     mConfig.preview.bpl = SGXandDisplayBpl(mConfig.preview.fourcc, mConfig.preview.width);
     ret = configureDevice(
             mPreviewDevice.get(),
-            CI_MODE_VIDEO,
+            CI_MODE_PREVIEW,
             &(mConfig.preview),
             false);
     if (ret < 0) {
         LOGE("@%s, configure preview device failed!", __FUNCTION__);
-        return UNKNOWN_ERROR;
-    }
-
-    // TODO: BZ: 179405. the current YUVPP pipe has bug for 3 streams output. remove the recording device when the fw has fixed this bug.
-    // configure the recording device
-    ret = mRecordingDevice->open();
-    if (ret < 0) {
-        LOGE("Open recording device failed!");
-        status = UNKNOWN_ERROR;
-        return NO_INIT;
-    }
-
-    status = mRecordingDevice->queryCap(&aCap);
-    if (status != NO_ERROR) {
-        LOGE("Failed basic capability check failed!");
-        return NO_INIT;
-    }
-
-    mConfig.recording.width = mConfig.preview.width;
-    mConfig.recording.height = mConfig.preview.height;
-    mConfig.recording.fourcc = mConfig.snapshot.fourcc;
-    mConfig.recording.bpl = SGXandDisplayBpl(mConfig.recording.fourcc, mConfig.recording.width);
-    mConfig.recording.size = frameSize(mConfig.recording.fourcc, mConfig.preview.width, mConfig.preview.height);
-
-    ret = configureDevice(
-            mRecordingDevice.get(),
-            CI_MODE_VIDEO,
-            &(mConfig.recording),
-            false);
-    if (ret < 0) {
-        LOGE("@%s, configure recording device failed!", __FUNCTION__);
         return UNKNOWN_ERROR;
     }
 
@@ -4230,7 +4186,7 @@ status_t AtomISP::getMultiStreamsHALZSLPreviewFrame(AtomBuffer *buff)
 {
     LOG2("@%s", __FUNCTION__);
 
-    int previewIndex, snapshotIndex, postviewIndex, recordingIndex;
+    int previewIndex, snapshotIndex, postviewIndex;
     struct v4l2_buffer_info bufInfo;
 
     Mutex::Autolock mLock(mHALZSLLock);
@@ -4292,28 +4248,6 @@ status_t AtomISP::getMultiStreamsHALZSLPreviewFrame(AtomBuffer *buff)
         mMultiStreamsHALZSLPostviewBuffers[postviewIndex].frameSequenceNbr = bufInfo.vbuffer.sequence;
         mMultiStreamsHALZSLPostviewBuffers[postviewIndex].status = (FrameBufferStatus)bufInfo.vbuffer.reserved;
         mMultiStreamsHALZSLPostviewBuffersQueue.push_front(mMultiStreamsHALZSLPostviewBuffers[postviewIndex]);
-    }
-
-    // TODO: BZ: 179405. the current YUVPP pipe has bug for 3 streams output. remove the recording device when the fw has fixed this bug.
-    // get and put the recording buffers
-    if (mMode == MODE_CONTINUOUS_CAPTURE) {
-        int pollResult = mRecordingDevice->poll(0);
-        if (pollResult < 1) {
-            LOG2("No data in recording device, poll result: %d", pollResult);
-            return NOT_ENOUGH_DATA;
-        }
-
-        CLEAR(bufInfo);
-        recordingIndex = mRecordingDevice->grabFrame(&bufInfo);
-        LOG2("@%s, recordingIndex = %d", __FUNCTION__, recordingIndex);
-        if(recordingIndex < 0) {
-            LOGE("@%s, Error in grabbing recording frame!", __FUNCTION__);
-            return BAD_INDEX;
-        }
-        LOG2("Device: %d. Grabbed frame of size: %d", mRecordingDevice->mId, bufInfo.vbuffer.bytesused);
-
-        mRecordingDevice->putFrame(recordingIndex);
-        dumpRecordingFrame(recordingIndex);
     }
 
     return NO_ERROR;
@@ -5248,11 +5182,6 @@ status_t AtomISP::allocateMultiStreamsHALZSLBuffers()
     int i = 0;
     status_t status = NO_ERROR;
     void *bufPool[sNumHALZSLBuffers];
-
-    // TODO: BZ: 179405. the current YUVPP pipe has bug for 3 streams output. remove the recording device when the fw has fixed this bug.
-    // allocate recording buffers
-    if (mMode == MODE_CONTINUOUS_CAPTURE)
-        allocateRecordingBuffers();
 
     // allocate capture buffers
     if (mMultiStreamsHALZSLCaptureBuffers == NULL) {
