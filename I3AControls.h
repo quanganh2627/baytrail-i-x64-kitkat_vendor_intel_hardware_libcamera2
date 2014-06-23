@@ -249,11 +249,11 @@ public:
     virtual bool getAeUllTrigger() = 0;
 
     virtual status_t switchModeAndRate(AtomMode mode, float fps) = 0;
-    virtual status_t apply3AProcess(bool read_stats, struct timeval *frame_timestamp) = 0;
+    virtual status_t apply3AProcess(bool read_stats, struct timeval *frame_timestamp, int orientation) = 0;
     virtual status_t startStillAf() = 0;
     virtual status_t stopStillAf() = 0;
     virtual AfStatus isStillAfComplete() = 0;
-    virtual status_t applyPreFlashProcess(FlashStage stage) = 0;
+    virtual status_t applyPreFlashProcess(FlashStage stage, int orientation) = 0;
 
     // Makernote
     virtual ia_binary_data *get3aMakerNote(ia_mkn_trg mode) = 0;

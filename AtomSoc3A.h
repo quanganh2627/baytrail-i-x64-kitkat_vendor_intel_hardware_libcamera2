@@ -117,11 +117,11 @@ public:
     virtual FlashStage getAeFlashNecessity() { return CAM_FLASH_STAGE_NONE; }
     virtual AwbMode getLightSource() { return CAM_AWB_MODE_NOT_SET; }
     virtual status_t setAeBacklightCorrection(bool en) { return INVALID_OPERATION; }
-    virtual status_t apply3AProcess(bool read_stats, struct timeval *frame_timestamp) { return INVALID_OPERATION; }
+    virtual status_t apply3AProcess(bool read_stats, struct timeval *frame_timestamp, int orientation) { return INVALID_OPERATION; }
     virtual status_t startStillAf() { return INVALID_OPERATION; }
     virtual status_t stopStillAf() { return INVALID_OPERATION; }
     virtual AfStatus isStillAfComplete() { return CAM_AF_STATUS_FAIL; }
-    virtual status_t applyPreFlashProcess(FlashStage stage) { return INVALID_OPERATION; }
+    virtual status_t applyPreFlashProcess(FlashStage stage, int orientation) { return INVALID_OPERATION; }
     virtual status_t getGBCEResults(ia_aiq_gbce_results *gbce_results) { return INVALID_OPERATION; }
     virtual status_t getExposureParameters(ia_aiq_exposure_parameters *exposure) { return INVALID_OPERATION; }
 

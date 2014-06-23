@@ -231,7 +231,7 @@ private:
     bool changeSensorMode(void);
 
     //staticstics
-    status_t getStatistics(const struct timeval *frame_timestamp);
+    status_t getStatistics(const struct timeval *frame_timestamp, int orientation);
     struct atomisp_3a_statistics * allocateStatistics(int grid_size);
     void freeStatistics(struct atomisp_3a_statistics *stats);
     bool needStatistics();
@@ -396,12 +396,12 @@ public:
     virtual status_t setFlash(int numFrames);
 
     // ISP processing functions
-    status_t apply3AProcess(bool read_stats, struct timeval *frame_timestamp);
+    status_t apply3AProcess(bool read_stats, struct timeval *frame_timestamp, int orientation);
 
     status_t startStillAf();
     status_t stopStillAf();
     AfStatus isStillAfComplete();
-    status_t applyPreFlashProcess(FlashStage stage);
+    status_t applyPreFlashProcess(FlashStage stage, int orientation);
 
     // Makernote
     ia_binary_data *get3aMakerNote(ia_mkn_trg mode);

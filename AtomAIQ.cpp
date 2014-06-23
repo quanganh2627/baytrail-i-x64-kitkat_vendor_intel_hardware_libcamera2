@@ -1247,7 +1247,7 @@ status_t AtomAIQ::getManualIso(int *ret)
     return status;
 }
 
-status_t AtomAIQ::applyPreFlashProcess(FlashStage stage)
+status_t AtomAIQ::applyPreFlashProcess(FlashStage stage, int orientation)
 {
     LOG2("@%s", __FUNCTION__);
 
@@ -1280,7 +1280,7 @@ status_t AtomAIQ::applyPreFlashProcess(FlashStage stage)
 
         mAeInputParameters.frame_use = ia_aiq_frame_use_still;
 
-        ret = apply3AProcess(true, &dummy_time);
+        ret = apply3AProcess(true, &dummy_time, orientation);
 
         mAeInputParameters.frame_use = m3aState.frame_use;
 
@@ -1291,7 +1291,7 @@ status_t AtomAIQ::applyPreFlashProcess(FlashStage stage)
     }
     else
     {
-        ret = apply3AProcess(true, &dummy_time);
+        ret = apply3AProcess(true, &dummy_time, orientation);
 
         if (mAwbResults)
             mAwbStoredResults = *mAwbResults;
@@ -1307,13 +1307,14 @@ status_t AtomAIQ::setFlash(int numFrames)
 }
 
 status_t AtomAIQ::apply3AProcess(bool read_stats,
-    struct timeval *frame_timestamp)
+                                 struct timeval *frame_timestamp,
+                                 int orientation)
 {
     LOG2("@%s: read_stats = %d", __FUNCTION__, read_stats);
     status_t status = NO_ERROR;
 
     if (read_stats) {
-        status = getStatistics(frame_timestamp);
+        status = getStatistics(frame_timestamp, orientation);
     }
 
     if (m3aState.stats_valid) {
@@ -1824,7 +1825,7 @@ bool AtomAIQ::changeSensorMode(void)
     return true;
 }
 
-status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct)
+status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct, int orientation)
 {
     LOG2("@%s", __FUNCTION__);
     status_t ret = NO_ERROR;
@@ -1893,7 +1894,24 @@ status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct)
         }
 
         // TODO: take into account camera mount orientation. AIQ needs device orientation to handle statistics.
-        statistics_input_parameters.camera_orientation = ia_aiq_camera_orientation_unknown;
+        switch (orientation) {
+        case 0:
+            statistics_input_parameters.camera_orientation = ia_aiq_camera_orientation_rotate_0;
+            break;
+        case 90:
+            statistics_input_parameters.camera_orientation = ia_aiq_camera_orientation_rotate_90;
+            break;
+        case 180:
+            statistics_input_parameters.camera_orientation = ia_aiq_camera_orientation_rotate_180;
+            break;
+        case 270:
+            statistics_input_parameters.camera_orientation = ia_aiq_camera_orientation_rotate_270;
+            break;
+        default:
+            statistics_input_parameters.camera_orientation = ia_aiq_camera_orientation_unknown;
+        }
+
+        LOG2("@%s: statistics_input_parameters.camera_orientation = %d", __FUNCTION__,  statistics_input_parameters.camera_orientation);
 
         ret = mISPAdaptor->convertIspStatistics(m3aState.stats,
                                                 const_cast<ia_aiq_rgbs_grid**>(&statistics_input_parameters.rgbs_grids[0]),

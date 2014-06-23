@@ -23,6 +23,7 @@
 #include "UltraLowLight.h"
 #include "MessageQueue.h"
 #include "IAtomIspObserver.h"
+#include "SensorThread.h"
 
 namespace android {
 
@@ -49,7 +50,7 @@ namespace android {
  * Ultra Low Light algorithm
  *
  */
-class AAAThread : public Thread, public IAtomIspObserver {
+class AAAThread : public Thread, public IAtomIspObserver, public IOrientationListener {
 
 // constructor destructor
 public:
@@ -80,6 +81,10 @@ public:
 // IAtomIspObserver overrides
 public:
     bool atomIspNotify(IAtomIspObserver::Message *msg, const ObserverState state);
+
+// IOrientationListener
+public:
+    void orientationChanged(int orientation);
 
 // public methods
 public:
@@ -118,6 +123,7 @@ private:
         MESSAGE_ID_ENABLE_AWB_LOCK,
         MESSAGE_ID_FLASH_STAGE,
         MESSAGE_ID_SWITCH_MODE_AND_RATE,
+        MESSAGE_ID_SET_ORIENTATION,
         // max number of messages
         MESSAGE_ID_MAX
     };
@@ -159,6 +165,11 @@ private:
         float fps;
     };
 
+    // for  MESSAGE_ID_SET_ORIENTATION
+    struct MessageOrientation {
+        int orientation;
+    };
+
     // union of all message data
     union MessageData {
         MessageEnable enable;
@@ -167,6 +178,7 @@ private:
         MessageNewFrame frame;
         MessageFlashStage flashStage;
         MessageSwitchInfo switchInfo;
+        MessageOrientation orientation;
     };
 
     // message id and message data
@@ -190,6 +202,7 @@ private:
     status_t handleMessageEnableAwbLock(MessageEnable* msg);
     status_t handleMessageFlashStage(MessageFlashStage* msg);
     status_t handleMessageSwitchModeAndRate(MessageSwitchInfo *msg);
+    status_t handleMessageSetOrientation(MessageOrientation *msg);
 
     // Miscellaneous helper methods
     void updateULLTrigger(void);
@@ -238,6 +251,7 @@ private:
     bool mSensorEmbeddedMetaDataEnabled;
     int32_t mTrigger3A;
     bool mExtIsp;
+    int mOrientation;
     IAtomIspObserver::Message mCachedStatsEventMsg;
 
 }; // class AAAThread

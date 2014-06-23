@@ -57,6 +57,7 @@ AAAThread::AAAThread(ICallbackAAA *aaaDone, UltraLowLight *ull, I3AControls *aaa
     ,mSensorEmbeddedMetaDataEnabled(false)
     ,mTrigger3A(0)
     ,mExtIsp(extIsp)
+    ,mOrientation(0)
 {
     LOG1("@%s", __FUNCTION__);
     mFaceState.faces = new ia_face[MAX_FACES_DETECTABLE];
@@ -325,6 +326,7 @@ status_t AAAThread::handleMessageExit()
     status_t status = NO_ERROR;
     mThreadRunning = false;
     m3ARunning = false;
+    SensorThread::getInstance(mCameraId)->unRegisterOrientationListener(this);
 
     return status;
 }
@@ -334,6 +336,7 @@ status_t AAAThread::handleMessageEnable3A()
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     m3ARunning = true;
+    mOrientation = SensorThread::getInstance(mCameraId)->registerOrientationListener(this);
     mMessageQueue.reply(MESSAGE_ID_ENABLE_AAA, status);
     return status;
 }
@@ -618,7 +621,7 @@ bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus)
             // Enter Stage 1
             mFramesTillExposed = 0;
             mSkipForEv = m3AControls->getExposureDelay();
-            status = m3AControls->applyPreFlashProcess(CAM_FLASH_STAGE_NONE);
+            status = m3AControls->applyPreFlashProcess(CAM_FLASH_STAGE_NONE, mOrientation);
             mFlashStage = FLASH_STAGE_PRE_PHASE1;
             break;
         case FLASH_STAGE_PRE_PHASE1:
@@ -631,7 +634,7 @@ bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus)
             }
             // Enter Stage 2
             mSkipForEv = m3AControls->getExposureDelay();
-            status = m3AControls->applyPreFlashProcess(CAM_FLASH_STAGE_PRE);
+            status = m3AControls->applyPreFlashProcess(CAM_FLASH_STAGE_PRE, mOrientation);
             mFlashStage = FLASH_STAGE_PRE_PHASE2;
             break;
         case FLASH_STAGE_PRE_PHASE2:
@@ -654,7 +657,7 @@ bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus)
             mFramesTillExposed++;
             if (frameStatus == FRAME_STATUS_FLASH_EXPOSED) {
                 m3AControls->setFlash(0);
-                m3AControls->applyPreFlashProcess(CAM_FLASH_STAGE_MAIN);
+                m3AControls->applyPreFlashProcess(CAM_FLASH_STAGE_MAIN, mOrientation);
                 if (mFlashStage == FLASH_STAGE_SHOT_WAITING) {
                     LOG1("ShotFlash@Frame %d: SUCCESS    (stopping...)", mFramesTillExposed);
                     mFlashStage = FLASH_STAGE_SHOT_EXPOSED;
@@ -783,7 +786,7 @@ status_t AAAThread::handleMessageNewStats(MessageNewStats *msgFrame)
 
     if(m3ARunning){
         // Run 3A statistics
-        status = m3AControls->apply3AProcess(true, &capture_timestamp);
+        status = m3AControls->apply3AProcess(true, &capture_timestamp, mOrientation);
 
         // If auto-focus was requested, run auto-focus sequence
         if (status == NO_ERROR && mStartAF) {
@@ -918,6 +921,22 @@ void AAAThread::resetSmartSceneValues()
     mSmartSceneHdr = false;
 }
 
+void AAAThread::orientationChanged(int orientation)
+{
+    LOG1("@%s: orientation = %d", __FUNCTION__, orientation);
+    Message msg;
+    msg.id = MESSAGE_ID_SET_ORIENTATION;
+    msg.data.orientation.orientation = orientation;
+    mMessageQueue.send(&msg);
+}
+
+status_t AAAThread::handleMessageSetOrientation(MessageOrientation *msg)
+{
+    LOG1("@%s: orientation = %d", __FUNCTION__, msg->orientation);
+    mOrientation = msg->orientation;
+    return NO_ERROR;
+}
+
 status_t AAAThread::waitForAndExecuteMessage()
 {
     LOG2("@%s", __FUNCTION__);
@@ -972,6 +991,10 @@ status_t AAAThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_SWITCH_MODE_AND_RATE:
             status = handleMessageSwitchModeAndRate(&msg.data.switchInfo);
+            break;
+
+        case MESSAGE_ID_SET_ORIENTATION:
+            status = handleMessageSetOrientation(&msg.data.orientation);
             break;
 
         default:
