@@ -67,6 +67,8 @@ class CallbacksThread;
  */
 #define GFX_DEQUEUE_RETRY_COUNT 3
 
+#define RENDER_BLACK_BUFFER_BEFORE_STOP_PREVIEW
+
 
 /**
  * \class ICallbackPreview
@@ -266,6 +268,11 @@ private:
     status_t handlePostview(MessagePreview *msg);
     status_t handleMessageFetchBufferGeometry(void);
 
+#ifdef RENDER_BLACK_BUFFER_BEFORE_STOP_PREVIEW
+    void makeBlackFrame(AtomBuffer *buff);
+    status_t enqueueBlackBuffer();
+#endif
+
     // main message function
     status_t waitForAndExecuteMessage();
 
@@ -333,6 +340,10 @@ private:
     bool mSharedMode; /*!< true if gfx buffers are shared with AtomISP for 0-copy */
     int mRotation;   /*!< Relative rotation of the camera scan order to
                           the display attached to overlay plane */
+#ifdef RENDER_BLACK_BUFFER_BEFORE_STOP_PREVIEW
+    AtomBuffer          mFakeBuf;
+    bool mNeedBlackFrames;
+#endif
 }; // class PreviewThread
 
 }; // namespace android

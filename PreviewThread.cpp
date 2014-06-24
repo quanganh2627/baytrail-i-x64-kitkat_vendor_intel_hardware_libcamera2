@@ -648,10 +648,98 @@ status_t PreviewThread::requestExitAndWait()
 status_t PreviewThread::handleMessageFlush()
 {
     LOG1("@%s", __FUNCTION__);
+
+#ifdef RENDER_BLACK_BUFFER_BEFORE_STOP_PREVIEW
+    enqueueBlackBuffer();
+#endif
+
     status_t status = NO_ERROR;
     mMessageQueue.reply(MESSAGE_ID_FLUSH, status);
     return status;
 }
+
+#ifdef RENDER_BLACK_BUFFER_BEFORE_STOP_PREVIEW
+void PreviewThread::makeBlackFrame(AtomBuffer *buff) {
+    if (buff->fourcc == V4L2_PIX_FMT_NV21 || buff->fourcc == V4L2_PIX_FMT_NV12) {
+        int length = buff->bpl * buff->height;
+        int uvPointer = (int)buff->dataPtr + length;
+
+        memset(buff->dataPtr, 0x0, length);
+        memset((void *)uvPointer, 128, length/2);
+    } else if (buff->fourcc == V4L2_PIX_FMT_YUYV) {
+        int *p32 = (int *) buff->dataPtr;
+        for (int i = 0; i < buff->size/4; i++) {
+            *(p32+i) = 0x80008000;
+        }
+    }
+
+#if 0
+    CameraDump *cameraDump = CameraDump::getInstance();
+
+    cameraDump->dumpImage2File(buff->dataPtr, buff->size, buff->stride,
+                                  buff->height, DUMPIMAGE_RECORD_PREVIEW_FILENAME);
+#endif
+}
+
+status_t PreviewThread::enqueueBlackBuffer()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    if (mPreviewWindow != 0) {
+        int err;
+        bool passedToGfx = false;
+        GfxAtomBuffer aGfxAtomBuf;
+        GfxAtomBuffer *bufToEnqueue = NULL;
+        GraphicBufferMapper &mapper = GraphicBufferMapper::get();
+
+        if (mFakeBuf.type != ATOM_BUFFER_PREVIEW_GFX) {
+            // Preview mode
+            bufToEnqueue = dequeueFromWindow();
+            if (bufToEnqueue) {
+                //LOG2("copying frame %p -> %p : size %d", msg->buff.dataPtr, bufToEnqueue->buffer.dataPtr, msg->buff.size);
+                //LOG2("src frame  %dx%d bpl %d ", msg->buff.width, msg->buff.height,msg->buff.bpl);
+                //LOG2("dst frame  %dx%d bpl %d ", bufToEnqueue->buffer.width, bufToEnqueue->buffer.height, bufToEnqueue->buffer.bpl);
+                // If mPreviewBpl is not equal with 0, it had set to Gfx bpl when window configuration.
+                // If Gfx current bpl is not equal with window configuration setting, this frame should be dropped.
+                makeBlackFrame(&bufToEnqueue->buffer);
+            } else {
+                LOGE("failed to dequeue from window");
+            }
+        } else {
+            // Video mode
+            if (mFakeBuf.dataPtr != NULL) {
+                memcpy(&aGfxAtomBuf.buffer, &mFakeBuf, sizeof(struct AtomBuffer));
+                bufToEnqueue = &aGfxAtomBuf;
+
+                makeBlackFrame(&bufToEnqueue->buffer);
+            }
+        }
+
+        if (bufToEnqueue) {
+            // TODO: If ISP can be configured to match Gfx buffer stride alignment, please delete below line.
+            bufToEnqueue->buffer.gfxInfo.scalerId = mFakeBuf.gfxInfo.scalerId;
+            bufToEnqueue->buffer.shared = mFakeBuf.shared;
+            gettimeofday(&bufToEnqueue->buffer.capture_timestamp, NULL);
+            mFakeBuf.frameCounter = mFakeBuf.frameCounter + 1;
+
+            mapper.unlock(*(bufToEnqueue->buffer.gfxInfo.gfxBufferHandle));
+            if ((err = mPreviewWindow->enqueue_buffer(mPreviewWindow,
+                            bufToEnqueue->buffer.gfxInfo.gfxBufferHandle)) != 0) {
+                LOGE("Surface::queueBuffer returned error %d", err);
+                passedToGfx = false;
+            } else {
+                bufToEnqueue->owner = OWNER_WINDOW;
+            }
+
+        }
+    }
+
+    memset(&mFakeBuf, 0x0, sizeof(struct AtomBuffer));
+
+    return status;
+}
+#endif
 
 void PreviewThread::freeLocalPreviewBuf(void)
 {
@@ -1051,6 +1139,11 @@ status_t PreviewThread::handlePreview(MessagePreview *msg)
             bufToEnqueue->buffer.shared = msg->buff.shared;
             bufToEnqueue->buffer.capture_timestamp = msg->buff.capture_timestamp;
             bufToEnqueue->buffer.frameCounter = msg->buff.frameCounter;
+
+#ifdef RENDER_BLACK_BUFFER_BEFORE_STOP_PREVIEW
+            memcpy(&mFakeBuf, &msg->buff, sizeof(struct AtomBuffer));
+#endif
+
             mapper.unlock(*(bufToEnqueue->buffer.gfxInfo.gfxBufferHandle));
             if ((err = mPreviewWindow->enqueue_buffer(mPreviewWindow,
                             bufToEnqueue->buffer.gfxInfo.gfxBufferHandle)) != 0) {
@@ -1216,6 +1309,10 @@ status_t PreviewThread::handleSetPreviewConfig(MessageSetPreviewConfig *msg)
     int reservedBufferCount = 0;
 
     mSharedMode = msg->sharedMode;
+
+#ifdef RENDER_BLACK_BUFFER_BEFORE_STOP_PREVIEW
+    memset(&mFakeBuf, 0x0, sizeof(struct AtomBuffer));
+#endif
 
     if ((w != 0 && h != 0)) {
         LOG1("Setting new preview size: %dx%d", w, h);
