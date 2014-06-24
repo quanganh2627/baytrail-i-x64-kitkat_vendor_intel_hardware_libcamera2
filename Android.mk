@@ -109,6 +109,7 @@ LOCAL_C_INCLUDES += \
 	$(call include-path-for, skia)/core \
 	$(call include-path-for, skia)/images \
 	$(call include-path-for, sqlite) \
+	$(call include-path-for, camera) \
 	$(TARGET_OUT_HEADERS)/libva \
 	$(TARGET_OUT_HEADERS)/libdrm \
 	$(TARGET_OUT_HEADERS)/libtbd \
@@ -204,7 +205,7 @@ endif
 
 # enable R&D features only in R&D builds
 ifneq ($(filter userdebug eng tests, $(TARGET_BUILD_VARIANT)),)
-LOCAL_CFLAGS += -DLIBCAMERA_RD_FEATURES -Wunused-variable -Werror
+LOCAL_CFLAGS += -DLIBCAMERA_RD_FEATURES -Wunused-variable -Werror -Wno-error=unused-parameter -Wno-error=sizeof-pointer-memaccess -Wno-error=cpp
 endif
 
 # This micro is used for file injection. Set it when file injection is needed.
