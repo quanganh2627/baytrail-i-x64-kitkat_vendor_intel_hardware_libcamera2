@@ -326,7 +326,7 @@ status_t AAAThread::handleMessageExit()
     status_t status = NO_ERROR;
     mThreadRunning = false;
     m3ARunning = false;
-    SensorThread::getInstance(mCameraId)->unRegisterOrientationListener(this);
+    SensorThread::getInstance()->unRegisterOrientationListener(this);
 
     return status;
 }
@@ -336,7 +336,7 @@ status_t AAAThread::handleMessageEnable3A()
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     m3ARunning = true;
-    mOrientation = SensorThread::getInstance(mCameraId)->registerOrientationListener(this);
+    mOrientation = SensorThread::getInstance()->registerOrientationListener(this);
     mMessageQueue.reply(MESSAGE_ID_ENABLE_AAA, status);
     return status;
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 Intel Corporation
+ * Copyright (C) 2013-2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,39 @@
 namespace android {
 
 SensorThread* SensorThread::sInstance = NULL;
-SensorThread* SensorThread::sInstance_1 = NULL;
+
+SensorLooperThread::SensorLooperThread(Looper* looper)
+    : Thread(false)
+    , mLooper(looper)
+{
+}
+
+SensorLooperThread::~SensorLooperThread()
+{
+    mLooper.clear();
+}
+
+
+bool SensorLooperThread::threadLoop()
+{
+    mLooper->pollOnce(-1);
+    return true;
+}
+
+void SensorLooperThread::requestExit()
+{
+     LOG1("@%s", __FUNCTION__);
+     Thread::requestExit();
+     mLooper->wake();
+}
+
+status_t SensorLooperThread::requestExitAndWait()
+{
+     LOG1("@%s", __FUNCTION__);
+     Thread::requestExit();
+     mLooper->wake();
+     return Thread::requestExitAndWait();
+}
 
 int sensorEventsListener(int fd, int events, void* data)
 {
@@ -69,10 +101,8 @@ int sensorEventsListener(int fd, int events, void* data)
     return 1; // continue looper listening
 }
 
-SensorThread::SensorThread(int cameraId) :
-    Thread(false)
-    , mOrientation(0)
-    ,mCameraId(cameraId)
+SensorThread::SensorThread()
+    : mOrientation(0)
 {
     LOG1("@%s", __FUNCTION__);
 
@@ -91,11 +121,26 @@ SensorThread::SensorThread(int cameraId) :
     } else {
         LOGE("sensorManager createEventQueue failed");
     }
+
+    mThread = new SensorLooperThread(mLooper.get());
+    if (mThread == NULL) {
+        LOGE("Sensor looper thread alloc failed");
+        return;
+    }
+
+    if (mThread->run("CamHAL_SENSOR") != NO_ERROR) {
+        LOGE("Error starting sensor thread!");
+    }
 }
 
 SensorThread::~SensorThread()
 {
     LOG1("@%s", __FUNCTION__);
+
+    if (mThread != NULL) {
+        mThread->requestExitAndWait();
+        mThread.clear();
+    }
 
     if (mSensorEventQueue != NULL) {
         mLooper->removeFd(mSensorEventQueue->getFd());
@@ -104,10 +149,7 @@ SensorThread::~SensorThread()
     mLooper.clear();
     mSensorEventQueue.clear();
 
-    if (mCameraId == 0)
-        sInstance = NULL;
-    else
-        sInstance_1 = NULL;
+    sInstance = NULL;
 }
 
 int SensorThread::registerOrientationListener(IOrientationListener* listener) {
@@ -165,18 +207,6 @@ void SensorThread::orientationChanged(int orientation){
     for (size_t i = 0; i < mListeners.size() ; ++i) {
         mListeners[i]->orientationChanged(orientation);
     }
-}
-
-bool SensorThread::threadLoop() {
-    mLooper->pollOnce(-1);
-    return true;
-}
-
-status_t SensorThread::requestExitAndWait() {
-     LOG1("@%s", __FUNCTION__);
-     Thread::requestExit();
-     mLooper->wake();
-     return Thread::requestExitAndWait();
 }
 
 } // namespace android

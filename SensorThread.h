@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 Intel Corporation
+ * Copyright (C) 2013-2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,20 +27,34 @@
 
 namespace android {
 
-class SensorThread :
+class SensorLooperThread :
     public Thread {
 
 public:
-    static SensorThread * getInstance(int cameraId) {
-        if(cameraId == 1) {
-            if(sInstance_1 == NULL)
-                sInstance_1 = new SensorThread(cameraId);
-            return sInstance_1;
-        } else {
-            if (sInstance == NULL)
-                sInstance = new SensorThread(cameraId);
-            return sInstance;
-        }
+    SensorLooperThread(Looper* looper);
+    ~SensorLooperThread();
+    virtual bool threadLoop();
+    virtual void requestExit();
+    virtual status_t requestExitAndWait();
+
+// prevent copy constructor and assignment operator
+private:
+    SensorLooperThread(const SensorLooperThread& other);
+    SensorLooperThread& operator=(const SensorLooperThread& other);
+
+private:
+    sp<Looper> mLooper;
+};
+
+
+class SensorThread {
+
+public:
+    static SensorThread * getInstance() {
+        if (sInstance == NULL)
+            sInstance = new SensorThread();
+
+        return sInstance;
     }
 
     virtual ~SensorThread();
@@ -75,28 +89,23 @@ private:
     SensorThread(const SensorThread& other);
     SensorThread& operator=(const SensorThread& other);
 
-// inherited from Thread
-private:
-    virtual bool threadLoop();
-
 // private methods
 private:
-    SensorThread(int cameraId);
+    SensorThread();
     void orientationChanged(int orientation);
 
 // private data
 private:
     int mOrientation;
     sp<Looper> mLooper;
+    sp<SensorLooperThread> mThread;
     sp<SensorEventQueue> mSensorEventQueue;
     SortedVector<IOrientationListener*> mListeners;
     Mutex mLock;
-    int mCameraId;
 
 // private static data
 private:
     static SensorThread* sInstance;
-    static SensorThread* sInstance_1;
 
 friend int sensorEventsListener(int, int, void*);
 

@@ -164,7 +164,7 @@ status_t PostProcThread::handleMessageStartFaceDetection()
     if (mSmartShutter.smartRunning && mSmartShutter.blinkRunning)
         mFaceDetector->setBlinkThreshold(mSmartShutter.blinkThreshold);
 
-    mRotation = SensorThread::getInstance(this->getCameraID())->registerOrientationListener(this);
+    mRotation = SensorThread::getInstance()->registerOrientationListener(this);
 
     // Reset the face detection state:
     mLastReportedNumberOfFaces = 0;
@@ -197,7 +197,7 @@ status_t PostProcThread::handleMessageStopFaceDetection()
         mFaceDetectionRunning = false;
         status = mFaceDetector->clearFacesDetected();
 
-        SensorThread::getInstance(this->getCameraID())->unRegisterOrientationListener(this);
+        SensorThread::getInstance()->unRegisterOrientationListener(this);
     }
 
     mMessageQueue.reply(MESSAGE_ID_STOP_FACE_DETECTION, status);
@@ -537,7 +537,7 @@ status_t PostProcThread::handleExit()
     status_t status = NO_ERROR;
 
     if (mFaceDetectionRunning) {
-        SensorThread::getInstance(this->getCameraID())->unRegisterOrientationListener(this);
+        SensorThread::getInstance()->unRegisterOrientationListener(this);
     }
 
     mThreadRunning = false;

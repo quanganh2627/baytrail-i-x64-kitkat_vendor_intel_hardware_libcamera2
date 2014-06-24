@@ -331,12 +331,6 @@ status_t ControlThread::init()
         goto bail;
     }
 
-    mSensorThread = SensorThread::getInstance(mCameraId);
-    if (mSensorThread == NULL) {
-        LOGE("error creating SensorThread");
-        goto bail;
-    }
-
     mBracketManager = new BracketManager(mISP, m3AControls, mCameraId);
     if (mBracketManager == NULL) {
         LOGE("error creating BracketManager");
@@ -380,11 +374,6 @@ status_t ControlThread::init()
     mVideoThread->getDefaultParameters(&mIntelParameters, mCameraId);
     updateParameterCache();
 
-    status = mSensorThread->run("CamHAL_SENSOR");
-    if (status != NO_ERROR) {
-        LOGE("Error starting sensor thread!");
-        goto bail;
-    }
     status = mScalerService->run("CamHAL_SCALER");
     if (status != NO_ERROR) {
         LOGE("Error starting scaler service!");
@@ -514,11 +503,6 @@ void ControlThread::deinit()
     if (mBracketManager != NULL) {
         delete mBracketManager;
         mBracketManager = NULL;
-    }
-
-    if (mSensorThread != NULL) {
-        mSensorThread->requestExitAndWait();
-        mSensorThread.clear();
     }
 
     if (mPostProcThread != NULL) {
@@ -7709,10 +7693,10 @@ status_t ControlThread::processParamMirroring(const CameraParameters *oldParams,
     if (!newVal.isEmpty()) {
         if (newVal == CameraParameters::TRUE) {
             mSaveMirrored = true;
-            mCurrentOrientation = SensorThread::getInstance(mCameraId)->registerOrientationListener(this);
+            mCurrentOrientation = SensorThread::getInstance()->registerOrientationListener(this);
          } else {
             mSaveMirrored = false;
-            SensorThread::getInstance(mCameraId)->unRegisterOrientationListener(this);
+            SensorThread::getInstance()->unRegisterOrientationListener(this);
         }
         LOG1("Changed: %s -> %s", IntelCameraParameters::KEY_SAVE_MIRRORED, newVal.string());
     }

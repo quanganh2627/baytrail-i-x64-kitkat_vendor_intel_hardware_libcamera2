@@ -759,7 +759,6 @@ private:
     sp<PanoramaThread> mPanoramaThread;
     sp<ScalerService> mScalerService;
     sp<WarperService> mWarperService;
-    sp<SensorThread> mSensorThread;
     sp<PostCaptureThread> mPostCaptureThread;
     sp<AccManagerThread> mAccManagerThread;
     sp<ThermalThrottleThread> mThermalThrottleThread;
