@@ -93,6 +93,8 @@ public:
     virtual float getFramerate() const;
     virtual status_t setFramerate(int fps);
 
+    virtual void getFrameSizes(Vector<v4l2_subdev_frame_size_enum> &sizes);
+
     virtual status_t waitForFrameSync();
 
     /* IAtomIspObserver overloads */

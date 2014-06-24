@@ -24,6 +24,7 @@
 #include "AtomCommon.h"
 #include "AtomIspObserverManager.h"
 #include "gdctool.h"
+#include <linux/v4l2-subdev.h>
 
 namespace android {
 
@@ -193,6 +194,8 @@ public:
     virtual float getFramerate() const = 0;
     virtual status_t setFramerate(int fps) = 0;
     virtual status_t waitForFrameSync() = 0;
+
+    virtual void getFrameSizes(Vector<v4l2_subdev_frame_size_enum> &sizes) = 0;
 
     virtual unsigned int getExposureDelay() = 0;
 

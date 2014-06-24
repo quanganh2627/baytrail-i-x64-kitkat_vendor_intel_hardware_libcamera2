@@ -1141,7 +1141,29 @@ float SensorHW::getFramerate() const
     return fps;
 }
 
+void SensorHW::getFrameSizes(Vector<v4l2_subdev_frame_size_enum> &sizes)
+{
+    LOG2("@%s", __FUNCTION__);
 
+    struct v4l2_subdev_frame_size_enum fsize;
+    int ret = 0;
+
+    CLEAR(fsize);
+    fsize.index = 0;
+
+    // ioctl() will return non-zero value, when enumerating out of range
+    while (ret == 0) {
+        ret = mSensorSubdevice->xioctl(VIDIOC_SUBDEV_ENUM_FRAME_SIZE, &fsize);
+
+        if (ret == 0) {
+            sizes.push(fsize);
+            ++fsize.index;
+        }
+    }
+
+    if (fsize.index == 0 && ret != 0)
+        LOGW("unable to get enumerated frame sizes");
+}
 
 /**
  * polls and dequeues frame synchronization events into IAtomIspObserver::Message

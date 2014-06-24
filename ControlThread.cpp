@@ -5899,12 +5899,16 @@ status_t ControlThread::allocateSnapshotAndPostviewBuffers(bool videoMode)
      * then the format changes to RGB adn JPEG encoding breaks (i.e. image is
      * green) this is a known limitation of the raw capture sequence in ISP fW
      */
-    if (PlatformData::supportsContinuousJpegCapture(mCameraId))
+    if (PlatformData::supportsContinuousJpegCapture(mCameraId)) {
         formatDescriptorSs.fourcc = V4L2_PIX_FMT_CONTINUOUS_JPEG;
-    else if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW))
+    } else if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW)) {
         formatDescriptorSs.fourcc = mHwcg.mSensorCI->getRawFormat();
-    else
+        checkAndUpdateRawSize(formatDescriptorSs);
+        mISP->setSnapshotFrameFormat(formatDescriptorSs);
+    } else {
         formatDescriptorSs.fourcc = V4L2_PIX_FMT_NV12;
+    }
+
 
     if (!mAllocatedSnapshotBuffers.isEmpty()) {
         tmpBuffer = mAllocatedSnapshotBuffers.itemAt(0);
@@ -5982,6 +5986,67 @@ status_t ControlThread::allocateSnapshotAndPostviewBuffers(bool videoMode)
 
     return status;
 }
+
+/**
+ * Checks and updates the snapshot format for RAW capture
+ * For RAW capture, we need to use valid sensor output size
+ * for the capture buffer allocation. Also, buffer BPL needs
+ * to be 128-aligned
+ *
+ * This function checks the application-requested buffer size
+ * against the sensor output sizes, and selects the sensor
+ * output size closest to requested image properties. BPL is set
+ * to image width and aligned to 128, if needed.
+ */
+void ControlThread::checkAndUpdateRawSize(AtomBuffer& formatDesc)
+{
+    LOG1("@%s", __FUNCTION__);
+
+    Vector<v4l2_subdev_frame_size_enum> sizes;
+    mHwcg.mSensorCI->getFrameSizes(sizes);
+
+    Vector<v4l2_subdev_frame_size_enum>::iterator iter = sizes.begin();
+    Vector<v4l2_subdev_frame_size_enum>::iterator endIter = sizes.end();
+
+    int sensorWidth = 0, sensorHeight = 0;
+    float aspect = static_cast<float>(formatDesc.width) / static_cast<float>(formatDesc.height);
+    float sensorAspect = 0.0;
+    float aspectDiff = 0.0;
+    const float ASPECT_TOLERANCE_SIZE = 0.009;
+
+    while (iter != endIter) {
+        sensorWidth = iter->max_width;
+        sensorHeight = iter->max_height;
+
+        sensorAspect =  static_cast<float>(sensorWidth) / sensorHeight;
+        aspectDiff = fabs(sensorAspect - aspect);
+
+        LOG2("requested size %dx%d, sensor output size: %dx%d, aspect diff %f",
+             formatDesc.width, formatDesc.height, sensorWidth, sensorHeight, aspectDiff);
+
+        if (aspectDiff < ASPECT_TOLERANCE_SIZE && formatDesc.width <= sensorWidth) {
+            LOG1("found proper sensor size: %dx%d", sensorWidth, sensorHeight);
+            break;
+        }
+
+        ++iter;
+    }
+
+    if (iter == endIter) {
+        LOGW("No proper sensor frame size for RAW buffer allocation found");
+        return;
+    }
+
+    formatDesc.width = sensorWidth;
+    formatDesc.height = sensorHeight;
+
+    // FIXME: remove this BPL handling when firmware is fixed
+    // to report correct BPL size
+    formatDesc.bpl = ALIGN_WIDTH(formatDesc.width, 128);
+
+    LOG1("RAW final size %dx%d, bpl %d", formatDesc.width, formatDesc.height, formatDesc.bpl);
+}
+
 
 void ControlThread::processParamFileInject(CameraParameters *newParams)
 {
@@ -8827,8 +8892,13 @@ status_t ControlThread::setExternalSnapshotBuffers(int fourcc, int width, int he
             __FUNCTION__, numberOfSnapshots, numToSet, mBurstBufsToReturn,
             mAvailableSnapshotBuffers.size(), mAllocatedSnapshotBuffers.size());
 
-    if ((mAllocatedSnapshotBuffers[0].width != width) ||
-            (mAllocatedSnapshotBuffers[0].height != height)) {
+    // NOTE: Workaround: for RAW capture, we select the closest matching
+    // sensor output frame size, and allocate buffers based on sensor output
+    // size, instead of application-requested size. See checkAndUpdateRawSize().
+    // Hence, omitting this size check for RAW.
+    if (!CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW) &&
+        (mAllocatedSnapshotBuffers[0].width != width ||
+        mAllocatedSnapshotBuffers[0].height != height)) {
         LOGE("We got allocated snapshot buffers of wrong resolution (%dx%d), "
                 "this should not happen!! we wanted (%dx%d)",
                 mAllocatedSnapshotBuffers[0].width,

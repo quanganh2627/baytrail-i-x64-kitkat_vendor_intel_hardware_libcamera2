@@ -735,6 +735,8 @@ private:
 
     void reconfigureThumbnailSize(int &width, int &height);
 
+    void checkAndUpdateRawSize(AtomBuffer &formatDesc);
+
 // inherited from Thread
 private:
     virtual bool threadLoop();
