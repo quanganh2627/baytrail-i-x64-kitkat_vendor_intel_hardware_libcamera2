@@ -2197,7 +2197,7 @@ AtomBuffer* PreviewThread::handlePreviewBufferQueue(AtomBuffer* buff)
     int maxQueueSize = PlatformData::getMaxDepthPreviewBufferQueueSize(mCameraId);
 
     // If max queue size is less than 0 or larger than preview buffer number, don't hold buffer.
-    if (!mPreviewBufferQueueUpdate || ((maxQueueSize <= 0) && (maxQueueSize >= mPreviewBufferNum))) {
+    if (!mPreviewBufferQueueUpdate || (maxQueueSize <= 0) || (maxQueueSize >= mPreviewBufferNum)) {
         LOG2("Queue size is [%d], Preview buffer number is [%d].", maxQueueSize, mPreviewBufferNum);
         return buff;
     }
@@ -2207,7 +2207,6 @@ AtomBuffer* PreviewThread::handlePreviewBufferQueue(AtomBuffer* buff)
     // hold maxQueueSize preview buffer in mPreviewBufferQueue
     if ((int)mPreviewBufferQueue.size() > maxQueueSize) {
         Vector<AtomBuffer>::iterator it = mPreviewBufferQueue.begin();
-        it->owner->returnBuffer(it);
         mPreviewBufferQueue.erase(it);
         return it;
     }
