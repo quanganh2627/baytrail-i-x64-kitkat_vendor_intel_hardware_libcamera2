@@ -508,8 +508,18 @@ status_t CpfStore::findConfigWithDriver(String8& cpfName, int& drvIndex)
             (strcmp(entry->d_name, "..") == 0)) {
             continue;  // Skip self and parent
         }
+
+        String8 devName(entry->d_name);
+        // For multi-sensor case, we may have 2 front camera sensors which will cause we find
+        // two CPF files matched with driver. So we can use sensor name to distinguish CPF files.
+        if (strlen(PlatformData::sensorName(mCameraId)) > 0) {
+            if (devName.find(PlatformData::sensorName(mCameraId)) < 0)
+                continue;
+        }
+
         String8 pattern = String8::format(cpfConfigPattern, mCameraId);
         int r = fnmatch(pattern, entry->d_name, 0);
+
         switch (r) {
         case 0:
             // The file name looks like a valid CPF file name

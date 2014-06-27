@@ -29,10 +29,10 @@ namespace android {
 
 class SensorEmbeddedMetaData {
 public:
-    SensorEmbeddedMetaData(HWControlGroup &hwcg);
+    SensorEmbeddedMetaData(HWControlGroup &hwcg, int cameraId);
     virtual ~SensorEmbeddedMetaData();
 
-    status_t init(int cameraId);
+    status_t init();
     status_t getDecodedExposureParams(ia_aiq_exposure_sensor_parameters* sensor_exp_p,
                                       ia_aiq_exposure_parameters* generic_exp_p, unsigned int exp_id = 0);
     status_t handleSensorEmbeddedMetaData();
@@ -78,6 +78,8 @@ private:
     ia_binary_data mEmbeddedDataBin;
     bool mSensorMetaDataSupported;
     int32_t mSensorMetaDataConfigFlag;
+    int mCameraId;
+    bool mSbsMetadata;
 private:
     status_t initSensorEmbeddedMetaDataQueue();
     void deinitSensorEmbeddedMetaDataQueue();

@@ -215,7 +215,7 @@ status_t AtomISP::initDevice()
 
     HWControlGroup hwcg;
     hwcg.mIspCI = this;
-    mSensorEmbeddedMetaData = new SensorEmbeddedMetaData(hwcg);
+    mSensorEmbeddedMetaData = new SensorEmbeddedMetaData(hwcg, mCameraId);
     return status;
 }
 
@@ -1250,7 +1250,7 @@ status_t AtomISP::start()
      * malloc the buffer, but the size should be ready after format setting.
      */
     if (mSensorEmbeddedMetaData) {
-        mSensorEmbeddedMetaData->init(mCameraId);
+        mSensorEmbeddedMetaData->init();
         mSensorEmbeddedMetaDataSupported = mSensorEmbeddedMetaData->isSensorEmbeddedMetaDataSupported();
     }
 
