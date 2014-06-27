@@ -1209,7 +1209,7 @@ status_t PreviewThread::handlePreviewCallback(AtomBuffer &srcBuff)
 
     AtomBuffer *callbackBuffer = &mPreviewBuf;
 
-    if (callbacksEnabled()) {
+    if (callbacksEnabled() || mPreviewCallbackMode == PREVIEW_CALLBACK_BEFORE_DISPLAY) {
         void *src = srcBuff.dataPtr;
         int src_bpl = srcBuff.bpl;
         if (mTransferingBuffer) {
@@ -1428,7 +1428,7 @@ status_t PreviewThread::handlePreview(MessagePreview *msg)
 
     if (mHALVideoStabilization)
         return handleVSPreview(msg);
-    else if (callbacksEnabled() && mPreviewCallbackMode == PREVIEW_CALLBACK_BEFORE_DISPLAY)
+    else if (mPreviewCallbackMode == PREVIEW_CALLBACK_BEFORE_DISPLAY)
         return handlePreviewCallback(msg->buff);
 
     return handlePreviewCore(&msg->buff);

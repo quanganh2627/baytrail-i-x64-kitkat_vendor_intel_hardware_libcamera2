@@ -805,8 +805,11 @@ status_t CallbacksThread::handleMessagePreviewDone(MessageFrame *msg)
 {
     LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    if (!mPausePreviewCallbacks)
+    if (!mPausePreviewCallbacks) {
         mCallbacks->previewFrameDone(&(msg->frame));
+    } else if (msg->frame.owner != NULL && msg->frame.returnAfterCB) {
+        msg->frame.owner->returnBuffer(&msg->frame);
+    }
 
     return status;
 }

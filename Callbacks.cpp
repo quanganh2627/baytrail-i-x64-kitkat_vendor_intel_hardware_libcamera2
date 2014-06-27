@@ -122,9 +122,9 @@ void Callbacks::previewFrameDone(AtomBuffer *buff)
     if ((mMessageFlags & CAMERA_MSG_PREVIEW_FRAME) && mDataCB != NULL) {
         LOG2("Sending message: CAMERA_MSG_PREVIEW_FRAME, buff id = %d, size = %zu", buff->id,  buff->buff->size);
         mDataCB(CAMERA_MSG_PREVIEW_FRAME, buff->buff, 0, NULL, mUserToken);
-        if (buff->owner != NULL && buff->returnAfterCB) {
-            buff->owner->returnBuffer(buff);
-        }
+    }
+    if (buff->owner != NULL && buff->returnAfterCB) {
+        buff->owner->returnBuffer(buff);
     }
 }
 
