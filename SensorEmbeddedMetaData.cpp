@@ -158,6 +158,12 @@ status_t SensorEmbeddedMetaData::initSensorEmbeddedMetaDataQueue()
             goto errorFree;
         }
         memset(metadata.generic_units_p, 0, sizeof(ia_aiq_exposure_parameters));
+        metadata.misc_parameters_p = (ia_emd_misc_parameters_t*) malloc (sizeof(ia_emd_misc_parameters_t));
+        if (metadata.misc_parameters_p == NULL) {
+            status = NO_MEMORY;
+            goto errorFree;
+        }
+        memset(metadata.misc_parameters_p, 0, sizeof(ia_emd_misc_parameters_t));
         metadata.exp_id = 0;
         mSensorEmbeddedMetaDataStoredQueue.push_front(metadata);
     }
@@ -173,6 +179,11 @@ errorFree:
         if (mSensorEmbeddedMetaDataStoredQueue.itemAt(i).generic_units_p) {
             free(metadata.generic_units_p);
             metadata.generic_units_p = NULL;
+        }
+
+        if (mSensorEmbeddedMetaDataStoredQueue.itemAt(i).misc_parameters_p) {
+            free(metadata.misc_parameters_p);
+            metadata.misc_parameters_p = NULL;
         }
     }
     return status;
@@ -192,6 +203,11 @@ void SensorEmbeddedMetaData::deinitSensorEmbeddedMetaDataQueue()
             free(it->generic_units_p);
             it->generic_units_p = NULL;
         }
+
+        if (it->misc_parameters_p) {
+            free(it->misc_parameters_p);
+            it->misc_parameters_p = NULL;
+        }
     }
     mSensorEmbeddedMetaDataStoredQueue.clear();
 }
@@ -204,6 +220,7 @@ void SensorEmbeddedMetaData::deinitSensorEmbeddedMetaDataQueue()
 status_t SensorEmbeddedMetaData::handleSensorEmbeddedMetaData()
 {
     LOG2("@%s", __FUNCTION__);
+    Mutex::Autolock lock(mLock);
     status_t status = NO_ERROR;
 
     if (!mSensorMetaDataSupported)
@@ -216,6 +233,8 @@ status_t SensorEmbeddedMetaData::handleSensorEmbeddedMetaData()
         mEmbeddedDataMode.stride = mSensorEmbeddedMetaData.stride;
         mEmbeddedDataMode.height = mSensorEmbeddedMetaData.height;
         mEmbeddedDataMode.effective_width = (int32_t*)mSensorEmbeddedMetaData.effective_width;
+        LOG2("exp_id=%d, stride=%d, height=%d", mEmbeddedDataMode.exp_id, mEmbeddedDataMode.stride,
+              mEmbeddedDataMode.height);
     }
 
     status = decodeSensorEmbeddedMetaData();
@@ -262,6 +281,26 @@ status_t SensorEmbeddedMetaData::handleSensorEmbeddedMetaData()
     return status;
 }
 
+status_t SensorEmbeddedMetaData::getDecodedMiscParams(ia_emd_misc_parameters_t* misc_parameters_p, unsigned int exp_id)
+{
+    Mutex::Autolock lock(mLock);
+    LOG2("@%s exp_id:%u", __FUNCTION__, exp_id);
+    status_t status = UNKNOWN_ERROR;
+
+    if (!mSensorMetaDataSupported || misc_parameters_p == NULL || !(mSensorMetaDataConfigFlag & MISC_PARAMETERS_EXIST))
+        return status;
+
+    Vector<decoded_sensor_metadata>::iterator it = mSensorEmbeddedMetaDataStoredQueue.begin();
+    for (;it != mSensorEmbeddedMetaDataStoredQueue.end(); ++it) {
+        if ((it->exp_id == exp_id) && (it->misc_parameters_p != NULL)) {
+            memcpy(misc_parameters_p, it->misc_parameters_p, sizeof(ia_emd_misc_parameters_t));
+            return NO_ERROR;
+        }
+    }
+    LOGE("No sensor metadata exp_id = %d in current queue.", exp_id);
+    return status;
+}
+
 /**
   * decode sensor metadata buffer by iq_tool
   */
@@ -289,6 +328,12 @@ status_t SensorEmbeddedMetaData::decodeSensorEmbeddedMetaData()
         if ((mEmbeddedMetaDecoderHandler->decoded_data).generic_units_p) {
             mSensorMetaDataConfigFlag |= GENERAL_EXPOSURE_EXIST;
         }
+
+        if ((mEmbeddedMetaDecoderHandler->decoded_data).misc_parameters_p) {
+            mSensorMetaDataConfigFlag |= MISC_PARAMETERS_EXIST;
+            LOG2("decoded metadata: misc_parameters frame count: %d",
+                 (mEmbeddedMetaDecoderHandler->decoded_data).misc_parameters_p->frame_counter);
+        }
     }
 
     return ret;
@@ -299,7 +344,6 @@ status_t SensorEmbeddedMetaData::decodeSensorEmbeddedMetaData()
   */
 status_t SensorEmbeddedMetaData::storeDecodedMetaData()
 {
-    Mutex::Autolock lock(mLock);
     LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     decoded_sensor_metadata new_stored_element;
@@ -314,7 +358,7 @@ status_t SensorEmbeddedMetaData::storeDecodedMetaData()
         memcpy(sensor_exposure_params,
                (mEmbeddedMetaDecoderHandler->decoded_data).sensor_units_p,
                    sizeof(ia_aiq_exposure_sensor_parameters));
-        }
+    }
 
     if (mSensorMetaDataConfigFlag & GENERAL_EXPOSURE_EXIST) {
         ia_aiq_exposure_parameters *generic_exposure_params =
@@ -322,6 +366,13 @@ status_t SensorEmbeddedMetaData::storeDecodedMetaData()
         memcpy(generic_exposure_params,
                (mEmbeddedMetaDecoderHandler->decoded_data).generic_units_p,
                    sizeof(ia_aiq_exposure_parameters));
+    }
+
+    if (mSensorMetaDataConfigFlag & MISC_PARAMETERS_EXIST) {
+        ia_emd_misc_parameters_t *misc_parameters = new_stored_element.misc_parameters_p;
+        memcpy(misc_parameters, (mEmbeddedMetaDecoderHandler->decoded_data).misc_parameters_p,
+               sizeof(ia_emd_misc_parameters_t));
+        LOG2("frame count=%d", misc_parameters->frame_counter);
     }
 
     new_stored_element.exp_id = mSensorEmbeddedMetaData.exp_id;

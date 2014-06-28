@@ -332,6 +332,7 @@ protected:
     int getSensorEmbeddedMetaData(atomisp_metadata *metaData) const;
     status_t getDecodedExposureParams(ia_aiq_exposure_sensor_parameters* sensor_exp_p,
                                       ia_aiq_exposure_parameters* generic_exp_p, unsigned int exp_id = 0);
+    int getSensorFrameId(unsigned int exp_id);
 
     /* Acceleration API extensions */
     int loadAccFirmware(void *fw, size_t size, unsigned int *fwHandle);

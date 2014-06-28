@@ -4368,6 +4368,7 @@ status_t AtomISP::getPreviewFrame(AtomBuffer *buff)
     mPreviewBuffers.editItemAt(index).frameSequenceNbr = bufInfo.vbuffer.sequence;
     mPreviewBuffers.editItemAt(index).status = (FrameBufferStatus)(bufInfo.vbuffer.reserved & FRAME_STATUS_MASK);
     mPreviewBuffers.editItemAt(index).size = bufInfo.vbuffer.bytesused;
+    mPreviewBuffers.editItemAt(index).sensorFrameId = getSensorFrameId(mPreviewBuffers.editItemAt(index).expId);
 
     *buff = mPreviewBuffers[index];
 
@@ -4813,6 +4814,7 @@ status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
     mSnapshotBuffers[snapshotIndex].frameSequenceNbr = vinfo.vbuffer.sequence;
     mSnapshotBuffers[snapshotIndex].status = (FrameBufferStatus)(vinfo.vbuffer.reserved & FRAME_STATUS_MASK);
     mSnapshotBuffers[snapshotIndex].expId = (vinfo.vbuffer.reserved >> 16) & 0xFFFF;
+    mSnapshotBuffers[snapshotIndex].sensorFrameId = getSensorFrameId(mSnapshotBuffers[snapshotIndex].expId);
 
     if (isDumpRawImageReady() || postviewBuf == NULL || !isPostviewInitialized()) {
         postviewIndex = snapshotIndex;
@@ -6314,6 +6316,21 @@ status_t AtomISP::getDecodedExposureParams(ia_aiq_exposure_sensor_parameters* se
         ret = mSensorEmbeddedMetaData->getDecodedExposureParams(sensor_exp_p, generic_exp_p, exp_id);
 
     return ret;
+}
+
+int AtomISP::getSensorFrameId(unsigned int exp_id)
+{
+    LOG2("@%s", __FUNCTION__);
+    status_t ret = UNKNOWN_ERROR;
+    int sensorFrameId = 0;
+    if (mSensorEmbeddedMetaData) {
+        ia_emd_misc_parameters_t misc_parameters;
+        memset(&misc_parameters, 0, sizeof(ia_emd_misc_parameters_t));
+        ret = mSensorEmbeddedMetaData->getDecodedMiscParams(&misc_parameters, exp_id);
+        if (ret == NO_ERROR)
+            sensorFrameId = misc_parameters.frame_counter;
+    }
+    return sensorFrameId;
 }
 
 /**

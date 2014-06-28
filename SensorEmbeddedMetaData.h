@@ -35,6 +35,7 @@ public:
     status_t init();
     status_t getDecodedExposureParams(ia_aiq_exposure_sensor_parameters* sensor_exp_p,
                                       ia_aiq_exposure_parameters* generic_exp_p, unsigned int exp_id = 0);
+    status_t getDecodedMiscParams(ia_emd_misc_parameters_t *misc_parameters_p, unsigned int exp_id);
     status_t handleSensorEmbeddedMetaData();
     bool isSensorEmbeddedMetaDataSupported() { return mSensorMetaDataSupported; }
 
@@ -54,13 +55,15 @@ private:
      */
     struct decoded_sensor_metadata {
          unsigned int exp_id;
-         ia_aiq_exposure_sensor_parameters* sensor_units_p;
-         ia_aiq_exposure_parameters* generic_units_p;
+         ia_aiq_exposure_sensor_parameters *sensor_units_p;
+         ia_aiq_exposure_parameters *generic_units_p;
+         ia_emd_misc_parameters_t *misc_parameters_p;
     };
 
     enum {
          SENSOR_EXPOSURE_EXIST = 1,
          GENERAL_EXPOSURE_EXIST = 2,
+         MISC_PARAMETERS_EXIST = 4
     };
 
 //const data
