@@ -35,6 +35,12 @@ SensorEmbeddedMetaData::SensorEmbeddedMetaData(HWControlGroup &hwcg, int cameraI
     CLEAR(mEmbeddedDataBin);
     CLEAR(mSensorEmbeddedMetaData);
     CLEAR(mEmbeddedDataMode);
+    mSbsSensorsFrameCount.index = 0;
+    mSbsSensorsFrameCount.hasInit = false;
+    mSbsSensorsFrameCount.delta = 0;
+    mSbsSensorsFrameCount.hasDelta = false;
+    memset(mSbsSensorsFrameCount.firstFrameCount, -1, sizeof(mSbsSensorsFrameCount.firstFrameCount));
+    memset(mSbsSensorsFrameCount.secondFrameCount, -1, sizeof(mSbsSensorsFrameCount.secondFrameCount));
 }
 
 SensorEmbeddedMetaData::~SensorEmbeddedMetaData()
@@ -236,7 +242,11 @@ status_t SensorEmbeddedMetaData::handleSensorEmbeddedMetaData()
               mEmbeddedDataMode.height);
     }
 
-    status = decodeSensorEmbeddedMetaData();
+    if (mSbsMetadata)
+        status = decodeSbsSensorsEmbeddedMetaData();
+    else
+        status = decodeSensorEmbeddedMetaData();
+
     if (status == NO_ERROR)
         status = storeDecodedMetaData();
 
@@ -381,6 +391,133 @@ status_t SensorEmbeddedMetaData::storeDecodedMetaData()
     mSensorEmbeddedMetaDataStoredQueue.push_front(new_stored_element);
 
     return status;
+}
+
+/**
+ * For Sbs (side by side) sensors, one metadata includes two sensors information.
+ * They use the same sensor controller and have same metadata information.
+ * For Kevlar, we should let ov8858 control ov680 to output first frame at same time.
+ * When we try to let main back sensor sync with Sbs sensors which are used for depth
+ * mode capture, it will cause metadata information in chaos and disorder between Sbs sensors.
+ * Frame count will be different in two Sbs sensors or same but larger than the
+ * last one too much. It is the first frame from main back sensor and frame count
+ * is 2. So we should make a workaround to change frame count of Sbs sensor to initial value
+ * and let them sync with main back sensor. Then recalculate the frame count for
+ * next frame always. The range of frame count is [1~255].
+ * Here are the cases we handle:
+ * ov680 frame count value(m, n), m indicate first frame count value, n indicate second
+ * frame count value.
+ * 1. (m != n): second frame is outputted by ov8858 sensor;
+ * 2. (m, 0) or (0, n): one metadata is missing;
+ * 3. (m == n), (m, n) --> (m+3, m+3): they are equal, but the frame count interval between
+ *    two sensor metadatas is larger than 2, second frame is outputted by ov8858 sensor.
+ */
+status_t SensorEmbeddedMetaData::decodeSbsSensorsEmbeddedMetaData()
+{
+    LOG2("@%s", __FUNCTION__);
+    ia_err err = ia_err_none;
+    status_t ret = NO_ERROR;
+
+    ia_binary_data embeddedDataBin;
+    embeddedDataBin.data = mEmbeddedDataBin.data;
+    embeddedDataBin.size = mEmbeddedDataBin.size / 2;
+    err = ia_emd_decoder_run(&embeddedDataBin, &mEmbeddedDataMode, mEmbeddedMetaDecoderHandler);
+    if (err !=  ia_err_none) {
+        LOGW("decoder error ret:%d", err);
+        ret = UNKNOWN_ERROR;
+    }
+
+    // Sbs sensor is SOC sensor, so we just need frame count to sync frames between sensors.
+    if (mSensorMetaDataConfigFlag == 0) {
+        if ((mEmbeddedMetaDecoderHandler->decoded_data).misc_parameters_p) {
+            mSensorMetaDataConfigFlag |= MISC_PARAMETERS_EXIST;
+            LOG2("decoded metadata: misc_parameters frame count: %d",
+                 (mEmbeddedMetaDecoderHandler->decoded_data).misc_parameters_p->frame_counter);
+        }
+    }
+
+    // Below is workarond for Kevlar special.
+    if (mSensorMetaDataConfigFlag & MISC_PARAMETERS_EXIST) {
+        int index = mSbsSensorsFrameCount.index;
+        int arraySize = MAX_FRAME_COUNT_ARRAY_SIZE;
+        int gap = FRAME_COUNT_MAX_GAP;
+        int init = INIT_FRAME_COUNT;
+        int max = MAX_FRAME_COUNT;
+
+        if ((mEmbeddedMetaDecoderHandler->decoded_data).misc_parameters_p) {
+            mSbsSensorsFrameCount.firstFrameCount[index]
+                    = (mEmbeddedMetaDecoderHandler->decoded_data).misc_parameters_p->frame_counter;
+        }
+
+        embeddedDataBin.data = (char*)mEmbeddedDataBin.data + mEmbeddedDataMode.stride;
+        embeddedDataBin.size = mEmbeddedDataBin.size / 2;
+        err = ia_emd_decoder_run(&embeddedDataBin, &mEmbeddedDataMode, mEmbeddedMetaDecoderHandler);
+        if (err !=  ia_err_none) {
+            LOGW("decoder error ret:%d", err);
+            ret = UNKNOWN_ERROR;
+        }
+
+        if ((mEmbeddedMetaDecoderHandler->decoded_data).misc_parameters_p) {
+            mSbsSensorsFrameCount.secondFrameCount[index]
+                    = (mEmbeddedMetaDecoderHandler->decoded_data).misc_parameters_p->frame_counter;
+
+            LOG2("msbs: frame count = [%d, %d]", mSbsSensorsFrameCount.firstFrameCount[index], mSbsSensorsFrameCount.secondFrameCount[index]);
+
+            // Sometimes one metadata of them may be missing.
+            if (mSbsSensorsFrameCount.firstFrameCount[index] != 0
+                && mSbsSensorsFrameCount.secondFrameCount[index] == 0) {
+                mSbsSensorsFrameCount.secondFrameCount[index] = mSbsSensorsFrameCount.firstFrameCount[index];
+            } else if (mSbsSensorsFrameCount.firstFrameCount[index] == 0
+                && mSbsSensorsFrameCount.secondFrameCount[index] != 0) {
+                mSbsSensorsFrameCount.firstFrameCount[index] = mSbsSensorsFrameCount.secondFrameCount[index];
+            }
+
+            if ((!mSbsSensorsFrameCount.hasInit) && (mSbsSensorsFrameCount.firstFrameCount[index]
+                    != mSbsSensorsFrameCount.secondFrameCount[index]
+                || (mSbsSensorsFrameCount.firstFrameCount[(index+arraySize-1) % arraySize] >= 0
+                    && (mSbsSensorsFrameCount.firstFrameCount[index]
+                        > (mSbsSensorsFrameCount.firstFrameCount[(index+arraySize-1) % arraySize] + gap)))
+                || (mSbsSensorsFrameCount.secondFrameCount[(index+arraySize-1) % arraySize] >= 0
+                    && (mSbsSensorsFrameCount.secondFrameCount[index]
+                        > (mSbsSensorsFrameCount.secondFrameCount[(index+arraySize-1) % arraySize] + gap))))) {
+                // reinitialize frame counter
+                (mEmbeddedMetaDecoderHandler->decoded_data).misc_parameters_p->frame_counter = init;
+                mSbsSensorsFrameCount.hasInit = true;
+            } else {
+                if ((!mSbsSensorsFrameCount.hasDelta)
+                    && ((mSbsSensorsFrameCount.firstFrameCount[(index+arraySize-1) % arraySize] >= 0
+                        && mSbsSensorsFrameCount.firstFrameCount[(index+arraySize-1) % arraySize]
+                            != mSbsSensorsFrameCount.secondFrameCount[(index+arraySize-1) % arraySize])
+                      || (mSbsSensorsFrameCount.firstFrameCount[(index+arraySize-2) % arraySize] >= 0
+                        && (mSbsSensorsFrameCount.firstFrameCount[(index+arraySize-1) % arraySize]
+                            > (mSbsSensorsFrameCount.firstFrameCount[(index+arraySize-2) % arraySize] + gap)))
+                      || (mSbsSensorsFrameCount.secondFrameCount[(index+arraySize-2) % arraySize] >= 0
+                        &&(mSbsSensorsFrameCount.secondFrameCount[(index+arraySize-1) % arraySize]
+                            > (mSbsSensorsFrameCount.secondFrameCount[(index+arraySize-2) % arraySize] + gap))))) {
+                    // calculate the delta between real frame count and recalculated frame count
+                    mSbsSensorsFrameCount.delta = mSbsSensorsFrameCount.firstFrameCount[index] - (init + 1);
+                    mSbsSensorsFrameCount.hasDelta = true;
+                }
+
+                // recalculate frame count
+                if (mSbsSensorsFrameCount.firstFrameCount[index] >= mSbsSensorsFrameCount.delta)
+                    (mEmbeddedMetaDecoderHandler->decoded_data).misc_parameters_p->frame_counter
+                        = mSbsSensorsFrameCount.firstFrameCount[index] - mSbsSensorsFrameCount.delta;
+                else {
+                    (mEmbeddedMetaDecoderHandler->decoded_data).misc_parameters_p->frame_counter
+                        = mSbsSensorsFrameCount.firstFrameCount[index] + max + 1 - mSbsSensorsFrameCount.delta;
+                }
+            }
+
+            LOG2("msbs: index=%d, delta=%d, frame count=%d"
+                , mSbsSensorsFrameCount.index
+                , mSbsSensorsFrameCount.delta
+                , (mEmbeddedMetaDecoderHandler->decoded_data).misc_parameters_p->frame_counter);
+            ++mSbsSensorsFrameCount.index;
+            mSbsSensorsFrameCount.index %= arraySize;
+        }
+    }
+    return ret;
 }
 
 } /* namespace android */

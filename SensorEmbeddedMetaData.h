@@ -68,7 +68,22 @@ private:
 
 //const data
 private:
-    static const int MAX_SENSOR_METADATA_QUEUE_SIZE = 3;
+    static const int MAX_SENSOR_METADATA_QUEUE_SIZE = 7;
+
+    static const int MAX_FRAME_COUNT_ARRAY_SIZE = 3;
+    static const int MAX_FRAME_COUNT = 255;
+    static const int MIN_FRAME_COUNT = 0;
+    static const int FRAME_COUNT_MAX_GAP = 2;
+    static const int INIT_FRAME_COUNT = 2;
+
+    struct SbsSensorsFrameCount {
+        int index;
+        bool hasInit;
+        int delta;
+        bool hasDelta;
+        int firstFrameCount[MAX_FRAME_COUNT_ARRAY_SIZE];
+        int secondFrameCount[MAX_FRAME_COUNT_ARRAY_SIZE];
+    };
 
 private:
     Mutex mLock;
@@ -83,12 +98,15 @@ private:
     int32_t mSensorMetaDataConfigFlag;
     int mCameraId;
     bool mSbsMetadata;
+
+    SbsSensorsFrameCount mSbsSensorsFrameCount;
 private:
     status_t initSensorEmbeddedMetaDataQueue();
     void deinitSensorEmbeddedMetaDataQueue();
     status_t decodeSensorEmbeddedMetaData();
     status_t storeDecodedMetaData();
 
+    status_t decodeSbsSensorsEmbeddedMetaData();
 };
 
 } /* namespace android */
