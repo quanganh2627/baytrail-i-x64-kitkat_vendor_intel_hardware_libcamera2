@@ -277,16 +277,16 @@ status_t SensorEmbeddedMetaData::decodeSensorEmbeddedMetaData()
         ret = UNKNOWN_ERROR;
     }
     if (mSensorMetaDataConfigFlag == 0) {
-        if ((mEmbeddedMetaDecoderHandler->decoded_exposure).sensor_units_p) {
+        if ((mEmbeddedMetaDecoderHandler->decoded_data).sensor_units_p) {
             mSensorMetaDataConfigFlag |= SENSOR_EXPOSURE_EXIST;
             LOG2("decoded metadata: sensor_exposure_params fine_integration: %d, coarse_integration:%d, ag:%d, dg:%d",
-                 (mEmbeddedMetaDecoderHandler->decoded_exposure).sensor_units_p->fine_integration_time,
-                 (mEmbeddedMetaDecoderHandler->decoded_exposure).sensor_units_p->coarse_integration_time,
-                 (mEmbeddedMetaDecoderHandler->decoded_exposure).sensor_units_p->analog_gain_code_global,
-                 (mEmbeddedMetaDecoderHandler->decoded_exposure).sensor_units_p->digital_gain_global);
+                 (mEmbeddedMetaDecoderHandler->decoded_data).sensor_units_p->fine_integration_time,
+                 (mEmbeddedMetaDecoderHandler->decoded_data).sensor_units_p->coarse_integration_time,
+                 (mEmbeddedMetaDecoderHandler->decoded_data).sensor_units_p->analog_gain_code_global,
+                 (mEmbeddedMetaDecoderHandler->decoded_data).sensor_units_p->digital_gain_global);
         }
 
-        if ((mEmbeddedMetaDecoderHandler->decoded_exposure).generic_units_p) {
+        if ((mEmbeddedMetaDecoderHandler->decoded_data).generic_units_p) {
             mSensorMetaDataConfigFlag |= GENERAL_EXPOSURE_EXIST;
         }
     }
@@ -312,7 +312,7 @@ status_t SensorEmbeddedMetaData::storeDecodedMetaData()
         ia_aiq_exposure_sensor_parameters *sensor_exposure_params =
                                             new_stored_element.sensor_units_p;
         memcpy(sensor_exposure_params,
-               (mEmbeddedMetaDecoderHandler->decoded_exposure).sensor_units_p,
+               (mEmbeddedMetaDecoderHandler->decoded_data).sensor_units_p,
                    sizeof(ia_aiq_exposure_sensor_parameters));
         }
 
@@ -320,7 +320,7 @@ status_t SensorEmbeddedMetaData::storeDecodedMetaData()
         ia_aiq_exposure_parameters *generic_exposure_params =
                                             new_stored_element.generic_units_p;
         memcpy(generic_exposure_params,
-               (mEmbeddedMetaDecoderHandler->decoded_exposure).generic_units_p,
+               (mEmbeddedMetaDecoderHandler->decoded_data).generic_units_p,
                    sizeof(ia_aiq_exposure_parameters));
     }
 
