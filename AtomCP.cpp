@@ -88,7 +88,7 @@ AtomCP::AtomCP(HWControlGroup &hwcg) :
             mAccAPI.version_css.major, mAccAPI.version_css.minor,
             mAccAPI.version_isp.major, mAccAPI.version_isp.minor);
 
-    ia_cp_init(&mAccAPI, &mPrintFunctions);
+    ia_cp_init(&mAccAPI, &mPrintFunctions, NULL);
 }
 
 AtomCP::~AtomCP()
