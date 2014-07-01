@@ -969,7 +969,7 @@ status_t AtomISP::configure(AtomMode mode)
     if (mFileInject.active == true)
         startFileInject();
 
-    if (mSensorType != SENSOR_TYPE_SOC)
+    if (mSensorType == SENSOR_TYPE_SOC)
         restoreDeviceNode();
 
     switch (mode) {
@@ -1459,13 +1459,18 @@ status_t AtomISP::stopRecording()
         mRecordingDeviceSwapped = false;
     }
 
+    mPreviewDevice->stop();
+    freePreviewBuffers();
+
     mRecordingDevice->stop();
     freeRecordingBuffers();
 
-    mPreviewDevice->stop();
-    freePreviewBuffers();
     mPreviewDevice->close();
-    mRecordingDevice->close();
+    // For SOC, mRecordingDevice will be assigned as mMainDevice, stop video record would close mMainDevice
+    // and power down the ISP. so we filter out such path.
+    if (mRecordingDevice->mId != V4L2_MAIN_DEVICE){
+        mRecordingDevice->close();
+    }
 
     return NO_ERROR;
 }
