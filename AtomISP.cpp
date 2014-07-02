@@ -3161,13 +3161,18 @@ status_t AtomISP::setSnapshotFrameFormat(AtomBuffer& formatDescriptor)
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    if (formatDescriptor.width > mConfig.snapshotLimits.maxWidth || formatDescriptor.width < 0)
-        formatDescriptor.width = mConfig.snapshotLimits.maxWidth;
-    if (formatDescriptor.height > mConfig.snapshotLimits.maxHeight || formatDescriptor.height < 0)
-        formatDescriptor.height = mConfig.snapshotLimits.maxHeight;
+    // In raw capture mode, ISP is in copy mode and cannot crop the frame.
+    // Otherwise we obey the limits.
+    if (!CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW)) {
+        if (formatDescriptor.width > mConfig.snapshotLimits.maxWidth || formatDescriptor.width < 0)
+            formatDescriptor.width = mConfig.snapshotLimits.maxWidth;
+        if (formatDescriptor.height > mConfig.snapshotLimits.maxHeight || formatDescriptor.height < 0)
+            formatDescriptor.height = mConfig.snapshotLimits.maxHeight;
+    }
 
     mConfig.snapshot = formatDescriptor;
-    mConfig.snapshot.bpl = SGXandDisplayBpl(formatDescriptor.fourcc, formatDescriptor.bpl);
+    mConfig.snapshot.bpl = SGXandDisplayBpl(formatDescriptor.fourcc,
+        bytesToPixels(formatDescriptor.fourcc, formatDescriptor.bpl));
     mConfig.snapshot.size = frameSize(formatDescriptor.fourcc, bytesToPixels(formatDescriptor.fourcc, mConfig.snapshot.bpl), formatDescriptor.height);
     LOG1("width(%d), height(%d), bpl(%d), size(%d), fourcc(%s 0x%x)",
          formatDescriptor.width, formatDescriptor.height, mConfig.snapshot.bpl, mConfig.snapshot.size,v4l2Fmt2Str(formatDescriptor.fourcc), formatDescriptor.fourcc);

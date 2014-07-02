@@ -1747,7 +1747,7 @@ status_t ControlThread::initContinuousCapture()
     // TODO the bpl should take isp format configure result into account
     // but the timing of this function call is not quite right for that so use
     // bpl = width as the best guess
-    formatDescriptorSs.bpl = formatDescriptorSs.width;
+    formatDescriptorSs.bpl = pixelsToBytes(fourcc, formatDescriptorSs.width);
 
     int pvWidth;
     int pvHeight;
@@ -2127,7 +2127,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         int fourcc = mISP->getSnapshotPixelFormat();
         AtomBuffer formatDescriptorSs = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR, fourcc);
         mParameters.getPictureSize(&formatDescriptorSs.width, &formatDescriptorSs.height);
-        formatDescriptorSs.bpl = formatDescriptorSs.width;
+        formatDescriptorSs.bpl = pixelsToBytes(fourcc, formatDescriptorSs.width);
         mISP->setSnapshotFrameFormat(formatDescriptorSs);
     }
 
@@ -4017,7 +4017,17 @@ status_t ControlThread::captureStillPic()
             = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR, fourcc, width, height);
         AtomBuffer formatDescriptorPv
             = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR, selectPostviewFormat(), pvWidth, pvHeight);
-        formatDescriptorSs.bpl = formatDescriptorSs.width; // initial guess
+
+        // In raw capture, frame size from sensor may be larger than
+        // the requested size. So we need to check the size first and
+        // possibly update width/height to match.
+        if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW)) {
+            checkAndUpdateRawSize(formatDescriptorSs);
+        } else {
+            formatDescriptorSs.bpl = pixelsToBytes(formatDescriptorSs.fourcc,
+                                                   formatDescriptorSs.width);
+        }
+
         mISP->setSnapshotFrameFormat(formatDescriptorSs);
         mISP->setPostviewFrameFormat(formatDescriptorPv);
 
@@ -5911,8 +5921,6 @@ status_t ControlThread::allocateSnapshotAndPostviewBuffers(bool videoMode)
         formatDescriptorSs.fourcc = V4L2_PIX_FMT_CONTINUOUS_JPEG;
     } else if (CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW)) {
         formatDescriptorSs.fourcc = mHwcg.mSensorCI->getRawFormat();
-        checkAndUpdateRawSize(formatDescriptorSs);
-        mISP->setSnapshotFrameFormat(formatDescriptorSs);
     } else {
         formatDescriptorSs.fourcc = V4L2_PIX_FMT_NV12;
     }
@@ -6049,10 +6057,7 @@ void ControlThread::checkAndUpdateRawSize(AtomBuffer& formatDesc)
 
     formatDesc.width = sensorWidth;
     formatDesc.height = sensorHeight;
-
-    // FIXME: remove this BPL handling when firmware is fixed
-    // to report correct BPL size
-    formatDesc.bpl = ALIGN_WIDTH(formatDesc.width, 128);
+    formatDesc.bpl = pixelsToBytes(formatDesc.fourcc, formatDesc.width);
 
     LOG1("RAW final size %dx%d, bpl %d", formatDesc.width, formatDesc.height, formatDesc.bpl);
 }
