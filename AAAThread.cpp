@@ -609,6 +609,16 @@ bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus)
         return false;
     }
 
+    if (mStartAF) {
+        LOG1("AF running while entering flash sequence, stopping AF");
+        // Stop the AF sequence in case we are running AF and are entering
+        // pre-flash. We are skipping the statistics
+        // event handling int the pre-flash sequence (see: handleMessageNewStats()),
+        // which causes the still AF sequence to get stuck, when entering pre-flash.
+        m3AControls->stopStillAf();
+        mStartAF = mStopAF = false;
+    }
+
     LOG2("@%s : mFlashStage %d, FrameStatus %d", __FUNCTION__, mFlashStage, frameStatus);
 
     switch (mFlashStage) {
