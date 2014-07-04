@@ -289,7 +289,7 @@ status_t ControlThread::init()
 
     // we implement the ICallbackPreview interface, so pass
     // this as argument
-    mPreviewThread = new PreviewThread(mCallbacksThread, mCallbacks, mCameraId);
+    mPreviewThread = new PreviewThread(mCallbacksThread, mCallbacks, mCameraId, mHwcg.mIspCI);
     if (mPreviewThread == NULL) {
         LOGE("error creating PreviewThread");
         goto bail;
@@ -1598,16 +1598,18 @@ status_t ControlThread::captureStillPicFromPreview()
     // allocate buffer struct
     AtomBuffer snapshotBuffer
         = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
-    mPreviewThread->getPreviewBufferById(snapshotBuffer);
 
-    // encode a frame
-    PictureThread::MetaData picMetaData;
-    fillPicMetaData(picMetaData, false);
-    LOG1("TEST-TRACE: starting picture encode: Time: %lld", systemTime());
-    status = mPictureThread->encode(picMetaData, &snapshotBuffer, NULL);
-    if (status != NO_ERROR) {
-        picMetaData.free(m3AControls);
-        LOGE("@%s: failed to call PictureThread to encode", __FUNCTION__);
+    status = mPreviewThread->getPreviewBufferById(snapshotBuffer);
+    if (status == NO_ERROR) {
+        // encode a frame
+        PictureThread::MetaData picMetaData;
+        fillPicMetaData(picMetaData, false);
+        LOG1("TEST-TRACE: starting picture encode: Time: %lld", systemTime());
+        status = mPictureThread->encode(picMetaData, &snapshotBuffer, NULL);
+        if (status != NO_ERROR) {
+            picMetaData.free(m3AControls);
+            LOGE("@%s: failed to call PictureThread to encode", __FUNCTION__);
+        }
     }
 
     return status;
@@ -4143,6 +4145,7 @@ status_t ControlThread::captureStillPic()
 
     if (mDepthMode && !PlatformData::isExtendedCamera(mCameraId)) {
         // send sensor frame id to application
+        LOG2("send sensorFrameId (%d) to application", snapshotBuffer.sensorFrameId);
         mCallbacksThread->sendFrameId(snapshotBuffer.sensorFrameId);
     }
 

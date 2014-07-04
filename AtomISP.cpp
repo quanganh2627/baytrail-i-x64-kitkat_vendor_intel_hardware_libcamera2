@@ -6378,7 +6378,7 @@ int AtomISP::getSensorFrameId(unsigned int exp_id)
 {
     LOG2("@%s", __FUNCTION__);
     status_t ret = UNKNOWN_ERROR;
-    int sensorFrameId = 0;
+    int sensorFrameId = -1;
     if (mSensorEmbeddedMetaData) {
         ia_emd_misc_parameters_t misc_parameters;
         memset(&misc_parameters, 0, sizeof(ia_emd_misc_parameters_t));

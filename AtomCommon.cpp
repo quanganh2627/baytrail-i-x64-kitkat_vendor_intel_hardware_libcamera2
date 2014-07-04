@@ -245,7 +245,7 @@ AtomBuffer AtomBufferFactory::createAtomBuffer(AtomBufferType type,
     buf.gfxInfo_rec.locked = false;
     buf.auxBuf = NULL;
     buf.returnAfterCB = false;
-    buf.sensorFrameId = 0;
+    buf.sensorFrameId = -1;
 
     return buf;
 }

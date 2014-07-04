@@ -150,6 +150,7 @@ public:
     virtual int getSensorEmbeddedMetaData(atomisp_metadata *metaData) const = 0;
     virtual status_t getDecodedExposureParams(ia_aiq_exposure_sensor_parameters* sensor_exp_p,
                                               ia_aiq_exposure_parameters* generic_exp_p, unsigned int exp_id = 0) = 0;
+    virtual int getSensorFrameId(unsigned int exp_id) = 0;
 
     /* **********************************************************
      * Acceleration API extensions

@@ -26,6 +26,7 @@
 #include "IAtomIspObserver.h"
 #include "HALVideoStabilization.h"
 #include "CamHeapMem.h"
+#include "AtomISP.h"
 
 namespace android {
 
@@ -111,7 +112,7 @@ class PreviewThread : public Thread
 
 // constructor destructor
 public:
-    PreviewThread(sp<CallbacksThread> callbacksThread, Callbacks* callbacks, int cameraId);
+    PreviewThread(sp<CallbacksThread> callbacksThread, Callbacks* callbacks, int cameraId, IHWIspControl *ispControl);
     virtual ~PreviewThread();
 
 // prevent copy constructor and assignment operator
@@ -377,7 +378,7 @@ private:
     status_t fetchReservedBuffers(int numOfReservedBuffers);
     GfxAtomBuffer* pickReservedBuffer();
 
-    AtomBuffer* handlePreviewBufferQueue(AtomBuffer *buff);
+    status_t handlePreviewBufferQueue(AtomBuffer *buff);
 // private data
 private:
     MessageQueue<Message, MessageId> mMessageQueue;
@@ -399,6 +400,7 @@ private:
     Callbacks           *mCallbacks;
 
     int mCameraId;
+    IHWIspControl *mIsp;
     int                 mMinUndequeued;     /*!< Minimum number frames
                                                  to keep in window */
     Vector<GfxAtomBuffer> mPreviewBuffers;    /*!< Vector with the buffers retrieved from window */

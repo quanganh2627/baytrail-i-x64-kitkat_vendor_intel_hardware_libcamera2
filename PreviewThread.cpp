@@ -45,7 +45,7 @@ void release_camera_memory_t(struct camera_memory *mem)
     delete mem;
 }
 
-PreviewThread::PreviewThread(sp<CallbacksThread> callbacksThread, Callbacks* callbacks, int cameraId) :
+PreviewThread::PreviewThread(sp<CallbacksThread> callbacksThread, Callbacks* callbacks, int cameraId, IHWIspControl *ispControl) :
     Thread(true) // callbacks may call into java
     ,mMessageQueue("PreviewThread", (int) MESSAGE_ID_MAX)
     ,mThreadRunning(false)
@@ -59,6 +59,7 @@ PreviewThread::PreviewThread(sp<CallbacksThread> callbacksThread, Callbacks* cal
     ,mTransferingBuffer(NULL)
     ,mCallbacks(callbacks)
     ,mCameraId(cameraId)
+    ,mIsp(ispControl)
     ,mMinUndequeued(0)
     ,mBuffersInWindow(0)
     ,mNumOfPreviewBuffers(0)
@@ -79,8 +80,8 @@ PreviewThread::PreviewThread(sp<CallbacksThread> callbacksThread, Callbacks* cal
     ,mFps(30)
     ,mPreviewCbTs(0)
     ,mPreviewCallbackMode(PREVIEW_CALLBACK_NORMAL)
-    ,mPreviewFrameId(0)
-    ,mPreviewBufferQueueUpdate(true)
+    ,mPreviewFrameId(-1)
+    ,mPreviewBufferQueueUpdate(false)
     ,mPreviewBufferNum(0)
 {
     LOG1("@%s", __FUNCTION__);
@@ -471,13 +472,7 @@ bool PreviewThread::atomIspNotify(IAtomIspObserver::Message *msg, const Observer
             buff->owner->returnBuffer(buff);
         } else {
             PerformanceTraces::FaceLock::getCurFrameNum(buff->frameCounter);
-            if (PlatformData::getMaxDepthPreviewBufferQueueSize(mCameraId) > 0) {
-                buff = handlePreviewBufferQueue(buff);
-                if (buff != NULL)
-                    preview(buff);
-            } else {
-                preview(buff);
-            }
+            preview(buff);
         }
     } else {
         LOG1("Received unexpected notify message id %d!", msg->id);
@@ -1426,7 +1421,9 @@ status_t PreviewThread::handlePreview(MessagePreview *msg)
     LOG2("@%s: id = %d, width = %d, height = %d, fourcc = %s, bpl = %d", __FUNCTION__,
             msg->buff.id, msg->buff.width, msg->buff.height, v4l2Fmt2Str(msg->buff.fourcc), msg->buff.bpl);
 
-    if (mHALVideoStabilization)
+    if (PlatformData::getMaxDepthPreviewBufferQueueSize(mCameraId) > 0)
+        return handlePreviewBufferQueue(&msg->buff);
+    else if (mHALVideoStabilization)
         return handleVSPreview(msg);
     else if (mPreviewCallbackMode == PREVIEW_CALLBACK_BEFORE_DISPLAY)
         return handlePreviewCallback(msg->buff);
@@ -2171,11 +2168,16 @@ status_t PreviewThread::getPreviewBufferById(AtomBuffer &buff)
     status_t status = NO_ERROR;
     bool find = false;
 
+    if (mPreviewBufferQueue.empty()) {
+        LOGE("There is no buffer in preview buffer queue");
+        return INVALID_OPERATION;
+    }
+
     Vector<AtomBuffer>::iterator it = mPreviewBufferQueue.begin();
     for(; it != mPreviewBufferQueue.end(); ++it) {
         if (it->sensorFrameId == mPreviewFrameId) {
             find = true;
-            LOG2("find captured preview frame, frame count = %d", mPreviewFrameId);
+            LOG2("find captured sensorFrameId, target = %d", mPreviewFrameId);
             break;
         }
     }
@@ -2185,33 +2187,49 @@ status_t PreviewThread::getPreviewBufferById(AtomBuffer &buff)
         buff = *it;
     } else {
         buff = mPreviewBufferQueue.top();
+        LOGE("can't find captured sensorFrameId, target = %d, current = %d", mPreviewFrameId, buff.sensorFrameId);
     }
 
     return status;
 }
 
-AtomBuffer* PreviewThread::handlePreviewBufferQueue(AtomBuffer* buff)
+status_t PreviewThread::handlePreviewBufferQueue(AtomBuffer *buff)
 {
     LOG1("@%s", __FUNCTION__);
 
+    AtomBuffer *returnBuff = buff;
     int maxQueueSize = PlatformData::getMaxDepthPreviewBufferQueueSize(mCameraId);
 
     // If max queue size is less than 0 or larger than preview buffer number, don't hold buffer.
-    if (!mPreviewBufferQueueUpdate || (maxQueueSize <= 0) || (maxQueueSize >= mPreviewBufferNum)) {
-        LOG2("Queue size is [%d], Preview buffer number is [%d].", maxQueueSize, mPreviewBufferNum);
-        return buff;
+    if ((maxQueueSize > 0) && (maxQueueSize < mPreviewBufferNum && mPreviewFrameId == -1)) {
+        if (mPreviewBufferQueueUpdate) {
+            // Saving maxQueueSize buffer into buffer queue to use later
+            if ((int)mPreviewBufferQueue.size() < maxQueueSize) {
+                mPreviewBufferQueue.push_front(*buff);
+                return NO_ERROR;
+            } else {
+                Vector<AtomBuffer>::iterator it = mPreviewBufferQueue.begin();
+                for(; it != mPreviewBufferQueue.end(); ++it) {
+                    if (it->sensorFrameId == -1) {
+                        it->sensorFrameId = mIsp->getSensorFrameId(it->expId);
+                        LOG2("sensorFrameId = %d, expId=%d", it->sensorFrameId, it->expId);
+                    }
+                }
+            }
+        } else {
+            // Keep the latest frame in preview buffer queue.
+            if (mPreviewBufferQueue.empty()) {
+                mPreviewBufferQueue.push_front(*buff);
+                return NO_ERROR;
+            } else {
+                mPreviewBufferQueue.push_front(*buff);
+                *returnBuff = mPreviewBufferQueue.top();
+                mPreviewBufferQueue.pop();
+            }
+        }
     }
 
-    mPreviewBufferQueue.push(*buff);
-
-    // hold maxQueueSize preview buffer in mPreviewBufferQueue
-    if ((int)mPreviewBufferQueue.size() > maxQueueSize) {
-        Vector<AtomBuffer>::iterator it = mPreviewBufferQueue.begin();
-        mPreviewBufferQueue.erase(it);
-        return it;
-    }
-
-    return NULL;
+    return handlePreviewCore(returnBuff);
 }
 
 status_t PreviewThread::pausePreviewFrameUpdate()
@@ -2243,7 +2261,7 @@ status_t PreviewThread::handlePausePreviewFrameUpdate()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    mPreviewBufferQueueUpdate = false;
+    mPreviewBufferQueueUpdate = true;
     mMessageQueue.reply(MESSAGE_ID_PAUSE_PREVIEW_FRAME_UPDATE, status);
     return status;
 }
@@ -2252,7 +2270,15 @@ status_t PreviewThread::handleResumePreviewFrameUpdate()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    mPreviewBufferQueueUpdate = true;
+    Vector<AtomBuffer>::iterator it;
+    while (!mPreviewBufferQueue.empty()) {
+        it = mPreviewBufferQueue.begin();
+        LOG2("release sensorFrameId = %d, expId=%d", it->sensorFrameId, it->expId);
+        it->owner->returnBuffer(it);
+        mPreviewBufferQueue.erase(it);
+    }
+    mPreviewFrameId = -1;
+    mPreviewBufferQueueUpdate = false;
     mMessageQueue.reply(MESSAGE_ID_RESUME_PREVIEW_FRAME_UPDATE, status);
     return status;
 }
@@ -2262,6 +2288,15 @@ status_t PreviewThread::handleSetPreviewFrameCaptureId(MessageFrameId *msg)
     LOG1("@%s mPreviewFrameId = %d", __FUNCTION__, msg->id);
     status_t status = NO_ERROR;
     mPreviewFrameId = msg->id;
+    if (!mPreviewBufferQueue.empty()) {
+        Vector<AtomBuffer>::iterator it = mPreviewBufferQueue.begin();
+        for(; it != mPreviewBufferQueue.end(); ++it) {
+            if (it->sensorFrameId == -1) {
+                it->sensorFrameId = mIsp->getSensorFrameId(it->expId);
+                LOG2("sensorFrameId = %d, expId=%d", it->sensorFrameId, it->expId);
+            }
+        }
+    }
     mMessageQueue.reply(MESSAGE_ID_SET_PREVIEW_FRAME_CAPTURE_ID, status);
     return status;
 }

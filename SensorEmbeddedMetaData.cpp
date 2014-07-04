@@ -220,7 +220,6 @@ void SensorEmbeddedMetaData::deinitSensorEmbeddedMetaDataQueue()
 status_t SensorEmbeddedMetaData::handleSensorEmbeddedMetaData()
 {
     LOG2("@%s", __FUNCTION__);
-    Mutex::Autolock lock(mLock);
     status_t status = NO_ERROR;
 
     if (!mSensorMetaDataSupported)
@@ -294,10 +293,11 @@ status_t SensorEmbeddedMetaData::getDecodedMiscParams(ia_emd_misc_parameters_t* 
     for (;it != mSensorEmbeddedMetaDataStoredQueue.end(); ++it) {
         if ((it->exp_id == exp_id) && (it->misc_parameters_p != NULL)) {
             memcpy(misc_parameters_p, it->misc_parameters_p, sizeof(ia_emd_misc_parameters_t));
+            LOG2("it->exp_id=%d, misc_parameters_p->frame_counter=%d", it->exp_id, misc_parameters_p->frame_counter);
             return NO_ERROR;
         }
     }
-    LOGE("No sensor metadata exp_id = %d in current queue.", exp_id);
+    LOG2("No sensor metadata exp_id = %d in current queue.", exp_id);
     return status;
 }
 
@@ -344,6 +344,7 @@ status_t SensorEmbeddedMetaData::decodeSensorEmbeddedMetaData()
   */
 status_t SensorEmbeddedMetaData::storeDecodedMetaData()
 {
+    Mutex::Autolock lock(mLock);
     LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     decoded_sensor_metadata new_stored_element;
