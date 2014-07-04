@@ -182,7 +182,7 @@ static bool validateReadOnlyParameters(const CameraParameters *oldParams, const 
     return true;
 }
 
-status_t validateParameters(const CameraParameters *oldParams, const CameraParameters *params, int cameraId)
+status_t validateParameters(const CameraParameters *oldParams, CameraParameters *params, int cameraId)
 {
     LOG1("@%s: oldparams= %p, params = %p", __FUNCTION__, oldParams, params);
 
@@ -423,8 +423,12 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
     const char* flashMode = params->get(CameraParameters::KEY_FLASH_MODE);
     const char* flashModes = params->get(CameraParameters::KEY_SUPPORTED_FLASH_MODES);
     if (!validateString(flashMode, flashModes)) {
-        LOGE("bad flash mode");
-        return BAD_VALUE;
+        if (flashModes == NULL) {
+            params->remove(CameraParameters::KEY_FLASH_MODE);
+        } else {
+            LOGE("bad flash mode");
+            return BAD_VALUE;
+        }
     }
 
     // SCENE MODE
