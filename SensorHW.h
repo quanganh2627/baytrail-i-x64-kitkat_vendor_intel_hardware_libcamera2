@@ -152,8 +152,6 @@ private:
     void updateExposureEstimate(nsecs_t timestamp);
     struct exposure_history_item* getPrevAppliedItem(int &id);
     void resetEstimates(struct exposure_history_item *activeItem);
-    // sensor flip
-    status_t applySensorFlip(void);
 
 // protected member variables, accessible by subclasses
 // TODO: Rename to p* instead of m*

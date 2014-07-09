@@ -736,8 +736,6 @@ private:
     void reconfigureThumbnailSize(int &width, int &height);
 
     void checkAndUpdateRawSize(AtomBuffer &formatDesc);
-    // front camera saved-mirror
-    int getNeededIspFlipType();
 
 // inherited from Thread
 private:

@@ -35,8 +35,6 @@ static const int MAX_DEPTH = 5;
 
 
 SensorHW::SensorHW(int cameraId):
-    mSensorSubdevice(NULL),
-    mIspSubdevice(NULL),
     mSensorType(SENSOR_TYPE_NONE),
     mCameraId(cameraId),
     mStarted(false),
@@ -244,9 +242,6 @@ status_t SensorHW::selectActiveSensor(sp<V4L2VideoNode> &device)
     if (status != NO_ERROR)
         LOGE("Failed to configure exposure filter");
 
-    // sensor flip should be applied before configuring ISP
-    applySensorFlip();
-
     return status;
 }
 
@@ -375,9 +370,6 @@ status_t SensorHW::openSubdevices()
     status_t status = NO_ERROR;
     int sinkPadIndex = -1;
     int ret = 0;
-
-    if (mSensorSubdevice.get() != NULL && mIspSubdevice.get() != NULL)
-        return status;
 
     sp<V4L2DeviceBase> mediaCtl = new V4L2DeviceBase("/dev/media0", 0);
     status = mediaCtl->open();
@@ -1079,37 +1071,6 @@ int SensorHW::getRawFormat()
 const char * SensorHW::getSensorName(void)
 {
     return mCameraInput.name;
-}
-
-/**
- *  Set sensor flip
- *
- * This function should be called before starting the steam
- */
-status_t SensorHW::applySensorFlip(void)
-{
-    int sensorFlip = PlatformData::sensorFlipping(mCameraId);
-    LOG1("@%s image flip :%x", __FUNCTION__, sensorFlip);
-
-    if (sensorFlip == PlatformData::SENSOR_FLIP_NA
-        || sensorFlip == PlatformData::SENSOR_FLIP_OFF)
-        return NO_ERROR;
-
-    // open sensor sub device for ioctl
-    if (openSubdevices() != NO_ERROR) {
-        LOGE("Error in opening sensor device for applying sensor flip");
-        return NO_INIT;
-    }
-
-    if (mSensorSubdevice->setControl(V4L2_CID_VFLIP,
-        (sensorFlip & PlatformData::SENSOR_FLIP_V) ? 1 : 0, "vertical image flip"))
-        return UNKNOWN_ERROR;
-
-    if (mSensorSubdevice->setControl(V4L2_CID_HFLIP,
-        (sensorFlip & PlatformData::SENSOR_FLIP_H) ? 1 : 0, "horizontal image flip"))
-        return UNKNOWN_ERROR;
-
-    return NO_ERROR;
 }
 
 /**
