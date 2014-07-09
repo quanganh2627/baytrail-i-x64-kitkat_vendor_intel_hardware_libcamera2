@@ -681,8 +681,6 @@ private:
 
     // ISP flip configuration for save-mirrored feature
     int mIspFlip;
-    // Use software solution instead if ISP doesn't support vertical flip
-    bool mSwVerticalFlip;
 
     // Sensor helper fields
     Vector <v4l2_fmtdesc>    mSensorSupportedFormats;     /*!< List of V4L2 pixel format supported by the sensor */

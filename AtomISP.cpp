@@ -128,7 +128,6 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService, Callbacks *callb
     ,mExtIspVideoHighSpeed(false)
     ,mNoiseReductionEdgeEnhancement(true)
     ,mIspFlip(ISP_FLIP_NONE)
-    ,mSwVerticalFlip(false)
     ,mFlashIsOn(false)
 {
     LOG1("@%s", __FUNCTION__);
@@ -1023,8 +1022,6 @@ status_t AtomISP::setIspMirror(int flip)
         LOGE("set ISP mirror in wrong mode:%d", mMode);
         return INVALID_OPERATION;
     }
-    // reset sw vertical flip
-    mSwVerticalFlip = false;
 
     // save the mirror request, apply it before device start
     mIspFlip = flip;
@@ -1046,20 +1043,10 @@ status_t AtomISP::applyIspFlipForDevice(sp<V4L2VideoNode> device)
     LOG1("@%s image flip %x", __FUNCTION__, mIspFlip);
     int currentValue, requestedValue;
 
-    requestedValue = (mIspFlip & ISP_FLIP_V) ? 1 : 0;
-    if (device->getControl(V4L2_CID_VFLIP, &currentValue)) {
-        /**
-         * Workaround due to ISP doesn't support vertical flip
-         * Currently use sw vertical flip instead
-         * FIXME: remove it when v-flip can be supported by FW
-         */
-        if (requestedValue) {
-            LOGW("ISP doesn't support vertical flip, Using cpu flip instead!");
-            mSwVerticalFlip = true;
-        }
-        currentValue = requestedValue;
-    }
+    if (device->getControl(V4L2_CID_VFLIP, &currentValue))
+        return UNKNOWN_ERROR;
 
+    requestedValue = (mIspFlip & ISP_FLIP_V) ? 1 : 0;
     if (currentValue != requestedValue) {
         LOG1("%s set ISP v flip to %d", __FUNCTION__, requestedValue);
         if (device->setControl(V4L2_CID_VFLIP, requestedValue, "ISP vertical image flip"))
@@ -4658,10 +4645,6 @@ status_t AtomISP::getRecordingFrame(AtomBuffer *buff)
 
     mNumRecordingBuffersQueued--;
 
-    if (mSwVerticalFlip) {
-        flipBufferV(buff);
-    }
-
     dumpRecordingFrame(index);
 
     return NO_ERROR;
@@ -4920,13 +4903,6 @@ nopostview:
     }
 
     mNumCapturegBuffersQueued--;
-
-    // apply sw flip here
-    if (mSwVerticalFlip) {
-        flipBufferV(snapshotBuf);
-        if (postviewBuf)
-            flipBufferV(postviewBuf);
-    }
 
     dumpSnapshot(snapshotIndex, postviewIndex);
 
