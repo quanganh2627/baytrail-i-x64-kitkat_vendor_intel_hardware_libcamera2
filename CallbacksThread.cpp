@@ -46,9 +46,6 @@ CallbacksThread::CallbacksThread(Callbacks *callbacks, ICallbackPicture *picture
     ,mPictureDoneCallback(pictureDone)
 {
     LOG1("@%s", __FUNCTION__);
-    mFaceMetadata.faces = new camera_face_t[MAX_FACES_DETECTABLE];
-    memset(mFaceMetadata.faces, 0, MAX_FACES_DETECTABLE * sizeof(camera_face_t));
-    mFaceMetadata.number_of_faces = 0;
     mPostponedJpegReady.id = (MessageId) -1;
 
     // Trying to slighly optimize here, instead of calling this for each face callback
@@ -58,8 +55,8 @@ CallbacksThread::CallbacksThread(Callbacks *callbacks, ICallbackPicture *picture
 CallbacksThread::~CallbacksThread()
 {
     LOG1("@%s", __FUNCTION__);
-    delete [] mFaceMetadata.faces;
-    mFaceMetadata.faces = NULL;
+    // Remove the remaining face messages from queue and de-allocate
+    flushFaces();
 }
 
 status_t CallbacksThread::shutterSound()
@@ -331,6 +328,36 @@ status_t CallbacksThread::flushPictures()
 }
 
 /**
+ * Removes the face messages for message queue and de-allocates
+ * memory that has been allocated for face data
+ */
+status_t CallbacksThread::flushFaces()
+{
+    LOG1("@%s", __FUNCTION__);
+    Vector<Message> inQueue;
+    mMessageQueue.remove(MESSAGE_ID_FACES, &inQueue);
+
+    Vector<Message>::iterator it;
+    extended_frame_metadata_t *metaToDeletePtr = NULL;
+
+    for (it = inQueue.begin(); it != inQueue.end(); ++it) {
+        metaToDeletePtr = it->data.faces.meta_data;
+
+        if (metaToDeletePtr != NULL) {
+            // delete both the allocated face array as well as the extended meta
+            deallocateFaceMeta(metaToDeletePtr);
+        }
+    }
+
+    // Send message to clear the related member variables in CallbacksThread context
+    Message msg;
+    msg.id = MESSAGE_ID_FLUSH_FACES;
+    // no data in msg
+
+    return mMessageQueue.send(&msg);
+}
+
+/**
  * Inform CallbacksThread from auto-focus activation
  *
  * Android API contains a specific rule:
@@ -415,58 +442,21 @@ void CallbacksThread::facesDetected(extended_frame_metadata_t *extended_face_met
 {
     LOG2("@%s: face_metadata ptr = %p", __FUNCTION__, extended_face_metadata);
 
-    Mutex::Autolock lock(mFaceReportingLock); // protecting member variable accesses during the filtering below
+    if (extended_face_metadata != NULL) {
 
-    // Null face data -> reset IFaceDetectionListener
-    if (extended_face_metadata == NULL) {
-        mLastReportedNumberOfFaces = 0;
-        mFaceCbCount = 0;
-        return;
-    }
-
-    // needLLS needs to be sent always when it changes, so don't adjust sending frequency, if it changes
-    if (mLastReportedNeedLLS != extended_face_metadata->needLLS) {
-        mLastReportedNeedLLS = extended_face_metadata->needLLS;
-    } else {
-        // Count the callbacks to adjust sending frequency.
-        // We want to do this to relieve the application face indicator rendering load,
-        // as it seems to get heavy when large number of faces are presented.
-        // TODO: Dynamic adjustment of frequency, depending on number of faces
-        ++mFaceCbCount; // Ok to wrap around
-
-        if (extended_face_metadata->number_of_faces > 0 || mLastReportedNumberOfFaces != 0) {
-            mLastReportedNumberOfFaces = extended_face_metadata->number_of_faces;
-            // Not the time to send cb -> do nothing
-            if (!(mFaceCbCount % mFaceCbFreqDivider == 0 || mLastReportedNumberOfFaces == 0)) {
-                return;
-            }
-        } else if (extended_face_metadata->number_of_faces == 0 && mLastReportedNumberOfFaces == 0) {
-            // For subsequent zero faces, after the first zero-face cb sent to application
-            // -> do nothing
-            return;
+        if (extended_face_metadata->number_of_faces > MAX_FACES_DETECTABLE) {
+            LOGW("@%s: %d faces detected, limiting to %d", __FUNCTION__,
+                 extended_face_metadata->number_of_faces, MAX_FACES_DETECTABLE);
+            extended_face_metadata->number_of_faces = MAX_FACES_DETECTABLE;
         }
+
+        if (extended_face_metadata->number_of_faces > 0)
+            PerformanceTraces::FaceLock::stop(extended_face_metadata->number_of_faces);
     }
-
-    int num_faces;
-    if (extended_face_metadata->number_of_faces > MAX_FACES_DETECTABLE) {
-        LOGW("@%s: %d faces detected, limiting to %d", __FUNCTION__,
-                extended_face_metadata->number_of_faces, MAX_FACES_DETECTABLE);
-        num_faces = MAX_FACES_DETECTABLE;
-    } else {
-        num_faces = extended_face_metadata->number_of_faces;
-    }
-
-    if (num_faces > 0)
-        PerformanceTraces::FaceLock::stop(num_faces);
-
-    mFaceMetadata.number_of_faces = num_faces;
-    mFaceMetadata.needLLS = extended_face_metadata->needLLS;
-    memcpy(mFaceMetadata.faces, extended_face_metadata->faces,
-           mFaceMetadata.number_of_faces * sizeof(camera_face_t));
 
     Message msg;
     msg.id = MESSAGE_ID_FACES;
-    msg.data.faces.meta_data = mFaceMetadata;
+    msg.data.faces.meta_data = extended_face_metadata;
     mMessageQueue.send(&msg);
 }
 
@@ -779,15 +769,77 @@ status_t CallbacksThread::handleMessageFlush()
     return status;
 }
 
+status_t CallbacksThread::handleMessageFlushFaces()
+{
+    LOG1("@%s", __FUNCTION__);
+    mLastReportedNumberOfFaces = 0;
+    mFaceCbCount = 0;
+
+    return NO_ERROR;
+}
+
 status_t CallbacksThread::handleMessageFaces(MessageFaces *msg)
 {
     LOG2("@%s", __FUNCTION__);
-    Mutex::Autolock lock(mFaceReportingLock); // the ::facesDetected function may write to the face array, so protect with lock
+
+    extended_frame_metadata_t *extended_face_metadata = msg->meta_data;
+
+    // Null face data -> reset IFaceDetectionListener
+    if (extended_face_metadata == NULL) {
+        mLastReportedNumberOfFaces = 0;
+        mFaceCbCount = 0;
+        return NO_ERROR;
+    }
+
+    // needLLS needs to be sent always when it changes, so don't adjust sending frequency, if it changes
+    if (mLastReportedNeedLLS != extended_face_metadata->needLLS) {
+        mLastReportedNeedLLS = extended_face_metadata->needLLS;
+    } else {
+        // Count the callbacks to adjust sending frequency.
+        // We want to do this to relieve the application face indicator rendering load,
+        // as it seems to get heavy when large number of faces are presented.
+        // TODO: Dynamic adjustment of frequency, depending on number of faces
+        ++mFaceCbCount; // Ok to wrap around
+
+        if (extended_face_metadata->number_of_faces > 0 || mLastReportedNumberOfFaces != 0) {
+            mLastReportedNumberOfFaces = extended_face_metadata->number_of_faces;
+            // Not the time to send cb -> do nothing
+            if (!(mFaceCbCount % mFaceCbFreqDivider == 0 || mLastReportedNumberOfFaces == 0)) {
+                deallocateFaceMeta(extended_face_metadata);
+                return NO_ERROR;
+            }
+        } else if (extended_face_metadata->number_of_faces == 0 && mLastReportedNumberOfFaces == 0) {
+            // For subsequent zero faces, after the first zero-face cb sent to application
+            // -> do nothing
+            deallocateFaceMeta(extended_face_metadata);
+            return NO_ERROR;
+        }
+    }
+
     if (!mFocusActive)
-        mCallbacks->facesDetected((camera_frame_metadata_t *)&msg->meta_data);
+        mCallbacks->facesDetected((camera_frame_metadata_t *)msg->meta_data);
     else
         LOG1("Faces metadata dropped during focusing.");
+
+    deallocateFaceMeta(extended_face_metadata);
+
     return NO_ERROR;
+}
+
+void CallbacksThread::deallocateFaceMeta(extended_frame_metadata_t* extended_face_metadata)
+{
+    LOG2("@%s", __FUNCTION__);
+
+    if (extended_face_metadata == NULL)
+        return;
+
+    // NOTE: allocated in PostProcThread::handleFrame().
+    // Need to be deleted now that we are done with the message.
+    // NOTE: Also, need to delete the data in unhandled messages,
+    // when mMessageQueue is destroyed of messages are removed!
+    delete[] extended_face_metadata->faces;
+    delete extended_face_metadata;
+    extended_face_metadata = NULL;
 }
 
 status_t CallbacksThread::handleMessageSceneDetected(MessageSceneDetected *msg)
@@ -1005,6 +1057,10 @@ status_t CallbacksThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_FACES:
             status = handleMessageFaces(&msg.data.faces);
+            break;
+
+        case MESSAGE_ID_FLUSH_FACES:
+            status = handleMessageFlushFaces();
             break;
 
         case MESSAGE_ID_SCENE_DETECTED:

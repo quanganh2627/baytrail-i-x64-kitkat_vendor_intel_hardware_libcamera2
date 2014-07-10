@@ -2497,6 +2497,9 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
         mIspExtensionsEnabled = false;
     }
 
+    // Flush faces, just in case there are some left in the queue in CallbacksThread
+    mCallbacksThread->flushFaces();
+
     if (oldState == STATE_CONTINUOUS_CAPTURE)
         releaseContinuousCapture(flushPictures);
 
