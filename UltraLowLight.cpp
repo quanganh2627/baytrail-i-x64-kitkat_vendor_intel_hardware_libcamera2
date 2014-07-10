@@ -953,7 +953,15 @@ void UltraLowLight::setZoomFactor(unsigned int zoom)
 void UltraLowLight::allocateCopyBuffers(AtomBuffer snapshotDescr, AtomBuffer postviewDescr)
 {
     LOG1("@%s :copyBuffersAllocated=%d", __FUNCTION__, mCopyBuffsAllocated);
-    if (!mCopyBuffsAllocated) {
+
+    if (!mCopyBuffsAllocated || snapshotDescr.width != mSnapshotCopy.width
+                             || snapshotDescr.height != mSnapshotCopy.height) {
+
+        if (mCopyBuffsAllocated) {
+            MemoryUtils::freeAtomBuffer(mSnapshotCopy);
+            MemoryUtils::freeAtomBuffer(mPostviewCopy);
+        }
+
         mSnapshotCopy = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
         MemoryUtils::allocateAtomBuffer(mSnapshotCopy, snapshotDescr, mCallbacks);
 
