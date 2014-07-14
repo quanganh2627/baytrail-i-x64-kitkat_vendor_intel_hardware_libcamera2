@@ -191,6 +191,8 @@ status_t SensorHW::selectActiveSensor(sp<V4L2VideoNode> &device)
     status = mDevice->setInput(mCameraInput.index);
     if (status != NO_ERROR) {
         status = UNKNOWN_ERROR;
+        LOGE("Possible: Faile to power on sesnor: %s", mCameraInput.name);
+        goto power_err;
     } else {
         PERFORMANCE_TRACES_BREAKDOWN_STEP("capture_s_input");
         mSensorType = PlatformData::sensorType(mCameraId);
@@ -209,6 +211,7 @@ status_t SensorHW::selectActiveSensor(sp<V4L2VideoNode> &device)
     if (status != NO_ERROR)
         LOGE("Failed to configure exposure filter");
 
+power_err:
     return status;
 }
 

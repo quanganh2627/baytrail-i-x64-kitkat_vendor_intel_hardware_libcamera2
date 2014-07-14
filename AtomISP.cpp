@@ -183,8 +183,11 @@ status_t AtomISP::initDevice()
 
     initFileInject();
 
-    mSensorHW.selectActiveSensor(mMainDevice);
-
+    status = mSensorHW.selectActiveSensor(mMainDevice);
+    if (status != NO_ERROR) {
+        LOGE("Possible: Failed to power on sensor!");
+        goto power_error;
+    }
     /**
      * open ATOMISP subdevice according to sensor
      */
@@ -199,6 +202,8 @@ status_t AtomISP::initDevice()
 
     mSensorType = PlatformData::sensorType(mCameraId);
     LOG1("Sensor type detected: %s", (mSensorType == SENSOR_TYPE_RAW)?"RAW":"SOC");
+
+power_error:
     return status;
 }
 
