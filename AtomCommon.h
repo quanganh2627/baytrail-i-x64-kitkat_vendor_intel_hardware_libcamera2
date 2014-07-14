@@ -245,7 +245,8 @@ enum AAAFlags {
 enum ExtIspActionHint {
     EXT_ISP_ACTION_NA = 0x0,
     EXT_ISP_ACTION_HALVS = 0x1,
-    EXT_ISP_ACTION_VIDEOHS = 0x2
+    EXT_ISP_ACTION_NORMAL = 0x2,
+    EXT_ISP_ACTION_VIDEOHS = 0x4
 };
 
 struct CameraWindow {

@@ -125,6 +125,7 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService, Callbacks *callb
     ,mScaler(scalerService)
     ,mObserverManager()
     ,mHALVideoStabilization(false)
+    ,mHALVideoNormal(false)
     ,mExtIspVideoHighSpeed(false)
     ,mNoiseReductionEdgeEnhancement(true)
     ,mFlashIsOn(false)
@@ -999,9 +1000,10 @@ status_t AtomISP::getIspParameters(struct atomisp_parm *isp_param) const
 void AtomISP::setExternalIspActionHint(ExtIspActionHint hint)
 {
     mHALVideoStabilization = hint & EXT_ISP_ACTION_HALVS;
+    mHALVideoNormal = hint & EXT_ISP_ACTION_NORMAL;
     mExtIspVideoHighSpeed  = hint & EXT_ISP_ACTION_VIDEOHS;
-    LOG1("@%s hal video stabilization:%d external ISP video high speed:%d",
-            __FUNCTION__, mHALVideoStabilization, mExtIspVideoHighSpeed);
+    LOG1("@%s hal video stabilization:%d, normal video: %d, external ISP video high speed:%d",
+            __FUNCTION__, mHALVideoStabilization, mHALVideoNormal, mExtIspVideoHighSpeed);
 }
 
 //Set device fps base on device mode and platform
@@ -1192,7 +1194,7 @@ status_t AtomISP::allocateBuffers(AtomMode mode)
         // intentional fall-through without break
     case MODE_CONTINUOUS_VIDEO:
     case MODE_VIDEO:
-        if (!mHALVideoStabilization) // no need to allocate in halVS mode which uses preview bufs for recording
+        if (!mHALVideoStabilization && !mHALVideoNormal) // no need to allocate in halVS mode which uses preview bufs for recording
             if ((status = allocateRecordingBuffers()) != NO_ERROR)
                 return status;
         if ((status = allocatePreviewBuffers()) != NO_ERROR)
@@ -1637,7 +1639,7 @@ status_t AtomISP::startRecording()
     int ret = 0;
     status_t status = NO_ERROR;
 
-    if (!mHALVideoStabilization) {
+    if (!mHALVideoStabilization && !mHALVideoNormal) {
         if ((mHALSDVEnabled && mUseMultiStreamsForSoC) || mMode == MODE_CONTINUOUS_JPEG_VIDEO) {
             ret = mMainDevice->start(mConfig.num_snapshot_buffers, mInitialSkips);
             if (ret < 0) {
@@ -1674,7 +1676,7 @@ status_t AtomISP::startRecording()
 
     mNumPreviewBuffersQueued = mConfig.num_preview_buffers;
 
-    if (!mHALVideoStabilization) {
+    if (!mHALVideoStabilization && !mHALVideoNormal) {
         mNumRecordingBuffersQueued = mConfig.num_recording_buffers;
     } else {
         mNumRecordingBuffersQueued = 0; // halVS doesn't use rec bufs
@@ -3503,7 +3505,7 @@ status_t AtomISP::setZoom(int zoom)
         return NO_ERROR;
 
     if ((mMode == MODE_VIDEO || mMode == MODE_CONTINUOUS_VIDEO) && mDvs && mCssMajorVersion == 2 && mSensorType == SENSOR_TYPE_RAW &&
-        !mHALVideoStabilization) {
+        !mHALVideoStabilization && !mHALVideoNormal) {
         mDvs->setZoom(zoom);
         if (mMode == MODE_CONTINUOUS_VIDEO) {
             int ret = atomisp_set_zoom(zoom);
@@ -5506,7 +5508,7 @@ status_t AtomISP::allocateMetaDataBuffers(AtomBuffer *buffers, int numBuffers)
                 metaDataBuf->SetValue((uint32_t)*buffers[i].gfxInfo_rec.gfxBufferHandle);
             } else {
                 // TODO: Safe to combine to upper-level if-else ?
-                if (mHALVideoStabilization) {
+                if (mHALVideoStabilization || mHALVideoNormal) {
                     metaDataBuf->SetType(IntelMetadataBufferTypeGrallocSource);
                     metaDataBuf->SetValue((uint32_t)*buffers[i].gfxInfo.gfxBufferHandle);
                 } else if (mExtIspVideoHighSpeed) {

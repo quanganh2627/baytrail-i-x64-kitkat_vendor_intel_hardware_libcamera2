@@ -666,6 +666,7 @@ private:
     int mIspHwMinorVersion;
 
     bool mHALVideoStabilization;
+    bool mHALVideoNormal;
     bool mExtIspVideoHighSpeed;
     bool mNoiseReductionEdgeEnhancement;
 

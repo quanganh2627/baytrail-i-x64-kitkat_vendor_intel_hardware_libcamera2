@@ -2000,6 +2000,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     State state(STATE_STOPPED);
     AtomMode mode(MODE_NONE);
     bool useNV21 = false;
+    bool useHalVsPreview =  false;
 
     if (mState != STATE_STOPPED) {
         LOGE("Must be in STATE_STOPPED to start preview");
@@ -2036,13 +2037,18 @@ status_t ControlThread::startPreviewCore(bool videoMode)
 
         int previewWidth, previewHeight;
         mParameters.getPreviewSize(&previewWidth, &previewHeight);
-        if (PlatformData::supportsContinuousJpegCapture(mCameraId) && fps > DEFAULT_RECORDING_FPS) {
-            // external ISP video high speed
-            mExtIspAction = EXT_ISP_ACTION_VIDEOHS;
-        } else if(PlatformData::useHALVS(mCameraId) && mDvsEnable &&
-                width == previewWidth && height == previewHeight) {
-            // HAL video stabilization for external ISP
-            mExtIspAction = EXT_ISP_ACTION_HALVS;
+        if (PlatformData::supportsContinuousJpegCapture(mCameraId)) {
+            if (fps > DEFAULT_RECORDING_FPS) {
+                // external ISP video high speed
+                mExtIspAction = EXT_ISP_ACTION_VIDEOHS;
+            } else if(PlatformData::useHALVS(mCameraId) && mDvsEnable &&
+                    width == previewWidth && height == previewHeight) {
+                // HAL video stabilization for external ISP
+                mExtIspAction = EXT_ISP_ACTION_HALVS;
+            } else if (!mDvsEnable && width == previewWidth && height == previewHeight) {
+                // external ISP without hal dvs video
+                mExtIspAction = EXT_ISP_ACTION_NORMAL;
+            }
         }
         mISP->setExternalIspActionHint(mExtIspAction);
         mISP->setVideoFrameFormat(width, height);
@@ -2182,13 +2188,14 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         useNV21 = true;
     }
 
-    if (mExtIspAction == EXT_ISP_ACTION_HALVS) {
+    if ((mExtIspAction == EXT_ISP_ACTION_HALVS) || (mExtIspAction == EXT_ISP_ACTION_NORMAL)) {
         // hal video stabilization needs bigger capture buffers of its own, so
         // it can't use the smaller preview buffers for capturing -> sharing off
         useSharedGfxBuffers = false;
+        useHalVsPreview = true;
     }
 
-    mPreviewThread->setPreviewConfig(width, height, cb_fourcc, useSharedGfxBuffers, mExtIspAction == EXT_ISP_ACTION_HALVS, mNumBuffers);
+    mPreviewThread->setPreviewConfig(width, height, cb_fourcc, useSharedGfxBuffers, useHalVsPreview, mNumBuffers);
 
     // Get the preview size from PreviewThread and pass the configuration to AtomISP.
     status = mPreviewThread->fetchPreviewBufferGeometry(&width, &height, &bpl);
@@ -2445,7 +2452,7 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
 
     mISP->detachObserver(mPreviewThread.get(), OBSERVE_PREVIEW_STREAM);
 
-    if (oldState == STATE_JPEG_CAPTURE || mExtIspAction == EXT_ISP_ACTION_HALVS ||
+    if (oldState == STATE_JPEG_CAPTURE || mExtIspAction == EXT_ISP_ACTION_HALVS || mExtIspAction == EXT_ISP_ACTION_NORMAL ||
         ((oldState == STATE_PREVIEW_VIDEO || oldState == STATE_RECORDING) && PlatformData::supportsContinuousJpegCapture(mCameraId))) {
         // External ISP video high speed doesn't need observing this stream
         if (mExtIspAction != EXT_ISP_ACTION_VIDEOHS)
