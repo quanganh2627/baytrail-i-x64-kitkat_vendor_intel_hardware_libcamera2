@@ -60,6 +60,17 @@ PreviewThread::PreviewThread(sp<CallbacksThread> callbacksThread, Callbacks* cal
 {
     LOG1("@%s", __FUNCTION__);
     mPreviewBuffers.setCapacity(MAX_NUMBER_PREVIEW_GFX_BUFFERS);
+
+#ifdef RENDER_BLACK_BUFFER_BEFORE_STOP_PREVIEW_FOR_RAW_SENSORS
+    mAllAreRawSensors = true;
+    for (int index = 0; index < PlatformData::numberOfCameras(); index++) {
+        if (PlatformData::sensorType(index) != SENSOR_TYPE_RAW) {
+            //LOGD("Camera sensor with ID %d is not raw sensor", index);
+            mAllAreRawSensors = false;
+            break;
+        }
+    }
+#endif
 }
 
 PreviewThread::~PreviewThread()
@@ -649,8 +660,10 @@ status_t PreviewThread::handleMessageFlush()
 {
     LOG1("@%s", __FUNCTION__);
 
-#ifdef RENDER_BLACK_BUFFER_BEFORE_STOP_PREVIEW
-    enqueueBlackBuffer();
+#ifdef RENDER_BLACK_BUFFER_BEFORE_STOP_PREVIEW_FOR_RAW_SENSORS
+    if (mAllAreRawSensors) {
+        enqueueBlackBuffer();
+    }
 #endif
 
     status_t status = NO_ERROR;
@@ -658,7 +671,7 @@ status_t PreviewThread::handleMessageFlush()
     return status;
 }
 
-#ifdef RENDER_BLACK_BUFFER_BEFORE_STOP_PREVIEW
+#ifdef RENDER_BLACK_BUFFER_BEFORE_STOP_PREVIEW_FOR_RAW_SENSORS
 void PreviewThread::makeBlackFrame(AtomBuffer *buff) {
     if (buff->fourcc == V4L2_PIX_FMT_NV21 || buff->fourcc == V4L2_PIX_FMT_NV12) {
         int length = buff->bpl * buff->height;
@@ -1140,8 +1153,10 @@ status_t PreviewThread::handlePreview(MessagePreview *msg)
             bufToEnqueue->buffer.capture_timestamp = msg->buff.capture_timestamp;
             bufToEnqueue->buffer.frameCounter = msg->buff.frameCounter;
 
-#ifdef RENDER_BLACK_BUFFER_BEFORE_STOP_PREVIEW
-            memcpy(&mFakeBuf, &msg->buff, sizeof(struct AtomBuffer));
+#ifdef RENDER_BLACK_BUFFER_BEFORE_STOP_PREVIEW_FOR_RAW_SENSORS
+            if (mAllAreRawSensors) {
+                memcpy(&mFakeBuf, &msg->buff, sizeof(struct AtomBuffer));
+            }
 #endif
 
             mapper.unlock(*(bufToEnqueue->buffer.gfxInfo.gfxBufferHandle));
@@ -1310,8 +1325,10 @@ status_t PreviewThread::handleSetPreviewConfig(MessageSetPreviewConfig *msg)
 
     mSharedMode = msg->sharedMode;
 
-#ifdef RENDER_BLACK_BUFFER_BEFORE_STOP_PREVIEW
-    memset(&mFakeBuf, 0x0, sizeof(struct AtomBuffer));
+#ifdef RENDER_BLACK_BUFFER_BEFORE_STOP_PREVIEW_FOR_RAW_SENSORS
+    if (mAllAreRawSensors) {
+        memset(&mFakeBuf, 0x0, sizeof(struct AtomBuffer));
+    }
 #endif
 
     if ((w != 0 && h != 0)) {
