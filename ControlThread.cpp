@@ -5800,10 +5800,6 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         }
     }
 
-    if (status == NO_ERROR) {
-        status = processParamIntelligentMode(oldParams, newParams);
-    }
-
     return status;
 }
 
@@ -7442,13 +7438,14 @@ status_t ControlThread::processParamShutter(const CameraParameters *oldParams,
 }
 
 status_t ControlThread::processParamIntelligentMode(const CameraParameters *oldParams,
-        CameraParameters *newParams)
+        CameraParameters *newParams, bool &restartNeeded)
 {
     LOG1("@%s", __FUNCTION__);
     String8 newVal = paramsReturnNewIfChanged(oldParams, newParams,
                                               IntelCameraParameters::KEY_INTELLIGENT_MODE);
     if (!newVal.isEmpty()) {
         PlatformData::setIntelligentMode(mCameraId, newVal == "true" ? true : false);
+        restartNeeded = true;
     }
 
     return NO_ERROR;
@@ -7900,6 +7897,10 @@ status_t ControlThread::processStaticParameters(CameraParameters *oldParams,
     if (PlatformData::supportsColorBarPreview(mCameraId) && (status == NO_ERROR)) {
         // set color-bar test pattern
         status = processParamColorBar(oldParams, newParams, restartNeeded);
+    }
+
+    if (status == NO_ERROR) {
+        status = processParamIntelligentMode(oldParams, newParams, restartNeeded);
     }
 
     return status;

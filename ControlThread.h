@@ -590,6 +590,8 @@ private:
             CameraParameters *newParams, bool *restartNeeded);
     status_t processParamULL(const CameraParameters *oldParams,
             CameraParameters *newParams, bool *restartNeeded);
+    status_t processParamIntelligentMode(const CameraParameters *oldParams,
+            CameraParameters *newParams, bool &restartNeeded);
     status_t processParamExposureCompensation(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamAutoExposureMode(const CameraParameters *oldParams,
@@ -606,8 +608,6 @@ private:
             CameraParameters *newParams);
     status_t processParamShutter(const CameraParameters *oldParams,
             CameraParameters *newParams);
-    status_t processParamIntelligentMode(const CameraParameters *oldParams,
-        CameraParameters *newParams);
     status_t processParamRawDataFormat(const CameraParameters *oldParams,
             CameraParameters *newParams, bool &previewRestartNeeded);
     // NOTE: processParamPreviewFrameRate is deprecated since Android API level 9
