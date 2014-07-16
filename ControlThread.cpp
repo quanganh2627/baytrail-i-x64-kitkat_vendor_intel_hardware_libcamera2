@@ -4016,12 +4016,6 @@ status_t ControlThread::captureStillPic()
         mISP->setSnapshotFrameFormat(formatDescriptorSs);
         mISP->setPostviewFrameFormat(formatDescriptorPv);
 
-        status = setExternalSnapshotBuffers(fourcc, width, height);
-        if (status != NO_ERROR) {
-            LOGE("Error %d in still capture when set snapshot buffers", status);
-            return status;
-        }
-
         // Initialize bracketing manager before streaming starts
         if (mBurstLength > 1 && mBracketManager->getBracketMode() != BRACKET_NONE) {
             mBracketManager->initBracketing(mBurstLength, mFpsAdaptSkip, IMPL_ONLINE);
@@ -4029,6 +4023,12 @@ status_t ControlThread::captureStillPic()
 
         if ((status = mISP->configure(MODE_CAPTURE)) != NO_ERROR) {
             LOGE("Error configuring the ISP driver for CAPTURE mode");
+            return status;
+        }
+
+        status = setExternalSnapshotBuffers(fourcc, width, height);
+        if (status != NO_ERROR) {
+            LOGE("Error %d in still capture when set snapshot buffers", status);
             return status;
         }
 
@@ -5919,6 +5919,7 @@ status_t ControlThread::allocateSnapshotAndPostviewBuffers(bool videoMode)
         if ( (tmpBuffer.width  == formatDescriptorSs.width) &&
              (tmpBuffer.height == formatDescriptorSs.height) &&
              (tmpBuffer.fourcc == formatDescriptorSs.fourcc) &&
+             (tmpBuffer.bpl == formatDescriptorSs.bpl) &&
              (mAllocatedSnapshotBuffers.size() == numBufRequired)) {
             LOG1("No need to request Snapshot, buffers already available");
             allocSnapshot = false;
@@ -5932,6 +5933,7 @@ status_t ControlThread::allocateSnapshotAndPostviewBuffers(bool videoMode)
         if ((tmpBuffer.width  == formatDescriptorPv.width) &&
             (tmpBuffer.height == formatDescriptorPv.height) &&
             (tmpBuffer.fourcc == formatDescriptorPv.fourcc) &&
+            (tmpBuffer.bpl == formatDescriptorPv.bpl) &&
             (mAllocatedPostviewBuffers.size() == numBufRequired)) {
             LOG1("No need to request Postview, buffers already available");
             allocPostview = false;
