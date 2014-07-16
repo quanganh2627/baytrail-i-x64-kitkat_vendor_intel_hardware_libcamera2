@@ -209,6 +209,7 @@ status_t AtomISP::initDevice()
     } else {
         LOGW("Failed to get isp device path! Failing back to XML config %s", PlatformData::getISPSubDeviceName());
         m3AEventSubdevice = new V4L2Subdevice(PlatformData::getISPSubDeviceName(), V4L2_ISP_SUBDEV);
+        status = NO_ERROR;
     }
 
     mSensorType = PlatformData::sensorType(mCameraId);
