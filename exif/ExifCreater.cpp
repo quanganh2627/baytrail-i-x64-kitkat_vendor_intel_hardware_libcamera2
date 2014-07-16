@@ -1,7 +1,7 @@
 /*
  * Copyright Samsung Electronics Co.,LTD.
  * Copyright (C) 2010 The Android Open Source Project
- * Copyright (c) 2011 Intel Corporation.
+ * Copyright (c) 2011-2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@
  * Date    : 03 June 2010
  * Purpose : This file implements the JPEG encoder APIs as needed by Camera HAL
  */
-#define LOG_TAG "ExifCreater"
+#define LOG_TAG "Camera_ExifCreater"
 
 #include <utils/Log.h>
 #include <sys/mman.h>

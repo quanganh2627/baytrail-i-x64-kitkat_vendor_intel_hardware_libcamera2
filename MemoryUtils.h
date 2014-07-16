@@ -25,6 +25,7 @@ namespace android {
 
     namespace MemoryUtils {
 
+        void flushMemory(char *startAddr, int size);
         status_t allocateGraphicBuffer(AtomBuffer &aBuff, const AtomBuffer &formatDescriptor);
         void freeGraphicBuffer(AtomBuffer &aBuff);
         status_t allocateAtomBuffer(AtomBuffer &aBuff, const AtomBuffer &formatDescriptor, Callbacks *aCallbacks);

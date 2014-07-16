@@ -33,6 +33,7 @@ class ICallbackPicture {
 public:
     ICallbackPicture() {}
     virtual ~ICallbackPicture() {}
+    virtual void atPostviewPresent() = 0;
     virtual void encodingDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf) = 0;
     virtual void pictureDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf) = 0;
 };
@@ -56,7 +57,7 @@ public:
 
 // IFaceDetectionListener overrides
 public:
-    virtual void facesDetected(camera_frame_metadata_t *face_metadata);
+    virtual void facesDetected(extended_frame_metadata_t *face_metadata);
 
 // public methods
 public:
@@ -75,18 +76,22 @@ public:
     void focusMove(bool start);
     void panoramaDisplUpdate(camera_panorama_metadata_t &metadata);
     void panoramaSnapshot(const AtomBuffer &livePreview);
+    void extispFrame(const AtomBuffer &yuvBuf, int offset, int size);
+    void resumePreviewCallbacks();
     status_t requestULLPicture(int id);
     status_t ullTriggered(int id);
     status_t postviewRendered();
     status_t sendError(int id);
     status_t lowBattery();
     status_t rawFrameDone(AtomBuffer* snapshotBuf);
+    status_t smartStabilizationFrameDone(const AtomBuffer &yuvbuf);
     status_t postviewFrameDone(AtomBuffer* postviewBuf);
     status_t accManagerPointer(int isp_ptr, int idx);
     status_t accManagerFinished();
     status_t accManagerPreviewBuffer(camera_memory_t *buffer);
     status_t accManagerArgumentBuffer(camera_memory_t *buffer);
     status_t accManagerMetadataBuffer(camera_memory_t *buffer);
+    status_t sendFrameId(int id);
 
 // private types
 private:
@@ -122,6 +127,7 @@ private:
         MESSAGE_ID_LOW_BATTERY,
 
         MESSAGE_ID_RAW_FRAME_DONE,
+        MESSAGE_ID_SS_FRAME_DONE,
         MESSAGE_ID_POSTVIEW_FRAME_DONE,
 
         // AccManager Callbacks
@@ -130,6 +136,13 @@ private:
         MESSAGE_ID_ACC_PREVIEW_BUFFER,
         MESSAGE_ID_ACC_ARGUMENT_BUFFER,
         MESSAGE_ID_ACC_METADATA_BUFFER,
+
+        // ExtIsp
+        MESSAGE_ID_EXTISP_FRAME,
+        MESSAGE_ID_RESUME_PREVIEW_CALLBACKS,
+
+        // Send frame Id
+        MESSAGE_ID_SEND_FRAME_ID,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -149,13 +162,19 @@ private:
         AtomBuffer frame;
     };
 
+    struct MessageExtIspFrame {
+        AtomBuffer frame;
+        int offset;
+        int size;
+    };
+
     struct MessageVideo {
         AtomBuffer  frame;
         nsecs_t timestamp;
     };
 
     struct MessageFaces {
-        camera_frame_metadata_t meta_data;
+        extended_frame_metadata_t meta_data;
     };
 
     struct MessageAutoFocusActive {
@@ -204,6 +223,10 @@ private:
         int idx;
     };
 
+    struct MessageFrameId{
+        int id;
+    };
+
     // union of all message data
     union MessageData {
 
@@ -212,6 +235,9 @@ private:
 
         //MESSAGE_ID_RAW_FRAME_DONE
         MessageFrame rawFrame;
+
+        //MESSAGE_ID_SS_FRAME_DONE
+        MessageFrame smartStabilizationFrame;
 
         //MESSAGE_ID_POSTVIEW_FRAME_DONE
         MessageFrame postviewFrame;
@@ -253,10 +279,15 @@ private:
         // MESSAGE_ID_ERROR_CALLBACK
         MessageError error;
 
+        // MESSAGE_ID_EXTISP_FRAME
+        MessageExtIspFrame extIspFrame;
+
         // MESSAGE_ID_ACC_NOTIFY
         // MESSAGE_ID_ACC_BUFFER
         MessageAccManager accManager;
 
+        // MESSAGE_ID_SEND_FRAME_ID
+        MessageFrameId frameId;
     };
 
     // message id and message data
@@ -290,12 +321,16 @@ private:
     status_t handleMessageSendError(MessageError *msg);
     status_t handleMessageLowBattery();
     status_t handleMessageRawFrameDone(MessageFrame *msg);
+    status_t handleMessageSSFrameDone(MessageFrame *msg);
     status_t handleMessagePostviewFrameDone(MessageFrame *msg);
+    status_t handleMessageExtIspFrame(MessageExtIspFrame *msg);
     status_t handleMessageAccManagerPointer(MessageAccManager *msg);
     status_t handleMessageAccManagerFinished();
     status_t handleMessageAccManagerPreviewBuffer(MessageAccManager *msg);
     status_t handleMessageAccManagerArgumentBuffer(MessageAccManager *msg);
     status_t handleMessageAccManagerMetadataBuffer(MessageAccManager *msg);
+    status_t handleMessageSendFrameId(MessageFrameId *msg);
+    status_t handleMessageResumePreviewCallbacks();
     // main message function
     status_t waitForAndExecuteMessage();
 
@@ -318,7 +353,9 @@ private:
     unsigned mULLid;
     bool mFocusActive;
     bool mWaitRendering;
+    Mutex mFaceReportingLock;
     int mLastReportedNumberOfFaces;
+    bool mLastReportedNeedLLS;
     int mFaceCbCount;
     int mFaceCbFreqDivider;
     Message mPostponedJpegReady;
@@ -330,8 +367,9 @@ private:
      * JPEG, RAW and POSTIVEW callbacks are sent to the camera client.
      */
     Vector<MessageCompressed> mBuffers;
-    camera_frame_metadata_t mFaceMetadata;
+    extended_frame_metadata_t mFaceMetadata;
     int mCameraId;
+    bool mPausePreviewCallbacks;
 
 // public data
 public:

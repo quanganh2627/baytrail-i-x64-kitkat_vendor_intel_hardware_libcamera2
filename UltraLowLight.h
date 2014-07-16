@@ -22,21 +22,25 @@
 #include "PictureThread.h" // For Image metadata declaration
 #include "AtomCommon.h"
 #include "ia_cp_types.h"
+#include "WarperService.h"
 
 namespace android {
 
 #undef STUB_BODY
 #undef STUB_BODY_STAT
 #undef STUB_BODY_BOOL
+#undef STUB_BODY_PTR
 
 #ifdef ENABLE_INTEL_EXTRAS
 #define STUB_BODY ;
 #define STUB_BODY_STAT ;
 #define STUB_BODY_BOOL ;
+#define STUB_BODY_PTR ;
 #else
 #define STUB_BODY {};
 #define STUB_BODY_STAT {return NO_ERROR;};
 #define STUB_BODY_BOOL {return false;};
+#define STUB_BODY_PTR {return NULL;};
 #endif
 
 /**
@@ -93,7 +97,7 @@ public:
     };
 
 public:
-    UltraLowLight(Callbacks *callbacks) STUB_BODY
+    UltraLowLight(Callbacks *callbacks, sp<WarperService> warperService) STUB_BODY
     virtual ~UltraLowLight() STUB_BODY
 
     void setMode(ULLMode m) STUB_BODY
@@ -118,7 +122,15 @@ public:
     status_t process() STUB_BODY_STAT
     status_t cancelProcess() STUB_BODY_STAT
 
-    bool updateTrigger(bool trigger) STUB_BODY_BOOL;
+    bool updateTrigger(bool trigger) STUB_BODY_BOOL
+
+    void setZoomFactor(unsigned int zoom) STUB_BODY
+
+    void allocateCopyBuffers(AtomBuffer snapshotDescr, AtomBuffer postviewDesc) STUB_BODY
+
+    AtomBuffer* getSnapshotCopyZoom(AtomBuffer *snapshotBuff) STUB_BODY_PTR
+
+    AtomBuffer* getPostviewCopyZoom(AtomBuffer *postviewBuff) STUB_BODY_PTR
 
 // prevent copy constructor and assignment operator
 private:
@@ -181,6 +193,8 @@ private:
     void setState(enum State aState);
     enum State getState();
 
+    status_t gpuImageRegistration(AtomBuffer *target, AtomBuffer *source, int *imregFallback);
+
 private:
     struct MorphoULL;       /*!> Forward declaration of the opaque struct for Morpho's algo configuration */
     MorphoULL        *mMorphoCtrl;
@@ -196,7 +210,7 @@ private:
     MorphoULLConfig mPresets[ULL_PRESET_MAX];
 
     Vector<AtomBuffer> mInputBuffers;      /*!< snapshots */
-    Vector<AtomBuffer> mPostviewBuffs;     /*!< postview buffers. NOTE: Not used for processing atm */
+    Vector<AtomBuffer> mPostviewBuffs;     /*!< postview buffers */
 
     PictureThread::MetaData mSnapMetadata;  /*!> metadata of the first snapshot taken */
 
@@ -207,6 +221,13 @@ private:
     Mutex          mStateMutex; /*!> Protects the trigger and state variable that are queried by different threads*/
     bool           mTrigger;  /*!> Only valid if in auto mode. It signal that ULL should be used. */
     bool           mUseIntelULL; /*!> Use Intel ULL algorithm instead of Morpho. */
+
+    sp<WarperService> mWarper; /*!> Service used to perform frame warping on GPU */
+
+    unsigned int mZoomFactor; /*!> Zoom factor to be sent to ull_compose. */
+    AtomBuffer   mSnapshotCopy;
+    AtomBuffer   mPostviewCopy;
+    bool         mCopyBuffsAllocated;
 };
 }  //namespace android
 #endif /* ANDROID_LIBCAMERA_ULTRALOWLIGHT_H_ */

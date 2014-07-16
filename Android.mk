@@ -12,6 +12,10 @@ ifeq ($(BOARD_GRAPHIC_IS_GEN),true)
 LOCAL_CFLAGS += -DGRAPHIC_IS_GEN
 endif
 
+ifeq ($(USE_CAMERA_IO_BREAKDOWN),true)
+LOCAL_CFLAGS += -DUSE_CAMERA_IO_BREAKDOWN
+endif
+
 # Intel camera extras (HDR, face detection, etc.)
 ifeq ($(USE_INTEL_CAMERA_EXTRAS),true)
 LOCAL_CFLAGS += -DENABLE_INTEL_EXTRAS
@@ -23,11 +27,13 @@ LOCAL_SRC_FILES := \
 	VideoThread.cpp \
 	AAAThread.cpp \
 	AtomISP.cpp \
+	SensorEmbeddedMetaData.cpp \
 	DebugFrameRate.cpp \
 	PerformanceTraces.cpp \
 	Callbacks.cpp \
 	AtomAIQ.cpp \
 	AtomSoc3A.cpp \
+        AtomExtIsp3A.cpp \
 	AtomHAL.cpp \
 	CameraConf.cpp \
 	ColorConverter.cpp \
@@ -41,6 +47,7 @@ LOCAL_SRC_FILES := \
 	CameraProfiles.cpp \
 	IntelParameters.cpp \
 	exif/ExifCreater.cpp \
+	HALVideoStabilization.cpp \
 	PostProcThread.cpp \
 	PanoramaThread.cpp \
 	AtomCommon.cpp \
@@ -49,15 +56,20 @@ LOCAL_SRC_FILES := \
 	CameraDump.cpp \
 	CameraAreas.cpp \
 	BracketManager.cpp \
+	OnlineBracket.cpp \
+	OfflineBracket.cpp \
 	GPUScaler.cpp \
+	GPUWarper.cpp \
 	AtomAcc.cpp \
 	ThermalThrottleThread.cpp \
 	AtomIspObserverManager.cpp \
 	SensorThread.cpp \
 	ScalerService.cpp \
+	WarperService.cpp \
 	PostCaptureThread.cpp \
 	AccManagerThread.cpp \
 	SensorHW.cpp \
+        SensorHWExtIsp.cpp \
 	ValidateParameters.cpp \
 	v4l2dev/v4l2devicebase.cpp \
 	v4l2dev/v4l2videonode.cpp \
@@ -136,8 +148,8 @@ LOCAL_SHARED_LIBRARIES := \
 	libia_isp_1_5 \
 	libia_isp_2_2 \
 	libia_cmc_parser \
-	libia_aiq_cp \
 	libia_log \
+	libia_emd_decoder \
 	libui \
 	libia_mkn \
 	libia_dvs_2 \
@@ -151,12 +163,12 @@ LOCAL_SHARED_LIBRARIES := \
 	libexpat \
 	libia_panorama \
 	libhardware \
-	libgnustl_shared \
 	libcilkrts \
-	libintlc \
-	libimf \
-	libsvml \
-	libia_face
+	libia_face \
+	libiacp \
+	libia_exc
+
+LOCAL_SHARED_LIBRARIES += libintlc libsvml libimf libirng
 
 ifeq ($(USE_INTEL_METABUFFER),true)
 LOCAL_SHARED_LIBRARIES += \
@@ -186,16 +198,6 @@ LOCAL_STATIC_LIBRARIES := \
 	libia_coordinate \
 	libmorpho_image_stabilizer3
 
-LOCAL_STATIC_LIBRARIES += \
-	libiacp \
-	libippi \
-	libipps \
-	libippcv \
-	libippcc \
-	libippm \
-	libippvm \
-	libippcore
-
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_CFLAGS += -DUSE_INTEL_JPEG
 endif
@@ -204,6 +206,9 @@ endif
 ifneq ($(filter userdebug eng tests, $(TARGET_BUILD_VARIANT)),)
 LOCAL_CFLAGS += -DLIBCAMERA_RD_FEATURES -Wunused-variable -Werror
 endif
+
+# This micro is used for file injection. Set it when file injection is needed.
+#LOCAL_CFLAGS += -DENABLE_FILE_INJECTION
 
 # The camera.<TARGET_DEVICE>.so will be built for each platform
 # (which should be unique to the TARGET_DEVICE environment)
@@ -219,4 +224,3 @@ include $(BUILD_SHARED_LIBRARY)
 
 endif  #ifeq ($(USE_CAMERA_HAL2),true)
 endif #ifeq ($(USE_CAMERA_STUB),false)
-

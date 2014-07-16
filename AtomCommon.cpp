@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012 The Android Open Source Project
- * Copyright (c) 2012 Intel Corporation
+ * Copyright (c) 2012-2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -169,6 +169,11 @@ const struct AtomFormatBridge sV4L2PixelFormatBridge[] = {
         .depth = 16,
         .planar = false,
         .bayer = true
+    }, {
+        .pixelformat = V4L2_PIX_FMT_JPEG,
+        .depth = 8,
+        .planar = false,
+        .bayer = false
     },
 };
 
@@ -216,6 +221,7 @@ AtomBuffer AtomBufferFactory::createAtomBuffer(AtomBufferType type,
     buf.buff = buff;
     buf.metadata_buff = metadata_buff;
     buf.id = id;
+    buf.expId = EXP_ID_INVALID;
     buf.frameCounter = frameCounter;
     buf.ispPrivate = ispPrivate;
     buf.status = FRAME_STATUS_NA;
@@ -237,6 +243,9 @@ AtomBuffer AtomBufferFactory::createAtomBuffer(AtomBufferType type,
     buf.gfxInfo_rec.gfxBufferHandle = NULL;
     buf.gfxInfo_rec.scalerId = -1;
     buf.gfxInfo_rec.locked = false;
+    buf.auxBuf = NULL;
+    buf.returnAfterCB = false;
+    buf.sensorFrameId = -1;
 
     return buf;
 }
@@ -282,6 +291,12 @@ bool isBayerFormat(int fourcc)
 int SGXandDisplayBpl(int fourcc, int width)
 {
     /**
+     * continuous jpeg capture isp has always 2048 virtual bpl
+     */
+    if (fourcc ==  V4L2_PIX_FMT_CONTINUOUS_JPEG)
+        return FMT_CONTINUOUS_JPEG_BPL;
+
+    /**
      * Raw format has special aligning requirements
      */
     if (isBayerFormat(fourcc))
@@ -289,19 +304,43 @@ int SGXandDisplayBpl(int fourcc, int width)
 
     // Alignment requirement of the display controller in CTP platform.
     // Bytes per line needs to be aligned to 64 with a minimum of 512.
-    else if ((strcmp(PlatformData::getBoardName(), "victoriabay") == 0) ||
+    else  if ((strcmp(PlatformData::getBoardName(), "victoriabay") == 0) ||
               (strcmp(PlatformData::getBoardName(), "redhookbay") == 0)) {
         if (width <= 512)
             width = 512;
         else
             width = ALIGN64(width);
     }
-    // Bytes per line needs to be aligned to 32 in CSS firmware.
-    else if (width % 32 != 0) {
-        width = ALIGN32(width);
-    }
 
     return pixelsToBytes(fourcc, width);
+}
+
+/**
+ * Converts AF windows based on provided conversion information
+ * \param focusWindows [in,out] windows to convert
+ * \param winCount number of windows in focusWindows
+ * \param convWindow [in] User-defined conversion window that will be used for conversion scaling (optional)
+ */
+void convertAfWindows(CameraWindow* focusWindows, size_t winCount, const AAAWindowInfo *convWindow)
+{
+    LOG1("@%s", __FUNCTION__);
+    if (winCount > 0) {
+
+        for (size_t i = 0; i < winCount; i++) {
+            // Camera KEY_FOCUS_AREAS Coordinates range from -1000 to 1000. Let's convert..
+            if (convWindow == NULL) {
+                convertFromAndroidToIaCoordinates(focusWindows[i], focusWindows[i]);
+            } else {
+                convertFromAndroidCoordinates(focusWindows[i], focusWindows[i], *convWindow);
+            }
+            LOG1("Converted AF window %d: (%d,%d,%d,%d)",
+                    i,
+                    focusWindows[i].x_left,
+                    focusWindows[i].y_top,
+                    focusWindows[i].x_right,
+                    focusWindows[i].y_bottom);
+        }
+    }
 }
 
 void convertFromAndroidToIaCoordinates(const CameraWindow &srcWindow, CameraWindow &toWindow)
@@ -338,13 +377,13 @@ void mirrorBuffer(AtomBuffer *buffer, int currentOrientation, int cameraOrientat
 
     int rotation = (cameraOrientation - currentOrientation + 360) % 360;
     if (rotation == 90 || rotation == 270) {
-        flipBufferH(buffer);
-    } else {
         flipBufferV(buffer);
+    } else {
+        flipBufferH(buffer);
     }
 }
 
-void flipBufferV(AtomBuffer *buffer) {
+void flipBufferH(AtomBuffer *buffer) {
     LOG1("@%s", __FUNCTION__);
     int width, height, bpl;
     unsigned char *data = NULL;
@@ -390,44 +429,40 @@ void flipBufferV(AtomBuffer *buffer) {
     }
 }
 
-void flipBufferH(AtomBuffer *buffer) {
+void flipBufferV(AtomBuffer *buffer) {
     LOG1("@%s", __FUNCTION__);
-    int width, height, bpl;
     unsigned char *data = NULL;
+    int width = buffer->width;
+    int height = buffer->height;
+    int bpl = buffer->bpl;
+    unsigned char *lineX, *lineY;
+    unsigned char lineM[bpl];
 
-    void *ptr = NULL;
     if (buffer->shared)
-        ptr = (void *) *((char **)buffer->dataPtr);
+        data = (unsigned char *) *((char **)buffer->dataPtr);
     else
-        ptr = buffer->dataPtr;
-
-    data = (unsigned char *) ptr;
-    width = buffer->width;
-    height = buffer->height;
-    bpl = buffer->bpl;
-    int h = height / 2;
-    unsigned char temp = 0;
+        data = (unsigned char *)buffer->dataPtr;
 
     // Y
-    for (int j=0; j < width; j++) {
-        for (int i=0; i < h; i++) {
-            temp = data[i*bpl + j];
-            data[i*bpl + j] = data[(height-1-i)*bpl + j];
-            data[(height-1-i)*bpl + j] = temp;
-        }
+    int loop = height / 2;
+    for (int j = 0; j < loop; j++) {
+        lineX = data + j * bpl;
+        lineY = data + (height-1-j) * bpl;
+        memcpy (lineM, lineX, width);
+        memcpy (lineX, lineY, width);
+        memcpy (lineY, lineM, width);
     }
 
     // U+V
-    data = data + bpl * height;
-    h = height / 4;
-    int heightUV = height / 2;
-
-    for (int j=0; j < width; j++) {
-        for (int i=0; i < h; i++) {
-            temp = data[i*bpl + j];
-            data[i*bpl + j] = data[(heightUV-1-i)*bpl + j];
-            data[(heightUV-1-i)*bpl + j] = temp;
-        }
+    data   = data + bpl * height;
+    loop   = height / 4;
+    height = height / 2;
+    for (int j = 0; j < loop; j++) {
+        lineX = data + j * bpl;
+        lineY = data + (height-1-j) * bpl;
+        memcpy (lineM, lineX, width);
+        memcpy (lineX, lineY, width);
+        memcpy (lineY, lineM, width);
     }
 }
 
@@ -438,11 +473,15 @@ int getGFXHALPixelFormatFromV4L2Format(int previewFormat)
 
     switch(previewFormat) {
     case V4L2_PIX_FMT_NV12:
-         halPixelFormat = HAL_PIXEL_FORMAT_NV12;
+        halPixelFormat = HAL_PIXEL_FORMAT_NV12;
+        break;
+    case V4L2_PIX_FMT_NV21:
+        halPixelFormat = CAM_HAL_PIXEL_FORMAT_NV21;
         break;
     case V4L2_PIX_FMT_YVU420:
         halPixelFormat = HAL_PIXEL_FORMAT_YV12;
         break;
+    case V4L2_PIX_FMT_SGRBG8:
     case V4L2_PIX_FMT_SGBRG10:
     case V4L2_PIX_FMT_SBGGR10:
     case V4L2_PIX_FMT_SRGGB10:
@@ -547,6 +586,7 @@ void trace_callstack () {
  */
 void inject(AtomBuffer *b, const char* name)
 {
+#ifdef ENABLE_FILE_INJECTION
     int bytes = 0;
 
     LOGE("Injecting yuv file %s resolution (%dx%d) format %s",name,b->width, b->height,v4l2Fmt2Str(b->fourcc));
@@ -564,6 +604,7 @@ void inject(AtomBuffer *b, const char* name)
     }
 
     fclose(fd);
+#endif
 }
 
 #endif //LIBCAMERA_RD_FEATURES

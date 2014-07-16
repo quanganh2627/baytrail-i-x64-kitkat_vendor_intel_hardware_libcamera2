@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2011 The Android Open Source Project
+ * Copyright (c) 2012-2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,6 +32,7 @@
 #include <camera/CameraParameters.h>
 
 #include "LogHelper.h"
+#include "JpegCapture.h"
 
 #define MAX_CAMERAS 2
 
@@ -43,6 +45,14 @@
 #define BURST_SPEED_MEDIUM_SKIP_NUM 1  // 1/2 full speed
 #define BURST_SPEED_LOW_SKIP_NUM 3  // 1/4 full speed
 #define DEFAULT_RECORDING_FPS 30
+#define EXP_ID_INVALID 0
+#define EXP_ID_MIN 1
+#define EXP_ID_MAX 250
+// get the next or next n exposure id value after the current
+#define NEXT_EID(x) ((((x)+1) > EXP_ID_MAX) ? EXP_ID_MIN : ((x)+1))
+#define NEXTN_EID(x,n) ((((x)+(n)) > EXP_ID_MAX) ? (((x)+(n)) % EXP_ID_MAX) : ((x)+(n)))
+
+#define INTEL_FILE_INJECT_CAMERA_ID 2
 
 // macro STRINGIFY to change a number in a string.
 #define STRINGIFY(s) STRINGIFY_(s)
@@ -62,9 +72,9 @@
 #define ALIGN64(x) (((x) + 63) & ~63)
 #define ALIGN128(x) (((x) + 127) & ~127)
 #define PAGE_ALIGN(x) ((x + 0xfff) & 0xfffff000)
-// macro MAX_MSG_RETRIES: max number of retries of handling messages that can be delayed
-//                        like for example ControlThread::MESSAGE_ID_POST_CAPTURE_PROCESSING_DONE
-#define MAX_MSG_RETRIES 3
+#define ALIGN_WIDTH(x, a) (((x) + ((a)-1)) & ~((a)-1))
+
+#define INTEL_FILE_INJECT_CAMERA_ID 2
 
 /** Convert timeval struct to value in microseconds
  *
@@ -75,6 +85,9 @@
 
 #define ATOMISP_EVENT_RECOVERY_WAIT 33000 // Time to usleep between retry's after erros from v4l2_event receiving.
 #define FRAME_SYNC_POLL_TIMEOUT 500
+
+// workaround to remove dependency to graphics
+#define CAM_HAL_PIXEL_FORMAT_NV21 0x3132564E
 
 namespace android {
 struct AtomBuffer;
@@ -99,7 +112,12 @@ enum AtomMode {
     MODE_PREVIEW = 0,
     MODE_CAPTURE = 1,
     MODE_VIDEO = 2,
-    MODE_CONTINUOUS_CAPTURE = 3
+    MODE_CONTINUOUS_CAPTURE = 3,
+    MODE_CONTINUOUS_VIDEO = 4,
+    MODE_CONTINUOUS_JPEG = 5,
+    MODE_CONTINUOUS_JPEG_VIDEO = 6,
+    // Keep this last!
+    MODE_MAX = 7
 };
 
 /*!\enum FrameBufferStatus
@@ -115,6 +133,7 @@ enum FrameBufferStatus {
     FRAME_STATUS_FLASH_PARTIAL = ATOMISP_FRAME_STATUS_FLASH_PARTIAL,
     FRAME_STATUS_FLASH_FAILED = ATOMISP_FRAME_STATUS_FLASH_FAILED,
     FRAME_STATUS_SKIPPED,
+    FRAME_STATUS_MASK = 0x0000ffff, /*!< Use low 16bit of v4l2_buffer.reserved for status*/
 };
 
 /*!\enum AtomBufferType
@@ -159,6 +178,7 @@ struct AtomBuffer {
     camera_memory_t *buff;  /*!< Pointer to the memory allocated via the client provided callback */
     camera_memory_t *metadata_buff; /*!< Pointer to the memory allocated by callback, used to store metadata info for recording */
     int id;                 /*!< id for debugging data flow path */
+    unsigned int expId;     /*!< id for tracking exposure id of the frame, from v4l2 buffer high 16bit of reserved*/
     int frameCounter;       /*!< Monotonic frame counter set by AtomISP class. Used in performance traces. */
     int frameSequenceNbr;   /*!< V4L2 Frame sequence number set by kernel. Used in bracketing to detect frame drops in the driver.  */
     int ispPrivate;         /*!< Private to the AtomISP class.
@@ -177,6 +197,9 @@ struct AtomBuffer {
     void *dataPtr;                      /*!< pointer to the actual data mapped from the buffer provider */
     GFXBufferInfo gfxInfo;              /*!< graphics buffer information */
     GFXBufferInfo gfxInfo_rec;          /*!< for video recording only, to store codec specific data for video encoding*/
+    AtomBuffer *auxBuf;                 /*!< auxiliary buffer (metadata/jpeg), used in jpeg capture mode */
+    bool returnAfterCB;                 /*!< flag indicating whether after the callback to camera service the buffer should be returned */
+    int sensorFrameId;          /*!< Sensor frame id gotten from sensor meta data and set by AtomISP class. */
 };
 
 struct AAAWindowInfo {
@@ -219,6 +242,12 @@ enum AAAFlags {
     AAA_FLAG_ALL = AAA_FLAG_AE | AAA_FLAG_AF | AAA_FLAG_AWB
 };
 
+enum ExtIspActionHint {
+    EXT_ISP_ACTION_NA = 0x0,
+    EXT_ISP_ACTION_HALVS = 0x1,
+    EXT_ISP_ACTION_VIDEOHS = 0x2
+};
+
 struct CameraWindow {
     int x_left;
     int x_right;
@@ -239,49 +268,74 @@ struct AtomFormatBridge {
     bool bayer;
 };
 
+// Tuple for sensor name and port.
+struct SensorNameAndPort {
+    String8 name;
+    enum {
+        PRIMARY = 0,
+        SECONDARY,
+        TERTIARY,
+        UNKNOWN_PORT,
+    } ispPort;
+};
+
 extern const struct AtomFormatBridge sV4l2PixelFormatBridge[];
 const struct AtomFormatBridge* getAtomFormatBridge(unsigned int fourcc);
 
-static int parseResolutionPair(const char *p, int &width, int &height,
-           char **endptr)
+// Parse string like "640x480" or "10000,20000"
+// copy from android CameraParameters.cpp
+static int parsePair(const char *str, int *first, int *second, char delim,
+                      char **endptr = NULL)
 {
-    LOG1("@%s", __FUNCTION__);
-    char *xptr = NULL;
-    width = (int) strtol(p, &xptr, 10);
-    if (xptr == NULL || *xptr != 'x') // strtol stores location of x into xptr
-        return BAD_VALUE;
-
-    height = (int) strtol(xptr + 1, &xptr, 10);
-
-    if (endptr) {
-        *endptr = xptr;
+    // Find the first integer.
+    char *end;
+    int w = (int)strtol(str, &end, 10);
+    // If a delimiter does not immediately follow, give up.
+    if (*end != delim) {
+        LOGE("Cannot find delimiter (%c) in str=%s", delim, str);
+        return -1;
     }
 
-    return OK;
+    // Find the second integer, immediately after the delimiter.
+    int h = (int)strtol(end+1, &end, 10);
+
+    *first = w;
+    *second = h;
+
+    if (endptr) {
+        *endptr = end;
+    }
+
+    return 0;
 }
 
 /**
- * parse the pair string, like "720x480", the "x" is passed by parameter "delim"
- *
- * @param str the source pair string
- * @param first the first element of the pair, the memory need to be released by caller
- * @param second the second element of the pair, the memory need to be released by caller
- * @param delim delimiter of the pair
+ * Parse string like "1024x768,640x480"
+ * Output integer vector list
  */
-static int parsePair(const char *str, char **first, char **second, const char *delim)
+static void parseSizesList(const char *sizesStr, Vector<Size> &sizes)
 {
-    if(str == NULL)
-        return -1;
-    char* index = strstr(str, delim);
-    if(index == NULL)
-        return -1;
-    *first = (char*)malloc(strlen(str) - strlen(index));
-    *second = (char*)malloc(strlen(index) -1);
-    if(*first == NULL || *second == NULL)
-        return -1;
-    strncpy(*first, str, strlen(str) - strlen(index));
-    strncpy(*second, str + strlen(str) - strlen(index) + 1, strlen(index) - 1);
-    return 0;
+    if (sizesStr == 0) {
+        return;
+    }
+
+    char *sizeStartPtr = (char *)sizesStr;
+
+    while (true) {
+        int width, height;
+        int success = parsePair(sizeStartPtr, &width, &height, 'x',
+                                 &sizeStartPtr);
+        if (success == -1 || (*sizeStartPtr != ',' && *sizeStartPtr != '\0')) {
+            LOGE("Picture sizes string \"%s\" contains invalid character.", sizesStr);
+            return;
+        }
+        sizes.push(Size(width, height));
+
+        if (*sizeStartPtr == '\0') {
+            return;
+        }
+        sizeStartPtr++;
+    }
 }
 
 /**
@@ -325,6 +379,9 @@ static int pixelsToBytes(int fourcc, int pixels)
  */
 static int frameSize(int fourcc, int width, int height)
 {
+    if (fourcc == V4L2_PIX_FMT_JPEG)
+        return HDR_FRAME_SIZE;
+
     const AtomFormatBridge* afb = getAtomFormatBridge(fourcc);
     return height * ALIGN8(afb->depth * width) / 8;
 }
@@ -411,6 +468,8 @@ inline static void convertFromAndroidCoordinates(const CameraWindow &srcWindow,
 }
 
 int getGFXHALPixelFormatFromV4L2Format(int previewFourcc);
+
+void convertAfWindows(CameraWindow* focusWindows, size_t winCount, const AAAWindowInfo *convWindow = NULL);
 
 /**
  * Converts window from Android coordinate system [-1000, 1000] to user defined width

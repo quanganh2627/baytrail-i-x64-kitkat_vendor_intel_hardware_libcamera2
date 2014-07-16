@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012 Intel Corporation.
+ * Copyright (c) 2012-2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,25 +32,25 @@ namespace android {
 static const int spIdLength = 4;
 
 PlatformBase* PlatformData::mInstance = 0;
-int PlatformData::mActiveCameraId = -1;
 
-AiqConf PlatformData::AiqConfig;
-HalConf PlatformData::HalConfig;
+AiqConf PlatformData::AiqConfig[MAX_CAMERAS];
+HalConf PlatformData::HalConfig[MAX_CAMERAS];
 
 // Max width and height string length, like "1920x1080".
 const int MAX_WIDTH_HEIGHT_STRING_LENGTH = 25;
 
-status_t PlatformBase::getSensorNames(Vector<String8>& names)
+status_t PlatformBase::getSensorInfo(Vector<SensorNameAndPort>& sensorInfo)
 {
     LOG2("@%s", __FUNCTION__);
 
     status_t ret = NO_ERROR;
     int i = 0;
-    String8 sensorName;
+    SensorNameAndPort sensor;
     ssize_t idx;
     struct v4l2_input input;
+    atomisp_camera_port ispPort;
 
-    V4L2VideoNode *mainDevice = new V4L2VideoNode("/dev/video0", 0);
+    sp<V4L2VideoNode> mainDevice = new V4L2VideoNode("/dev/video0", 0);
     if (mainDevice->open() != NO_ERROR) {
         LOGE("@%s, Failed to open first device!", __FUNCTION__);
         return NO_INIT;
@@ -62,14 +62,32 @@ status_t PlatformBase::getSensorNames(Vector<String8>& names)
         input.index = i;
 
         if (NO_ERROR == (ret = mainDevice->enumerateInputs(&input))) {
-            sensorName.clear();
             idx = String8((const char*)input.name).find(" ");
+            sensor.name.clear();
             if (idx == -1)
-                sensorName.append((const char*)input.name);
+                sensor.name.append((const char*)input.name);
             else
-                sensorName.append((const char*)input.name, idx);
-            names.push(sensorName);
-            LOG1("@%s: %s at index %d", __FUNCTION__, sensorName.string(), i);
+                sensor.name.append((const char*)input.name, idx);
+
+            // Need to save ISP port. This is used for matching CameraId.
+            ispPort = (atomisp_camera_port)input.reserved[1];
+            switch (ispPort) {
+            case ATOMISP_CAMERA_PORT_PRIMARY:
+                sensor.ispPort = SensorNameAndPort::PRIMARY;
+                break;
+            case ATOMISP_CAMERA_PORT_SECONDARY:
+                sensor.ispPort = SensorNameAndPort::SECONDARY;
+                break;
+            case ATOMISP_CAMERA_PORT_TERTIARY:
+                sensor.ispPort = SensorNameAndPort::TERTIARY;
+                break;
+            default:
+                sensor.ispPort = SensorNameAndPort::UNKNOWN_PORT;
+                break;
+            }
+
+            sensorInfo.push(sensor);
+            LOG1("@%s: %s at index %d (port %d)", __FUNCTION__, sensor.name.string(), i, sensor.ispPort);
             i++;
         }
     }
@@ -88,11 +106,11 @@ PlatformBase* PlatformData::getInstance(void)
 {
     if (mInstance == 0) {
         // Get the sensor names from driver
-        Vector<String8> sensorNames;
-        if (NO_ERROR != PlatformBase::getSensorNames(sensorNames))
+        Vector<SensorNameAndPort> sensorInfo;
+        if (NO_ERROR != PlatformBase::getSensorInfo(sensorInfo))
             mInstance = new CameraProfiles();
         else
-            mInstance = new CameraProfiles(sensorNames);
+            mInstance = new CameraProfiles(sensorInfo);
 
         // add an extra camera which is copied from the first one as a fake camera
         // for file injection
@@ -101,6 +119,24 @@ PlatformBase* PlatformData::getInstance(void)
     }
 
     return mInstance;
+}
+
+void PlatformData::setIntelligentMode(int cameraId, bool val)
+{
+    getInstance()->mCameras.editItemAt(cameraId).mIntelligentMode = val;
+}
+
+bool PlatformData::getIntelligentMode(int cameraId)
+{
+    return getInstance()->mCameras[cameraId].mIntelligentMode;
+}
+
+bool PlatformData::isDisable3A(int cameraId)
+{
+    // the intelligent mode needs 3A to be disabled
+    if (getInstance()->mCameras[cameraId].mIntelligentMode)
+        return true;
+    return getInstance()->mCameras[cameraId].disable3A;
 }
 
 status_t PlatformData::readSpId(String8& spIdName, int& spIdValue)
@@ -194,24 +230,6 @@ int PlatformData::sensorFlipping(int cameraId)
     return getInstance()->mCameras[getActiveCamIdx(cameraId)].flipping;
 }
 
-void PlatformData::setActiveCameraId(int cameraId)
-{
-    // Multiple active cameras not supported
-    if ((mActiveCameraId >= 0) || (cameraId < 0)) {
-        LOGE("%s: Activating multiple cameras (was %d, now trying %d)", __FUNCTION__, mActiveCameraId, cameraId);
-    }
-    mActiveCameraId = cameraId;
-}
-
-void PlatformData::freeActiveCameraId(int cameraId)
-{
-    // Multiple active cameras not supported
-    if ((mActiveCameraId != cameraId) || (cameraId < 0)) {
-        LOGE("%s: Freeing a wrong camera (was %d, now trying %d)", __FUNCTION__, mActiveCameraId, cameraId);
-    }
-    mActiveCameraId = -1;
-}
-
 int PlatformData::numberOfCameras(void)
 {
     return getInstance()->mCameras.size();
@@ -220,7 +238,7 @@ int PlatformData::numberOfCameras(void)
 const char* PlatformData::preferredPreviewSizeForVideo(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::PreviewSizeVideoDefault)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::PreviewSizeVideoDefault)) {
         return sPtr;
     }
 
@@ -230,10 +248,28 @@ const char* PlatformData::preferredPreviewSizeForVideo(int cameraId)
     return getInstance()->mCameras[getActiveCamIdx(cameraId)].mVideoPreviewSizePref;
 }
 
+const char* PlatformData::defaultPreviewSize(int cameraId)
+{
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return NULL;
+    }
+
+    return getInstance()->mCameras[cameraId].defaultPreviewSize;
+}
+
+const char* PlatformData::defaultVideoSize(int cameraId)
+{
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return NULL;
+    }
+
+    return getInstance()->mCameras[cameraId].defaultVideoSize;
+}
+
 const char* PlatformData::supportedVideoSizes(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::VideoSizes)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::VideoSizes)) {
         return sPtr;
     }
 
@@ -251,6 +287,20 @@ const char* PlatformData::supportedSnapshotSizes(int cameraId)
     return getInstance()->mCameras[getActiveCamIdx(cameraId)].supportedSnapshotSizes;
 }
 
+int PlatformData::defaultJpegQuality(int cameraId) {
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return -1;
+    }
+    return getInstance()->mCameras[cameraId].defaultJpegQuality;
+}
+
+int PlatformData::defaultJpegThumbnailQuality(int cameraId) {
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return -1;
+    }
+    return getInstance()->mCameras[cameraId].defaultJpegThumbnailQuality;
+}
+
 bool PlatformData::supportsFileInject(void)
 {
     return getInstance()->mFileInject;
@@ -262,6 +312,14 @@ bool PlatformData::supportsContinuousCapture(int cameraId)
         return false;
     }
     return getInstance()->mCameras[getActiveCamIdx(cameraId)].continuousCapture;
+}
+
+bool PlatformData::supportsContinuousJpegCapture(int cameraId)
+{
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return false;
+    }
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].continuousJpegCapture;
 }
 
 int PlatformData::maxContinuousRawRingBufferSize(int cameraId)
@@ -277,29 +335,17 @@ int PlatformData::shutterLagCompensationMs(void)
     return getInstance()->mShutterLagCompensationMs;
 }
 
+int PlatformData::getMaxISPTimeoutCount(void)
+{
+    return getInstance()->mMaxISPTimeoutCount;
+}
+
 bool PlatformData::renderPreviewViaOverlay(int cameraId)
 {
     if (!validCameraId(cameraId, __FUNCTION__)) {
         return false;
     }
     return getInstance()->mCameras[getActiveCamIdx(cameraId)].mPreviewViaOverlay;
-}
-
-bool PlatformData::resolutionSupportedByVFPP(int cameraId,
-                                             int width, int height)
-{
-    if (!validCameraId(cameraId, __FUNCTION__)) {
-        return false;
-    }
-
-    PlatformBase *i = getInstance();
-    Vector<Size>::const_iterator it = i->mCameras[cameraId].mVFPPLimitedResolutions.begin();
-    for (;it != i->mCameras[cameraId].mVFPPLimitedResolutions.end(); ++it) {
-        if (it->width == width && it->height == height) {
-            return false;
-        }
-    }
-    return true;
 }
 
 bool PlatformData::snapshotResolutionSupportedByZSL(int cameraId,
@@ -353,6 +399,14 @@ bool PlatformData::supportsDVS(int cameraId)
     return getInstance()->mCameras[getActiveCamIdx(cameraId)].dvs;
 }
 
+bool PlatformData::supportsNarrowGamma(int cameraId)
+{
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return false;
+    }
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].narrowGamma;
+}
+
 const char* PlatformData::supportedBurstFPS(int cameraId)
 {
     if (!validCameraId(cameraId, __FUNCTION__)) {
@@ -387,7 +441,7 @@ bool PlatformData::supportEV(int cameraId)
 const char* PlatformData::supportedMaxEV(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::EvMax)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::EvMax)) {
         return sPtr;
     }
 
@@ -400,7 +454,7 @@ const char* PlatformData::supportedMaxEV(int cameraId)
 const char* PlatformData::supportedMinEV(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::EvMin)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::EvMin)) {
         return sPtr;
     }
 
@@ -413,7 +467,7 @@ const char* PlatformData::supportedMinEV(int cameraId)
 const char* PlatformData::supportedDefaultEV(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::EvDefault)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::EvDefault)) {
         return sPtr;
     }
 
@@ -426,7 +480,7 @@ const char* PlatformData::supportedDefaultEV(int cameraId)
 const char* PlatformData::supportedStepEV(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::EvStep)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::EvStep)) {
         return sPtr;
     }
 
@@ -439,7 +493,7 @@ const char* PlatformData::supportedStepEV(int cameraId)
 const char* PlatformData::supportedAeMetering(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::AeModes)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::AeModes)) {
         return sPtr;
     }
 
@@ -452,7 +506,7 @@ const char* PlatformData::supportedAeMetering(int cameraId)
 const char* PlatformData::defaultAeMetering(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::AeModeDefault)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::AeModeDefault)) {
         return sPtr;
     }
 
@@ -473,7 +527,7 @@ const char* PlatformData::supportedAeLock(int cameraId)
 const char* PlatformData::supportedMaxSaturation(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::SaturationMax)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::SaturationMax)) {
         return sPtr;
     }
 
@@ -486,7 +540,7 @@ const char* PlatformData::supportedMaxSaturation(int cameraId)
 const char* PlatformData::supportedMinSaturation(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::SaturationMin)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::SaturationMin)) {
         return sPtr;
     }
 
@@ -499,7 +553,7 @@ const char* PlatformData::supportedMinSaturation(int cameraId)
 const char* PlatformData::defaultSaturation(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::SaturationDefault)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::SaturationDefault)) {
         return sPtr;
     }
 
@@ -512,7 +566,7 @@ const char* PlatformData::defaultSaturation(int cameraId)
 const char* PlatformData::supportedSaturation(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::Saturations)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::Saturations)) {
         return sPtr;
     }
 
@@ -525,7 +579,7 @@ const char* PlatformData::supportedSaturation(int cameraId)
 const char* PlatformData::supportedStepSaturation(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::SaturationStep)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::SaturationStep)) {
         return sPtr;
     }
 
@@ -554,7 +608,7 @@ int PlatformData::highSaturation(int cameraId)
 const char* PlatformData::supportedMaxContrast(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::ContrastMax)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::ContrastMax)) {
         return sPtr;
     }
 
@@ -567,7 +621,7 @@ const char* PlatformData::supportedMaxContrast(int cameraId)
 const char* PlatformData::supportedMinContrast(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::ContrastMin)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::ContrastMin)) {
         return sPtr;
     }
 
@@ -580,7 +634,7 @@ const char* PlatformData::supportedMinContrast(int cameraId)
 const char* PlatformData::defaultContrast(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::ContrastDefault)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::ContrastDefault)) {
         return sPtr;
     }
 
@@ -593,7 +647,7 @@ const char* PlatformData::defaultContrast(int cameraId)
 const char* PlatformData::supportedContrast(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::Contrasts)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::Contrasts)) {
         return sPtr;
     }
 
@@ -606,7 +660,7 @@ const char* PlatformData::supportedContrast(int cameraId)
 const char* PlatformData::supportedStepContrast(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::ContrastStep)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::ContrastStep)) {
         return sPtr;
     }
 
@@ -635,7 +689,7 @@ int PlatformData::hardContrast(int cameraId)
 const char* PlatformData::supportedMaxSharpness(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::SharpnessMax)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::SharpnessMax)) {
         return sPtr;
     }
 
@@ -648,7 +702,7 @@ const char* PlatformData::supportedMaxSharpness(int cameraId)
 const char* PlatformData::supportedMinSharpness(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::SharpnessMin)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::SharpnessMin)) {
         return sPtr;
     }
 
@@ -661,7 +715,7 @@ const char* PlatformData::supportedMinSharpness(int cameraId)
 const char* PlatformData::defaultSharpness(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::SharpnessDefault)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::SharpnessDefault)) {
         return sPtr;
     }
 
@@ -674,7 +728,7 @@ const char* PlatformData::defaultSharpness(int cameraId)
 const char* PlatformData::supportedSharpness(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::Sharpnesses)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::Sharpnesses)) {
         return sPtr;
     }
 
@@ -687,7 +741,7 @@ const char* PlatformData::supportedSharpness(int cameraId)
 const char* PlatformData::supportedStepSharpness(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::SharpnessStep)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::SharpnessStep)) {
         return sPtr;
     }
 
@@ -716,7 +770,7 @@ int PlatformData::hardSharpness(int cameraId)
 const char* PlatformData::supportedFlashModes(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::FlashModes)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::FlashModes)) {
         return sPtr;
     }
 
@@ -729,7 +783,7 @@ const char* PlatformData::supportedFlashModes(int cameraId)
 const char* PlatformData::defaultFlashMode(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::FlashModeDefault)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::FlashModeDefault)) {
         return sPtr;
     }
 
@@ -742,7 +796,7 @@ const char* PlatformData::defaultFlashMode(int cameraId)
 const char* PlatformData::supportedIso(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::IsoModes)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::IsoModes)) {
         return sPtr;
     }
 
@@ -755,7 +809,7 @@ const char* PlatformData::supportedIso(int cameraId)
 const char* PlatformData::defaultIso(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::IsoModeDefault)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::IsoModeDefault)) {
         return sPtr;
     }
 
@@ -768,7 +822,7 @@ const char* PlatformData::defaultIso(int cameraId)
 const char* PlatformData::supportedSceneModes(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::SceneModes)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::SceneModes)) {
         return sPtr;
     }
 
@@ -781,7 +835,7 @@ const char* PlatformData::supportedSceneModes(int cameraId)
 const char* PlatformData::defaultSceneMode(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::SceneModeDefault)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::SceneModeDefault)) {
         return sPtr;
     }
 
@@ -794,7 +848,7 @@ const char* PlatformData::defaultSceneMode(int cameraId)
 const char* PlatformData::supportedEffectModes(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::EffectModes)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::EffectModes)) {
         return sPtr;
     }
 
@@ -807,7 +861,7 @@ const char* PlatformData::supportedEffectModes(int cameraId)
 const char* PlatformData::supportedIntelEffectModes(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::ExtendedEffectModes)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::ExtendedEffectModes)) {
         return sPtr;
     }
 
@@ -820,7 +874,7 @@ const char* PlatformData::supportedIntelEffectModes(int cameraId)
 const char* PlatformData::defaultEffectMode(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::EffectModeDefault)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::EffectModeDefault)) {
         return sPtr;
     }
 
@@ -833,7 +887,7 @@ const char* PlatformData::defaultEffectMode(int cameraId)
 const char* PlatformData::supportedAwbModes(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::AwbModes)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::AwbModes)) {
         return sPtr;
     }
 
@@ -846,7 +900,7 @@ const char* PlatformData::supportedAwbModes(int cameraId)
 const char* PlatformData::defaultAwbMode(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::AwbModeDefault)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::AwbModeDefault)) {
         return sPtr;
     }
 
@@ -859,7 +913,7 @@ const char* PlatformData::defaultAwbMode(int cameraId)
 const char* PlatformData::supportedPreviewFrameRate(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::PreviewFpss)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::PreviewFpss)) {
         return sPtr;
     }
 
@@ -880,7 +934,7 @@ const char* PlatformData::supportedAwbLock(int cameraId)
 const char* PlatformData::supportedPreviewFPSRange(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::PreviewFpsRanges)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::PreviewFpsRanges)) {
         return sPtr;
     }
 
@@ -893,7 +947,7 @@ const char* PlatformData::supportedPreviewFPSRange(int cameraId)
 const char* PlatformData::defaultPreviewFPSRange(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::PreviewFpsRangeDefault)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::PreviewFpsRangeDefault)) {
         return sPtr;
     }
 
@@ -906,7 +960,7 @@ const char* PlatformData::defaultPreviewFPSRange(int cameraId)
 const char* PlatformData::supportedPreviewSizes(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::PreviewSizes)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::PreviewSizes)) {
         return sPtr;
     }
 
@@ -943,7 +997,7 @@ bool PlatformData::supportsSlowMotion(int cameraId)
 bool PlatformData::supportsFlash(int cameraId)
 {
     bool boolean;
-    if (!HalConfig.getBool(boolean, CPF::HasFlash)) {
+    if (!HalConfig[cameraId].getBool(boolean, CPF::HasFlash)) {
         return boolean;
     }
 
@@ -977,10 +1031,26 @@ const char* PlatformData::maxHighSpeedDvsResolution(int cameraId)
     return getInstance()->mCameras[getActiveCamIdx(cameraId)].maxHighSpeedDvsResolution;
 }
 
+bool PlatformData::isFullResSdvSupported(int cameraId)
+{
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return false;
+    }
+    return (strlen(supportedSdvSizes(cameraId)) != 0);
+}
+
+const char* PlatformData::supportedSdvSizes(int cameraId)
+{
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return "";
+    }
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].supportedSdvSizes;
+}
+
 const char* PlatformData::supportedFocusModes(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::FocusModes)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::FocusModes)) {
         return sPtr;
     }
 
@@ -993,7 +1063,7 @@ const char* PlatformData::supportedFocusModes(int cameraId)
 const char* PlatformData::defaultFocusMode(int cameraId)
 {
     const char *sPtr;
-    if (cameraId == mActiveCameraId && !HalConfig.getString(sPtr, CPF::FocusModeDefault)) {
+    if (!HalConfig[cameraId].getString(sPtr, CPF::FocusModeDefault)) {
         return sPtr;
     }
 
@@ -1001,6 +1071,23 @@ const char* PlatformData::defaultFocusMode(int cameraId)
         return "";
     }
     return getInstance()->mCameras[getActiveCamIdx(cameraId)].defaultFocusMode;
+}
+
+size_t PlatformData::getMaxNumFocusAreas(int cameraId)
+{
+
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return 0;
+    }
+    return getInstance()->mCameras[cameraId].maxNumFocusAreas;
+}
+
+int PlatformData::getMaxDepthPreviewBufferQueueSize(int cameraId)
+{
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return 0;
+    }
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].maxDepthPreviewBufferQueueSize;
 }
 
 bool PlatformData::isFixedFocusCamera(int cameraId)
@@ -1153,6 +1240,11 @@ const char* PlatformData::supportedSceneDetection(int cameraId)
     return i->mCameras[getActiveCamIdx(cameraId)].supportedSceneDetection;
 }
 
+int PlatformData::cacheLineSize()
+{
+    return getInstance()->mCacheLineSize;
+}
+
 const char* PlatformData::productName(void)
 {
     return getInstance()->mProductName;
@@ -1173,10 +1265,10 @@ const char* PlatformData::getISPSubDeviceName(void)
     return getInstance()->mSubDevName;
 }
 
-int PlatformData::getMaxZoomFactor(void)
+int PlatformData::getMaxZoomFactor(int cameraId)
 {
     int value;
-    if (!HalConfig.getValue(value, CPF::ZoomDigital, CPF::Max)) {
+    if (!HalConfig[cameraId].getValue(value, CPF::ZoomDigital, CPF::Max)) {
         return value;
     }
 
@@ -1186,6 +1278,21 @@ int PlatformData::getMaxZoomFactor(void)
 bool PlatformData::supportVideoSnapshot(void)
 {
     return getInstance()->mSupportVideoSnapshot;
+}
+
+bool PlatformData::supportsOfflineBurst(void)
+{
+    return getInstance()->mSupportsOfflineBurst;
+}
+
+bool PlatformData::supportsOfflineBracket(void)
+{
+    return getInstance()->mSupportsOfflineBracket;
+}
+
+bool PlatformData::supportsOfflineHdr(void)
+{
+    return getInstance()->mSupportsOfflineHdr;
 }
 
 int PlatformData::getRecordingBufNum(void)
@@ -1224,9 +1331,9 @@ bool PlatformData::supportPreviewLimitation(void)
     return getInstance()->mSupportPreviewLimitation;
 }
 
-int PlatformData::getPreviewPixelFormat(void)
+int PlatformData::getPreviewPixelFormat(int cameraId)
 {
-    return getInstance()->mCameras[getActiveCamIdx(mActiveCameraId)].mPreviewFourcc;
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].mPreviewFourcc;
 }
 
 const char* PlatformData::getBoardName(void)
@@ -1276,32 +1383,28 @@ status_t PlatformData::createVendorPlatformProductName(String8& name)
     return OK;
 }
 
-int PlatformData::getSensorGainLag(void)
+int PlatformData::getSensorGainLag(int cameraId)
 {
     int value;
-    if (!HalConfig.getValue(value, CPF::Gain, CPF::Lag))
+    if (!HalConfig[cameraId].getValue(value, CPF::Gain, CPF::Lag))
         return value;
 
     return getInstance()->mSensorGainLag;
 }
 
-int PlatformData::getSensorExposureLag(void)
+int PlatformData::getSensorExposureLag(int cameraId)
 {
     int value;
-    if (!HalConfig.getValue(value, CPF::Exposure, CPF::Lag))
+    if (!HalConfig[cameraId].getValue(value, CPF::Exposure, CPF::Lag))
         return value;
 
     return getInstance()->mSensorExposureLag;
 }
 
-bool PlatformData::synchronizeExposure(void)
+bool PlatformData::synchronizeExposure(int cameraId)
 {
     PlatformBase *i = getInstance();
-    if (mActiveCameraId < 0 || mActiveCameraId >= static_cast<int>(i->mCameras.size())) {
-      LOGE("%s: Invalid cameraId %d", __FUNCTION__, mActiveCameraId);
-      return false;
-    }
-    return i->mCameras[mActiveCameraId].synchronizeExposure;
+    return i->mCameras[cameraId].synchronizeExposure;
 }
 
 bool PlatformData::useIntelULL(void)
@@ -1332,7 +1435,7 @@ float PlatformData::verticalFOV(int cameraId, int width, int height)
         }
     }
 
-    if (cameraId == mActiveCameraId && !HalConfig.getFloat(retVal, CPF::Fov, CPF::Vertical)) {
+    if (!HalConfig[cameraId].getFloat(retVal, CPF::Fov, CPF::Vertical)) {
         return retVal;
     }
 
@@ -1363,7 +1466,7 @@ float PlatformData::horizontalFOV(int cameraId, int width, int height)
         }
     }
 
-    if (cameraId == mActiveCameraId && !HalConfig.getFloat(retVal, CPF::Fov, CPF::Horizontal)) {
+    if (!HalConfig[cameraId].getFloat(retVal, CPF::Fov, CPF::Horizontal)) {
         return retVal;
     }
 
@@ -1372,21 +1475,36 @@ float PlatformData::horizontalFOV(int cameraId, int width, int height)
     return retVal;
 }
 
-float PlatformData::matchEVShiftFactor(int cameraId)
+int PlatformData::defaultDepthFocalLength(int cameraId)
 {
-    float retVal = 0.0f;
-
     if (!validCameraId(cameraId, __FUNCTION__)) {
-        return retVal;
+        return 0;
     }
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].defaultDepthFocalLength;
+}
 
-    if (cameraId == mActiveCameraId && !HalConfig.getFloat(retVal, CPF::EVShiftFactor)) {
-        return retVal;
+bool PlatformData::supportsPostviewOutput(int cameraId)
+{
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return true;
     }
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].mSupportsPostviewOutput;
+}
 
-    // if don't configure EV shift factor, just set one default for it.
-    retVal = 0.5;
-    return retVal;
+bool PlatformData::ispSupportContinuousCaptureMode(int cameraId)
+{
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return true;
+    }
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].mISPSupportContinuousCaptureMode;
+}
+
+bool PlatformData::supportsColorBarPreview(int cameraId)
+{
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return true;
+    }
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].mSupportsColorBarPreview;
 }
 
 const char* PlatformData::supportedDvsSizes(int cameraId)
@@ -1395,6 +1513,14 @@ const char* PlatformData::supportedDvsSizes(int cameraId)
         return NULL;
     }
     return getInstance()->mCameras[getActiveCamIdx(cameraId)].supportedDvsSizes;
+}
+
+bool PlatformData::supportedSensorMetadata(int cameraId)
+{
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return false;
+    }
+    return getInstance()->mCameras[getActiveCamIdx(cameraId)].supportedSensorMetadata;
 }
 
 bool PlatformData::isGraphicGen(void)
@@ -1434,9 +1560,64 @@ unsigned int PlatformData::getNumOfCPUCores()
     return cpuCores;
 }
 
+/**
+ * \brief For checking whether we enable HAL-video stabilization specific
+ * functionality.
+ *
+ * NOTE: this mode requires customers to integrate their own video stabilization
+ * algorithm
+ */
+bool PlatformData::useHALVS(int cameraId)
+{
+
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return false;
+    }
+
+    PlatformBase *i = getInstance();
+
+    return i->mCameras[getActiveCamIdx(cameraId)].useHALVS;
+}
+
+int PlatformData::getNumOfCaptureWarmUpFrames(int cameraId)
+{
+    int retVal = 0;
+
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+       return retVal;
+    }
+
+    PlatformBase *i = getInstance();
+    retVal = i->mCameras[getActiveCamIdx(cameraId)].captureWarmUpFrames;
+
+    // Always return a non-negative integer:
+    return (retVal > 0) ? retVal : 0;
+}
+
+bool PlatformData::useMultiStreamsForSoC(int cameraId)
+{
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return false;
+    }
+
+    PlatformBase *i = getInstance();
+    if (i->mCameras[getActiveCamIdx(cameraId)].sensorType == SENSOR_TYPE_RAW) {
+        return false;
+    }
+
+    return i->mCameras[getActiveCamIdx(cameraId)].useMultiStreamsForSoC ? true : false;
+}
+
 void PlatformData::useExtendedCamera(bool val)
 {
-    getInstance()->mUseExtendedCamera = val;
+    LOG1("@useExtendedCamera val = %d", val);
+    if (supportExtendedCamera())
+        getInstance()->mUseExtendedCamera = val;
+}
+
+bool PlatformData::isExtendedCameras(void)
+{
+    return getInstance()->mUseExtendedCamera;
 }
 
 bool PlatformData::isExtendedCamera(int cameraId)
@@ -1448,6 +1629,20 @@ bool PlatformData::isExtendedCamera(int cameraId)
         return true;
     else
         return false;
+}
+
+bool PlatformData::supportExtendedCamera(void)
+{
+    PlatformBase *i = getInstance();
+    return i->mHasExtendedCamera ? true : false;
+}
+
+const char* PlatformData::supportedIntelligentMode(int cameraId)
+{
+    if (!validCameraId(cameraId, __FUNCTION__)) {
+        return NULL;
+    }
+    return getInstance()->mCameras[cameraId].supportedIntelligentMode;
 }
 
 }; // namespace android

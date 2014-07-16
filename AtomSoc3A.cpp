@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013 Intel Corporation.
+ * Copyright (c) 2013-2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -45,22 +45,27 @@ AtomSoc3A::AtomSoc3A(int cameraId, HWControlGroup &hwcg) :
     ,mFlashCI(hwcg.mFlashCI)
     ,mLensCI(hwcg.mLensCI)
     ,mPublicAeMode(CAM_AE_MODE_AUTO)
+    ,mMaxNumAfAreas(0)
 {
     LOG2("@%s", __FUNCTION__);
+    // fixed focus cameras cannot support focus areas
+    if (!PlatformData::isFixedFocusCamera(mCameraId)) {
+        mMaxNumAfAreas = PlatformData::getMaxNumFocusAreas(mCameraId);
+    }
 }
 
 AtomSoc3A::~AtomSoc3A()
 {
     LOG2("@%s", __FUNCTION__);
+
+    // We don't need this memory anymore
+    PlatformData::AiqConfig[mCameraId].clear();
 }
 
 // I3AControls
 
 status_t AtomSoc3A::init3A()
 {
-    // We don't need this memory anymore
-    PlatformData::AiqConfig.clear();
-
     return NO_ERROR;
 }
 
@@ -155,7 +160,7 @@ AeMode AtomSoc3A::getAeMode()
 status_t AtomSoc3A::setEv(float bias)
 {
     status_t status = NO_ERROR;
-    int evValue = (int)bias;
+    int evValue = (1000*bias);
     LOG1("@%s: bias: %f, EV value: %d", __FUNCTION__, bias, evValue);
 
     int ret = mSensorCI->setExposureBias(evValue);
@@ -178,7 +183,7 @@ status_t AtomSoc3A::getEv(float *bias)
         LOGE("Error getting EV from the driver");
         status = UNKNOWN_ERROR;
     }
-    *bias = (float)evValue;
+    *bias = ((float)evValue)/1000;
 
     return status;
 }
@@ -476,10 +481,17 @@ status_t AtomSoc3A::getManualIso(int *iso)
     return status;
 }
 
-status_t AtomSoc3A::setIsoMode(IsoMode mode) {
-    /*ISO mode not supported for SOC sensor yet.*/
-    LOG1("@%s", __FUNCTION__);
-    status_t status = INVALID_OPERATION;
+status_t AtomSoc3A::setIsoMode(IsoMode mode)
+{
+    LOG1("@%s: ISO mode: %d", __FUNCTION__, mode);
+    status_t status = NO_ERROR;
+
+    int ret = mSensorCI->setIsoMode(mode);
+    if (ret != 0) {
+        LOGD("Error setting ISO mode in the driver");
+        status = UNKNOWN_ERROR;
+    }
+
     return status;
 }
 
@@ -636,6 +648,11 @@ status_t AtomSoc3A::setAeFlickerMode(FlickerMode flickerMode)
     return status;
 }
 
+status_t AtomSoc3A::setUllEnabled(bool enabled)
+{
+    return NO_ERROR;
+}
+
 void AtomSoc3A::getDefaultParams(CameraParameters *params, CameraParameters *intel_params)
 {
     LOG1("@%s", __FUNCTION__);
@@ -645,7 +662,7 @@ void AtomSoc3A::getDefaultParams(CameraParameters *params, CameraParameters *int
     }
 
     // multipoint focus
-    params->set(CameraParameters::KEY_MAX_NUM_FOCUS_AREAS, 0);
+    params->set(CameraParameters::KEY_MAX_NUM_FOCUS_AREAS, getAfMaxNumWindows());
     // set empty area
     params->set(CameraParameters::KEY_FOCUS_AREAS, "(0,0,0,0,0)");
 
@@ -702,7 +719,7 @@ AfMode AtomSoc3A::getAfMode()
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     AfMode mode = CAM_AF_MODE_AUTO;
-    v4l2_auto_focus_range v4lMode = V4L2_AUTO_FOCUS_RANGE_AUTO;
+    int v4lMode = V4L2_AUTO_FOCUS_RANGE_AUTO;
 
     // TODO: add supported modes to PlatformData
     if (mCameraId > 0) {
@@ -905,33 +922,33 @@ status_t AtomSoc3A::setAeFlashMode(FlashMode mode)
 {
     LOG1("@%s: %d", __FUNCTION__, mode);
     status_t status = NO_ERROR;
-    v4l2_flash_led_mode v4lMode;
 
     if (!strcmp(PlatformData::supportedFlashModes(mCameraId), "")) {
         LOG1("@%s: not supported by current camera", __FUNCTION__);
         return INVALID_OPERATION;
     }
 
-    switch (mode)
-    {
+    int modeTmp = V4L2_FLASH_LED_MODE_NONE;
+
+    switch (mode) {
         case CAM_AE_FLASH_MODE_OFF:
-            v4lMode = V4L2_FLASH_LED_MODE_NONE;
+            modeTmp = V4L2_FLASH_LED_MODE_NONE;
             break;
         case CAM_AE_FLASH_MODE_ON:
-            v4lMode = V4L2_FLASH_LED_MODE_FLASH;
+            modeTmp = V4L2_FLASH_LED_MODE_FLASH;
             break;
         case CAM_AE_FLASH_MODE_TORCH:
-            v4lMode = V4L2_FLASH_LED_MODE_TORCH;
+            modeTmp = V4L2_FLASH_LED_MODE_TORCH;
             break;
         default:
             LOGW("Unsupported Flash mode (%d), using OFF", mode);
-            v4lMode = V4L2_FLASH_LED_MODE_NONE;
+            modeTmp = V4L2_FLASH_LED_MODE_NONE;
             break;
     }
 
-    int ret = mSensorCI->setAeFlashMode(v4lMode);
+    int ret = mSensorCI->setAeFlashMode(modeTmp);
     if (ret != 0) {
-        LOGE("Error setting Flash mode (%d) in the driver", v4lMode);
+        LOGD("Error setting Flash mode (%d) in the driver", modeTmp);
         status = UNKNOWN_ERROR;
     }
 
@@ -943,16 +960,16 @@ FlashMode AtomSoc3A::getAeFlashMode()
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     FlashMode mode = CAM_AE_FLASH_MODE_OFF;
-    v4l2_flash_led_mode v4lMode = V4L2_FLASH_LED_MODE_NONE;
+    int v4lMode = V4L2_FLASH_LED_MODE_NONE;
 
     if (!strcmp(PlatformData::supportedFlashModes(mCameraId), "")) {
         LOG1("@%s: not supported by current camera", __FUNCTION__);
         return mode;
     }
 
-    int ret = mSensorCI->setAeFlashMode(v4lMode);
+    int ret = mSensorCI->getAeFlashMode(&v4lMode);
     if (ret != 0) {
-        LOGE("Error getting Flash mode from the driver");
+        LOGD("Error getting Flash mode from the driver");
         status = UNKNOWN_ERROR;
     }
 

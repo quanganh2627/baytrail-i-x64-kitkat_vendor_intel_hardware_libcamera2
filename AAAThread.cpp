@@ -23,6 +23,7 @@
 #include "FaceDetector.h"
 #include "CameraDump.h"
 #include "PerformanceTraces.h"
+#include "PlatformData.h"
 
 namespace android {
 
@@ -30,7 +31,7 @@ const size_t FLASH_FRAME_TIMEOUT = 5;
 // TODO: use values relative to real sensor timings or fps
 const unsigned int SKIP_PARTIALLY_EXPOSED = 1;
 
-AAAThread::AAAThread(ICallbackAAA *aaaDone, UltraLowLight *ull, I3AControls *aaaControls, sp<CallbacksThread> callbacksThread) :
+AAAThread::AAAThread(ICallbackAAA *aaaDone, UltraLowLight *ull, I3AControls *aaaControls, sp<CallbacksThread> callbacksThread, int cameraId, bool extIsp) :
     Thread(false)
     ,mMessageQueue("AAAThread", (int) MESSAGE_ID_MAX)
     ,mThreadRunning(false)
@@ -38,8 +39,10 @@ AAAThread::AAAThread(ICallbackAAA *aaaDone, UltraLowLight *ull, I3AControls *aaa
     ,mAAADoneCallback(aaaDone)
     ,mCallbacksThread(callbacksThread)
     ,mULL(ull)
+    ,mCameraId(cameraId)
     ,m3ARunning(false)
     ,mStartAF(false)
+    ,mWaitForScanStart(true)
     ,mStopAF(false)
     ,mPreviousCafStatus(CAM_AF_STATUS_IDLE)
     ,mPublicAeLock(false)
@@ -51,6 +54,10 @@ AAAThread::AAAThread(ICallbackAAA *aaaDone, UltraLowLight *ull, I3AControls *aaa
     ,mBlockForStage(FLASH_STAGE_NA)
     ,mSkipStatistics(0)
     ,mSkipForEv(0)
+    ,mSensorEmbeddedMetaDataEnabled(false)
+    ,mTrigger3A(0)
+    ,mExtIsp(extIsp)
+    ,mOrientation(0)
 {
     LOG1("@%s", __FUNCTION__);
     mFaceState.faces = new ia_face[MAX_FACES_DETECTABLE];
@@ -60,6 +67,7 @@ AAAThread::AAAThread(ICallbackAAA *aaaDone, UltraLowLight *ull, I3AControls *aaa
         memset(mFaceState.faces, 0, MAX_FACES_DETECTABLE * sizeof(ia_face));
     }
     mFaceState.num_faces = 0;
+    CLEAR(mCachedStatsEventMsg);
 }
 
 AAAThread::~AAAThread()
@@ -68,6 +76,7 @@ AAAThread::~AAAThread()
     delete [] mFaceState.faces;
     mFaceState.faces = NULL;
     mFaceState.num_faces = 0;
+    CLEAR(mCachedStatsEventMsg);
 }
 
 status_t AAAThread::enable3A()
@@ -179,14 +188,34 @@ status_t AAAThread::cancelAutoFocus()
 bool AAAThread::atomIspNotify(IAtomIspObserver::Message *msg, const ObserverState state)
 {
     if(msg && msg->id == IAtomIspObserver::MESSAGE_ID_EVENT) {
-
-        if (msg->data.event.type == EVENT_TYPE_STATISTICS_READY) {
+        if (mSensorEmbeddedMetaDataEnabled || msg->data.event.type == EVENT_TYPE_METADATA_READY) {
+            mSensorEmbeddedMetaDataEnabled = true;
+            // When both sensor metadata event and statistics event are ready, then triggers 3A run
+            if (msg->data.event.type == EVENT_TYPE_METADATA_READY) {
+                mTrigger3A |= EVENT_TYPE_METADATA_READY;
+                if (mTrigger3A & EVENT_TYPE_STATISTICS_READY) {
+                    mTrigger3A = 0;
+                    newStats(mCachedStatsEventMsg.data.event.timestamp, mCachedStatsEventMsg.data.event.sequence);
+                    CLEAR(mCachedStatsEventMsg);
+                }
+                return NO_ERROR;
+            }
+            if (msg->data.event.type == EVENT_TYPE_STATISTICS_READY) {
+                mTrigger3A |= EVENT_TYPE_STATISTICS_READY;
+                if (mTrigger3A & EVENT_TYPE_METADATA_READY) {
+                    mTrigger3A = 0;
+                    newStats(msg->data.event.timestamp, msg->data.event.sequence);
+                } else {
+                    mCachedStatsEventMsg = *msg;
+                }
+                return NO_ERROR;
+            }
+        }else if (msg->data.event.type == EVENT_TYPE_STATISTICS_READY) {
             LOG2("-- STATS READY, seq %d, ts %lldus, systemTime %lldms ---",
                                    msg->data.event.sequence,
                                      nsecs_t(msg->data.event.timestamp.tv_sec)*1000000LL
                                    + nsecs_t(msg->data.event.timestamp.tv_usec),
                                    systemTime()/1000/1000);
-
             newStats(msg->data.event.timestamp, msg->data.event.sequence);
         }
     } else if (msg && msg->id == IAtomIspObserver::MESSAGE_ID_FRAME) {
@@ -218,10 +247,21 @@ status_t AAAThread::newFrame(AtomBuffer *b)
     status_t status = NO_ERROR;
     Message msg;
     msg.id = MESSAGE_ID_NEW_FRAME;
-    msg.data.frame.capture_timestamp = b->capture_timestamp;
-    msg.data.frame.status = b->status;
-    msg.data.frame.sequence_number = b->frameSequenceNbr;
+    msg.data.frame.buff = b;
+
     status = mMessageQueue.send(&msg);
+    return status;
+}
+
+status_t AAAThread::switchModeAndRate(AtomMode mode, float fps)
+{
+    LOG2("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    Message msg;
+    msg.id = MESSAGE_ID_SWITCH_MODE_AND_RATE;
+    msg.data.switchInfo.mode = mode;
+    msg.data.switchInfo.fps = fps;
+    status = mMessageQueue.send(&msg, MESSAGE_ID_SWITCH_MODE_AND_RATE);
     return status;
 }
 
@@ -248,12 +288,45 @@ status_t AAAThread::setFaces(const ia_face_state& faceState)
     return status;
 }
 
+int32_t AAAThread::getFaceNum(void) const
+{
+    LOG1("@%s", __FUNCTION__);
+    return mFaceState.num_faces;
+}
+
+status_t AAAThread::getFaces(ia_face_state &faceState) const
+{
+    LOG1("@%s", __FUNCTION__);
+
+    if (mFaceState.faces == NULL) {
+        LOGE("face state not allocated");
+        return NO_INIT;
+    }
+
+    if (mFaceState.num_faces == 0) {
+        LOG1("No face detection information can be gotten");
+        return INVALID_OPERATION;
+    }
+
+    faceState.num_faces = mFaceState.num_faces;
+    if (faceState.num_faces > MAX_FACES_DETECTABLE) {
+        LOGW("@%s: %d faces detected, limiting to %d", __FUNCTION__,
+                faceState.num_faces, MAX_FACES_DETECTABLE);
+        faceState.num_faces = MAX_FACES_DETECTABLE;
+    }
+
+    memcpy(faceState.faces, mFaceState.faces, faceState.num_faces * sizeof(ia_face));
+
+    return NO_ERROR;
+}
+
 status_t AAAThread::handleMessageExit()
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     mThreadRunning = false;
     m3ARunning = false;
+    SensorThread::getInstance()->unRegisterOrientationListener(this);
 
     return status;
 }
@@ -263,6 +336,7 @@ status_t AAAThread::handleMessageEnable3A()
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     m3ARunning = true;
+    mOrientation = SensorThread::getInstance()->registerOrientationListener(this);
     mMessageQueue.reply(MESSAGE_ID_ENABLE_AAA, status);
     return status;
 }
@@ -313,27 +387,140 @@ status_t AAAThread::handleMessageAutoFocus()
         return status;
     }
 
-    if (m3AControls->isIntel3A() && currAfMode != CAM_AF_MODE_INFINITY &&
-        currAfMode != CAM_AF_MODE_FIXED && currAfMode != CAM_AF_MODE_MANUAL) {
-        m3AControls->setAfEnabled(true);
-        // state of client requested 3A locks is kept, so it
-        // is safe to override the values here
-        m3AControls->setAwbLock(true);
+    if (currAfMode != CAM_AF_MODE_INFINITY &&
+        currAfMode != CAM_AF_MODE_FIXED &&
+        currAfMode != CAM_AF_MODE_MANUAL) {
 
-        m3AControls->startStillAf();
+        if (m3AControls->isIntel3A()) {
+            m3AControls->setAfEnabled(true);
+            // state of client requested 3A locks is kept, so it
+            // is safe to override the values here
+            m3AControls->setAwbLock(true);
 
-        // Turning on the flash as AF assist light doesn't support
-        // proper synchronisation with frames. We skip fixed amount
-        // of statistics in order to prevent partially exposed frames
-        // to get processed.
-        if (m3AControls->getAfNeedAssistLight())
-            mSkipStatistics = SKIP_PARTIALLY_EXPOSED;
+            m3AControls->startStillAf();
 
-        mFramesTillAfComplete = 0;
+            // Turning on the flash as AF assist light doesn't support
+            // proper synchronisation with frames. We skip fixed amount
+            // of statistics in order to prevent partially exposed frames
+            // to get processed.
+            if (m3AControls->getAfNeedAssistLight())
+                mSkipStatistics = SKIP_PARTIALLY_EXPOSED;
+
+            mFramesTillAfComplete = 0;
+        } else if (mExtIsp) {
+            m3AControls->setAfEnabled(true);
+            m3AControls->startStillAf();
+        }
+
         mStartAF = true;
         mStopAF = false;
     } else {
+        // FIXME: Should be called immediately for SOC/fixed focus cameras
         mCallbacksThread->autoFocusDone(true);
+    }
+
+    return status;
+}
+
+status_t AAAThread::handleAutoFocusExtIsp(const AtomBuffer *buff)
+{
+    LOG2("@%s", __FUNCTION__);
+    bool stopStillAf = false;
+    AfStatus afStatus = CAM_AF_STATUS_FAIL;
+
+    // TODO: Optimize the AF meta parsing to when we actually need the
+    // status data...
+    afStatus = parseAfMeta(buff);
+
+    AfMode currAfMode = m3AControls->getAfMode();
+    if (currAfMode == CAM_AF_MODE_CONTINUOUS) {
+        // Check CAF status:
+        bool focusMoving = false;
+
+        if (afStatus == CAM_AF_STATUS_BUSY || afStatus == CAM_AF_STATUS_IDLE) {
+            focusMoving = true;
+        }
+
+        LOG1("CAF move (ext-isp): %d", focusMoving);
+
+        if (afStatus != mPreviousCafStatus) {
+            // Send the callback to upper layer to inform about the CAF status.
+            mCallbacksThread->focusMove(focusMoving);
+        }
+        mPreviousCafStatus = afStatus;
+        return NO_ERROR;
+    }
+
+    if (mStartAF) {
+        // Status for normal AF sequence:
+        if (afStatus == CAM_AF_STATUS_BUSY) {
+            // metadata has indicated that AF is running:
+            mWaitForScanStart = false;
+            LOG1("StillAFExtIsp BUSY    (continuing...)");
+        } else if (afStatus == CAM_AF_STATUS_SUCCESS) {
+            LOG1("StillAFExtIsp SUCCESS (stopping...)");
+            stopStillAf = true;
+        } else if (afStatus == CAM_AF_STATUS_FAIL) {
+            LOG1("StillAFExtIsp FAIL    (stopping...)");
+            stopStillAf = true;
+        }
+
+        if (mWaitForScanStart) {
+            // We are still waiting for the NV12 metadata to indicate that AF is actually running
+            // a new sequence on ext-ISP. We need to wait AF start, as metadata still indicates previous AF run
+            // status.
+            // Do nothing for this frame:
+            return NO_ERROR;
+        } else if (stopStillAf) {
+            m3AControls->stopStillAf();
+            // Stop the AF once we are done.
+            m3AControls->setAfEnabled(false);
+            mCallbacksThread->autoFocusDone(afStatus == CAM_AF_STATUS_SUCCESS);
+            // Some AF status was reached, stop the sequence:
+            mStartAF = false;
+            mWaitForScanStart = true;
+        }
+    }
+
+    return NO_ERROR;
+}
+
+/**
+ * External ISP specific (m10mo) metadata parser for getting AF/CAF status
+ */
+AfStatus AAAThread::parseAfMeta(const AtomBuffer *buff)
+{
+    LOG2("@%s", __FUNCTION__);
+    unsigned char *nv12Meta = ((unsigned char*)buff->auxBuf->dataPtr) + NV12_META_START;
+
+    // metadata is big-endian. getU16FromFrame() converts to host format:
+    uint16_t afState = getU16fromFrame(nv12Meta, NV12_META_AF_STATE_ADDR);
+    AfStatus status = CAM_AF_STATUS_FAIL;
+
+    LOG2("Ext-isp AF state: 0x%x", afState);
+
+    switch (afState) {
+        case CAF_RESTART_CHECK:
+        case AF_INVALID:
+            // TODO: Check: Is this OK for CAF restart?
+            status = CAM_AF_STATUS_IDLE;
+            break;
+        case CAF_FOCUSING:
+        case AF_FOCUSING:
+            status = CAM_AF_STATUS_BUSY;
+            break;
+        case CAF_SUCCESS:
+        case AF_SUCCESS:
+            status = CAM_AF_STATUS_SUCCESS;
+            break;
+        case CAF_FAIL:
+        case AF_FAIL:
+            status = CAM_AF_STATUS_FAIL;
+            break;
+        default:
+            status = CAM_AF_STATUS_FAIL;
+            LOGW("Unknown AF/CAF state 0x%x, using CAM_AF_STATUS_FAIL", afState);
+            break;
     }
 
     return status;
@@ -345,7 +532,13 @@ status_t AAAThread::handleMessageCancelAutoFocus()
     status_t status = NO_ERROR;
 
     if (mStartAF) {
+        // For ext-isp, only stop the AF
+        if (mExtIsp) {
+            m3AControls->setAfEnabled(false);
+        }
+
         mStopAF = true;
+        mWaitForScanStart = true;
     }
 
     return status;
@@ -416,6 +609,16 @@ bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus, struct timeva
         return false;
     }
 
+    if (mStartAF) {
+        LOG1("AF running while entering flash sequence, stopping AF");
+        // Stop the AF sequence in case we are running AF and are entering
+        // pre-flash. We are skipping the statistics
+        // event handling int the pre-flash sequence (see: handleMessageNewStats()),
+        // which causes the still AF sequence to get stuck, when entering pre-flash.
+        m3AControls->stopStillAf();
+        mStartAF = mStopAF = false;
+    }
+
     LOG2("@%s : mFlashStage %d, FrameStatus %d", __FUNCTION__, mFlashStage, frameStatus);
 
     switch (mFlashStage) {
@@ -428,7 +631,7 @@ bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus, struct timeva
             // Enter Stage 1
             mFramesTillExposed = 0;
             mSkipForEv = m3AControls->getExposureDelay();
-            status = m3AControls->applyPreFlashProcess(CAM_FLASH_STAGE_NONE, capture_timestamp);
+            status = m3AControls->applyPreFlashProcess(CAM_FLASH_STAGE_NONE, capture_timestamp, mOrientation);
             mFlashStage = FLASH_STAGE_PRE_PHASE1;
             break;
         case FLASH_STAGE_PRE_PHASE1:
@@ -441,7 +644,7 @@ bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus, struct timeva
             }
             // Enter Stage 2
             mSkipForEv = m3AControls->getExposureDelay();
-            status = m3AControls->applyPreFlashProcess(CAM_FLASH_STAGE_PRE, capture_timestamp);
+            status = m3AControls->applyPreFlashProcess(CAM_FLASH_STAGE_PRE, capture_timestamp, mOrientation);
             mFlashStage = FLASH_STAGE_PRE_PHASE2;
             break;
         case FLASH_STAGE_PRE_PHASE2:
@@ -464,7 +667,7 @@ bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus, struct timeva
             mFramesTillExposed++;
             if (frameStatus == FRAME_STATUS_FLASH_EXPOSED) {
                 m3AControls->setFlash(0);
-                m3AControls->applyPreFlashProcess(CAM_FLASH_STAGE_MAIN, capture_timestamp);
+                m3AControls->applyPreFlashProcess(CAM_FLASH_STAGE_MAIN, capture_timestamp, mOrientation);
                 if (mFlashStage == FLASH_STAGE_SHOT_WAITING) {
                     LOG1("ShotFlash@Frame %d: SUCCESS    (stopping...)", mFramesTillExposed);
                     mFlashStage = FLASH_STAGE_SHOT_EXPOSED;
@@ -528,8 +731,22 @@ bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus, struct timeva
  */
 status_t AAAThread::handleMessageNewFrame(MessageNewFrame *msg)
 {
-    LOG1("@%s: status: %d", __FUNCTION__,msg->status);
-    handleFlashSequence(msg->status, msg->capture_timestamp);
+    LOG1("@%s: status: %d", __FUNCTION__, msg->buff->status);
+
+    // TODO: Refactor this to be more general, instead of having ext-ISP specific
+    // code path for autofocus and flash sequence. Ideally both could be called and check
+    // for applying given operation is in the function itself. This of course depends on who
+    // is responsible for runnig the flash sequence, us as camera HAL. Or, someone else, like ext-ISP firmware
+
+    // At this point this makes sense due to the fact that Intel AIQ needs
+    // 'new frame'-event for flash sequence only. and ext-ISP for AF status reporting only.
+    if (mExtIsp) {
+        // external ISP autoFocus
+        handleAutoFocusExtIsp(msg->buff);
+    } else {
+        handleFlashSequence(msg->buff->status, msg->buff->capture_timestamp);
+    }
+
     return NO_ERROR;
 }
 
@@ -579,7 +796,7 @@ status_t AAAThread::handleMessageNewStats(MessageNewStats *msgFrame)
 
     if(m3ARunning){
         // Run 3A statistics
-        status = m3AControls->apply3AProcess(true, &capture_timestamp);
+        status = m3AControls->apply3AProcess(true, &capture_timestamp, mOrientation);
 
         // If auto-focus was requested, run auto-focus sequence
         if (status == NO_ERROR && mStartAF) {
@@ -674,6 +891,16 @@ status_t AAAThread::handleMessageNewStats(MessageNewStats *msgFrame)
     return status;
 }
 
+status_t AAAThread::handleMessageSwitchModeAndRate(MessageSwitchInfo *msg)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+
+    status = m3AControls->switchModeAndRate(msg->mode, msg->fps);
+    mMessageQueue.reply(MESSAGE_ID_SWITCH_MODE_AND_RATE, status);
+    return status;
+}
+
 void AAAThread::getCurrentSmartScene(String8 &sceneMode, bool &sceneHdr)
 {
     LOG1("@%s", __FUNCTION__);
@@ -704,12 +931,35 @@ void AAAThread::resetSmartSceneValues()
     mSmartSceneHdr = false;
 }
 
+void AAAThread::orientationChanged(int orientation)
+{
+    LOG1("@%s: orientation = %d", __FUNCTION__, orientation);
+    Message msg;
+    msg.id = MESSAGE_ID_SET_ORIENTATION;
+    msg.data.orientation.orientation = orientation;
+    mMessageQueue.send(&msg);
+}
+
+status_t AAAThread::handleMessageSetOrientation(MessageOrientation *msg)
+{
+    LOG1("@%s: orientation = %d", __FUNCTION__, msg->orientation);
+    mOrientation = msg->orientation;
+    return NO_ERROR;
+}
+
 status_t AAAThread::waitForAndExecuteMessage()
 {
     LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     Message msg;
     mMessageQueue.receive(&msg);
+
+    if (msg.id != MESSAGE_ID_EXIT && PlatformData::isDisable3A(mCameraId)) {
+        if (msg.id == MESSAGE_ID_AUTO_FOCUS)
+            mCallbacksThread->autoFocusDone(true);
+        mMessageQueue.reply(msg.id, status);
+        return status;
+    }
 
     switch (msg.id) {
 
@@ -747,6 +997,14 @@ status_t AAAThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_FLASH_STAGE:
             status = handleMessageFlashStage(&msg.data.flashStage);
+            break;
+
+        case MESSAGE_ID_SWITCH_MODE_AND_RATE:
+            status = handleMessageSwitchModeAndRate(&msg.data.switchInfo);
+            break;
+
+        case MESSAGE_ID_SET_ORIENTATION:
+            status = handleMessageSetOrientation(&msg.data.orientation);
             break;
 
         default:

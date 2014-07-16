@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2011 The Android Open Source Project
+ * Copyright (c) 2012-2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,7 +37,8 @@ static const int SIZE_OF_APP0_MARKER = 18;      /* Size of the JFIF App0 marker
                                                  */
 PictureThread::PictureThread(I3AControls *aaaControls, sp<ScalerService> scaler,
                              sp<CallbacksThread> callbacksThread, Callbacks *callbacks,
-                             ICallbackPicture *pictureDone) :
+                             ICallbackPicture *pictureDone,
+                             int cameraId) :
     Thread(true) // callbacks may call into java
     ,mMessageQueue("PictureThread", MESSAGE_ID_MAX)
     ,mThreadRunning(false)
@@ -48,6 +50,7 @@ PictureThread::PictureThread(I3AControls *aaaControls, sp<ScalerService> scaler,
     ,mOutBuf(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT_JPEG))
     ,mThumbBuf(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW))
     ,mScaledPic(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT))
+    ,mFirstPartBuf(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT))
     ,mPictureQuality(80)
     ,mThumbnailQuality(50)
     ,mInputBufferArray(NULL)
@@ -59,6 +62,7 @@ PictureThread::PictureThread(I3AControls *aaaControls, sp<ScalerService> scaler,
     ,mMaxOutJpegBufSize(0)
     ,m3AControls(aaaControls)
     ,mPictureDoneCallback(pictureDone)
+    ,mCameraId(cameraId)
 {
     LOG1("@%s", __FUNCTION__);
 
@@ -78,33 +82,39 @@ PictureThread::~PictureThread()
 {
     LOG1("@%s", __FUNCTION__);
 
-    LOGD("@%s: release mOutBuf", __FUNCTION__);
+    LOG2("@%s: release mOutBuf", __FUNCTION__);
     MemoryUtils::freeAtomBuffer(mOutBuf);
 
-    LOGD("@%s: release mExifBuf", __FUNCTION__);
+    LOG2("@%s: release mExifBuf", __FUNCTION__);
     MemoryUtils::freeAtomBuffer(mExifBuf);
 
-    LOGD("@%s: release mThumbBuf", __FUNCTION__);
+    LOG2("@%s: release mThumbBuf", __FUNCTION__);
     MemoryUtils::freeAtomBuffer(mThumbBuf);
 
-    LOGD("@%s: release mScaledPic", __FUNCTION__);
+    LOG2("@%s: release mScaledPic", __FUNCTION__);
     MemoryUtils::freeAtomBuffer(mScaledPic);
 
+    LOG2("@%s: release mCapturePostViewBufList", __FUNCTION__);
+    List<AtomBuffer>::iterator it = mCapturePostViewBufList.begin();
+    while (it != mCapturePostViewBufList.end()) {
+        MemoryUtils::freeAtomBuffer(*it);
+        it = mCapturePostViewBufList.erase(it); // returns pointer to next item in list
+    }
 
-    LOGD("@%s: release InputBuffers", __FUNCTION__);
+    LOG2("@%s: release InputBuffers", __FUNCTION__);
     freeInputBuffers();
 
-    LOGD("@%s: release postview buffers", __FUNCTION__);
+    LOG2("@%s: release postview buffers", __FUNCTION__);
     freePostviewBuffers();
 
     if (mHwCompressor) {
-        LOGD("@%s: release mHwCompressor", __FUNCTION__);
+        LOG2("@%s: release mHwCompressor", __FUNCTION__);
         delete mHwCompressor;
         mHwCompressor = NULL;
     }
 
     if (mExifMaker) {
-        LOGD("@%s: release mExifMaker", __FUNCTION__);
+        LOG2("@%s: release mExifMaker", __FUNCTION__);
         delete mExifMaker;
         mExifMaker = NULL;
     }
@@ -116,15 +126,16 @@ PictureThread::~PictureThread()
  * plus main picture
  * Input:  mainBuf  - buffer containing the main picture image
  *         thumbBuf - buffer containing the thumbnail image (optional, can be NULL)
+ *         dataHasBeenFlushed - bool indicating whether data has been flushed from CPU cache
  * Output: destBuf  - buffer containing the final JPEG image including EXIF header
  *         Note that, if present, thumbBuf will be included in EXIF header
  */
-status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, AtomBuffer *destBuf)
+status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, AtomBuffer *destBuf, bool dataHasBeenFlushed)
 {
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     nsecs_t startTime = systemTime();
-    bool failback = false;
+    bool swFallback = false;
 
     size_t bufferSize = (mainBuf->width * mainBuf->height * 2);
     if (mOutBuf.dataPtr != NULL && bufferSize != (size_t) mOutBuf.size) {
@@ -149,13 +160,30 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
        mainBuf = &mScaledPic;
     }
 
-    // Start encoding main picture using HW encoder
-    if (mainBuf->type != ATOM_BUFFER_PANORAMA) {
+    PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("frameEncode starting", mainBuf->frameCounter);
+
+    // TODO: Revert: This is a workaround to overcome
+    // JPEG HW encoder limitation of properly encoding
+    // pictures only with heights aligned to 8. So for non-8-aligned
+    // we use SW encoder.
+    const int JPEG_HEIGHT_ALIGN = 8;
+    bool isAligned = (mainBuf->height % JPEG_HEIGHT_ALIGN == 0);
+
+    // Start encoding main picture using HW encoder (except for panorama, which
+    // often has resolution which the HW-encoder can't handle
+    if (mainBuf->type != ATOM_BUFFER_PANORAMA && isAligned) {
+        if (!dataHasBeenFlushed)
+            MemoryUtils::flushMemory((char *)mainBuf->dataPtr, mainBuf->size);
+
         status = startHwEncoding(mainBuf);
-        if(status != NO_ERROR)
-            failback = true;
-    } else
-        failback = true;
+        if(status != NO_ERROR) {
+            LOG1("@%s, hw encoding failed", __FUNCTION__);
+            swFallback = true;
+        }
+    } else {
+        LOG1("@%s, using sw encoding", __FUNCTION__);
+        swFallback = true;
+    }
 
     // Convert and encode the thumbnail, if present and EXIF maker is initialized
     if (mExifMaker->isInitialized())
@@ -163,7 +191,7 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
         encodeExif(thumbBuf);
     }
 
-    if (failback) {  // Encode main picture with SW encoder
+    if (swFallback) {  // Encode main picture with SW encoder
         status = doSwEncode(mainBuf, destBuf);
     } else {
         status = completeHwEncode(mainBuf, destBuf);
@@ -183,13 +211,14 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
     return status;
 }
 
-status_t PictureThread::encode(MetaData &metaData, AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
+status_t PictureThread::encode(MetaData &metaData, AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf, bool dataHasBeenFlushed)
 {
     LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_ENCODE;
     msg.data.encode.metaData = metaData;
     msg.data.encode.snapshotBuf = *snapshotBuf;
+    msg.data.encode.dataHasBeenFlushed = dataHasBeenFlushed;
     mCallbacksThread->rawFrameDone(snapshotBuf);
     if (postviewBuf) {
         msg.data.encode.postviewBuf = *postviewBuf;
@@ -197,13 +226,14 @@ status_t PictureThread::encode(MetaData &metaData, AtomBuffer *snapshotBuf, Atom
     } else {
         // thumbnail is optional
         LOG1("@%s, encoding without Thumbnail", __FUNCTION__);
+        msg.data.encode.postviewBuf = AtomBufferFactory::createAtomBuffer(); // init fields
         msg.data.encode.postviewBuf.buff = NULL;
         msg.data.encode.postviewBuf.dataPtr = NULL;
     }
     return mMessageQueue.send(&msg);
 }
 
-void PictureThread::getDefaultParameters(CameraParameters *params)
+void PictureThread::getDefaultParameters(CameraParameters *params, int cameraId)
 {
     LOG1("@%s", __FUNCTION__);
     if (!params) {
@@ -215,8 +245,10 @@ void PictureThread::getDefaultParameters(CameraParameters *params)
     params->setPictureFormat(CameraParameters::PIXEL_FORMAT_JPEG);
     params->set(CameraParameters::KEY_SUPPORTED_PICTURE_FORMATS,
             CameraParameters::PIXEL_FORMAT_JPEG);
-    params->set(CameraParameters::KEY_JPEG_QUALITY, "80");
-    params->set(CameraParameters::KEY_JPEG_THUMBNAIL_QUALITY, "50");
+    mPictureQuality = PlatformData::defaultJpegQuality(cameraId);
+    params->set(CameraParameters::KEY_JPEG_QUALITY, mPictureQuality);
+    mThumbnailQuality = PlatformData::defaultJpegThumbnailQuality(cameraId);
+    params->set(CameraParameters::KEY_JPEG_THUMBNAIL_QUALITY, mThumbnailQuality);
 }
 
 status_t PictureThread::initialize(const CameraParameters &params, int zoomRatio)
@@ -245,7 +277,7 @@ status_t PictureThread::handleMessageInitialize(MessageParam *msg)
     if (q != 0)
         mThumbnailQuality = q;
 
-    mThumbBuf.fourcc = PlatformData::getPreviewPixelFormat();
+    mThumbBuf.fourcc = PlatformData::getPreviewPixelFormat(mCameraId);
     mThumbBuf.width = params.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH);
     mThumbBuf.height = params.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_HEIGHT);
     mThumbBuf.bpl = pixelsToBytes(mThumbBuf.fourcc, mThumbBuf.width);
@@ -319,6 +351,26 @@ status_t PictureThread::flushBuffers()
         mPictureDoneCallback->pictureDone(&it->data.encode.snapshotBuf, &it->data.encode.postviewBuf);
     }
 
+    mCapturePostViewBufListLock.lock();
+    List<AtomBuffer>::iterator itPostView = mCapturePostViewBufList.begin();
+    while (itPostView != mCapturePostViewBufList.end()) {
+        MemoryUtils::freeAtomBuffer(*itPostView);
+        itPostView = mCapturePostViewBufList.erase(itPostView); // returns pointer to next item in list
+    }
+    mCapturePostViewBufListLock.unlock();
+
+    Vector<Message> pendingCapture;
+    mMessageQueue.remove(MESSAGE_ID_CAPTURE, &pendingCapture);
+    for(it = pendingCapture.begin(); it != pendingCapture.end(); ++it) {
+        LOG1("@%s returning capture buffers back to owner", __FUNCTION__);
+        it->data.capture.captureBuf.owner->returnBuffer(&it->data.capture.captureBuf);
+    }
+
+    if (mFirstPartBuf.owner) {
+        LOG1("@%s returning stored capture buffers back to owner", __FUNCTION__);
+        mFirstPartBuf.owner->returnBuffer(&mFirstPartBuf);
+    }
+
     return mMessageQueue.send(&msg, MESSAGE_ID_FLUSH);
 }
 
@@ -327,6 +379,320 @@ status_t PictureThread::handleMessageExit()
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     mThreadRunning = false;
+    return status;
+}
+
+bool PictureThread::atomIspNotify(IAtomIspObserver::Message *msg, const ObserverState state)
+{
+    LOG2("@%s", __FUNCTION__);
+    // if this frame is identified to be carrying the thumbnail, the preview copy is
+    // done here, lock protected, in the caller (observer) context, to ensure
+    // that the preview frame is not returned and overwritten by the sensor before
+    // creating the thumbnail
+
+    if (!msg) {
+        LOG1("Received observer state change");
+        // We are currently not receiving MESSAGE_ID_END_OF_STREAM when stream
+        // stops. Observer gets paused when device is about to be stopped and
+        // after pausing, we no longer receive new frames for the same session.
+        // Reset frame counter based on any observer state change
+        return false;
+    }
+
+    // send to processing, if there is a connected capture buffer with the preview
+    if (msg->id == MESSAGE_ID_FRAME && msg->data.frameBuffer.buff.auxBuf) {
+        // copy frame for thumbnail when it is needed
+        unsigned char *jpeginfo = ((unsigned char*)msg->data.frameBuffer.buff.auxBuf->dataPtr) + JPEG_INFO_START;
+        unsigned char *nv12meta = ((unsigned char*)msg->data.frameBuffer.buff.auxBuf->dataPtr) + NV12_META_START;
+        uint32_t thumbnailFrameId(getU32fromFrame(jpeginfo, JPEG_INFO_THUMBNAIL_FRAME_ID_ADDR));
+        uint32_t nv12metaFrameCount(getU32fromFrame(nv12meta, NV12_META_FRAME_COUNT_ADDR));
+        LOG2("@%s: thumbnailFrameId = %d, nv12metaFrameCount = %d", __FUNCTION__, thumbnailFrameId , nv12metaFrameCount);
+        if (thumbnailFrameId == nv12metaFrameCount && thumbnailFrameId != 0) {
+            LOG1("@%s: Copy frame for thumbnail. thumbnailFrameId = %d", __FUNCTION__, thumbnailFrameId);
+            mPictureDoneCallback->atPostviewPresent();
+            AtomBuffer capturePostViewBuf(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW));
+            capturePostViewBuf.fourcc = msg->data.frameBuffer.buff.fourcc;
+            capturePostViewBuf.width = msg->data.frameBuffer.buff.width;
+            capturePostViewBuf.height = msg->data.frameBuffer.buff.height;
+            capturePostViewBuf.bpl = msg->data.frameBuffer.buff.bpl;
+            capturePostViewBuf.id = thumbnailFrameId;
+            mCallbacks->allocateMemory(&capturePostViewBuf, msg->data.frameBuffer.buff.size);
+            if (capturePostViewBuf.dataPtr == NULL) {
+                LOGE("Failed to allocate memory for capturePostViewBuf");
+            } else {
+                memcpy(capturePostViewBuf.dataPtr, msg->data.frameBuffer.buff.dataPtr, capturePostViewBuf.size);
+                Mutex::Autolock lock(mCapturePostViewBufListLock);
+                mCapturePostViewBufList.push_back(capturePostViewBuf);
+            }
+        }
+
+        // send message
+        Message mesg;
+        mesg.id = MESSAGE_ID_CAPTURE;
+        mesg.data.capture.captureBuf = *msg->data.frameBuffer.buff.auxBuf;
+        mMessageQueue.send(&mesg);
+    }
+    return false;
+}
+
+status_t PictureThread::handleMessageCapture(MessageCapture *msg)
+{
+    LOG2("@%s", __FUNCTION__);
+
+    /*******
+     * TODO: Remove when capture-related bugs are fixed
+     *
+     * temporary logging of jpeginfo and JPEG metainfo
+     */
+    char array[16];
+    unsigned char *meta = ((unsigned char*)msg->captureBuf.dataPtr) + JPEG_INFO_START;
+    strncpy(array, (char*) meta, 15);
+    array[15] = 0;
+    uint32_t yuvFrameIdDebug  = *(uint32_t*)(meta+0x17);
+    yuvFrameIdDebug = be32toh(yuvFrameIdDebug);
+    meta += 15;
+
+    LOG2("@%s JPEGINFO '%s' yuvID(%d) mode: %02hhx count: %02hhx reserved: %02hhx %02hhx length: %02hhx %02hhx %02hhx %02hhx yuvID: %02hhx %02hhx %02hhx %02hhx thumbID: %02hhx %02hhx %02hhx %02hhx", __FUNCTION__, array, yuvFrameIdDebug,
+         meta[0] , meta[1], meta[2], meta[3], meta[4], meta[5], meta[6], meta[7], meta[8] , meta[9], meta[10], meta[11], meta[12], meta[13], meta[14], meta[15]);
+
+    meta = ((unsigned char*)msg->captureBuf.dataPtr) + NV12_META_START;
+    strncpy(array, (char *) meta, 14);
+    array[14] = 0;
+    meta += 14;
+    uint32_t frameCount = *(uint32_t*)(meta);
+    frameCount = be32toh(frameCount);
+    LOG2("@%s NV12METAINFO '%s' framecount(%d) %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx ", __FUNCTION__, array, frameCount,
+         meta[0] , meta[1], meta[2], meta[3], meta[4], meta[5], meta[6], meta[7], meta[8] , meta[9], meta[10], meta[11], meta[12], meta[13], meta[14], meta[15]);
+    /******* end temporary logging */
+
+    unsigned char *jpeginfo = ((unsigned char*)msg->captureBuf.dataPtr) + JPEG_INFO_START;
+    unsigned char *nv12meta = ((unsigned char*)msg->captureBuf.dataPtr) + NV12_META_START;
+
+    // Check markers
+    if (strncmp((char*) &jpeginfo[JPEG_INFO_START_MARKER_ADDR], JPEG_INFO_START_MARKER, sizeof(JPEG_INFO_START_MARKER) - 1) != 0 ||
+        strncmp((char*) &jpeginfo[JPEG_INFO_END_MARKER_ADDR], JPEG_INFO_END_MARKER, sizeof(JPEG_INFO_END_MARKER) - 1) != 0 ||
+        strncmp((char*) &nv12meta[NV12_META_START_MARKER_ADDR], NV12_META_START_MARKER, sizeof(NV12_META_START_MARKER) - 1) != 0 ||
+        strncmp((char*) &nv12meta[NV12_META_END_MARKER_ADDR], NV12_META_END_MARKER, sizeof(NV12_META_END_MARKER) - 1) != 0) {
+        LOGE("jpeg info or nv12 meta marker not found in frame. skip frame.");
+        // return the buffer to isp -> putSnapshot
+        msg->captureBuf.owner->returnBuffer(&msg->captureBuf);
+        return NO_ERROR;
+    }
+
+    uint32_t yuvFrameId(getU32fromFrame(jpeginfo, JPEG_INFO_YUV_FRAME_ID_ADDR));
+    uint32_t thumbnailFrameId(getU32fromFrame(jpeginfo, JPEG_INFO_THUMBNAIL_FRAME_ID_ADDR));
+    uint32_t nv12metaFrameCount(getU32fromFrame(nv12meta, NV12_META_FRAME_COUNT_ADDR));
+    // TODO: remove AF state debug along with the above "temporary" debug trace.
+    uint16_t afState(getU16fromFrame(nv12meta, NV12_META_AF_STATE_ADDR));
+
+    uint16_t qValue(getU16fromFrame(jpeginfo, JPEG_INFO_Q_VALUE_ADDR));
+    uint32_t jpegSizeQValue(getU32fromFrame(jpeginfo, JPEG_INFO_JPEG_SIZE_Q_VALUE_ADDR));
+
+    LOG2("@%s: yuvFrameId = %d, thumbnailFrameId = %d, nv12metaFrameCount = %d, nv12AfState = 0x%x", __FUNCTION__, yuvFrameId, thumbnailFrameId , nv12metaFrameCount, afState);
+
+    switch (jpeginfo[JPEG_INFO_MODE_ADDR]) {
+    case JPEG_FRAME_TYPE_META:
+        // this is the default preview + metadata case. We just return the buffer.
+        LOG2("@%s: normal preview with metadata.", __FUNCTION__);
+        // return the buffer to isp -> putSnapshot
+        msg->captureBuf.owner->returnBuffer(&msg->captureBuf);
+        break;
+
+    case JPEG_FRAME_TYPE_FULL:
+        LOG1("@%s: full jpeg", __FUNCTION__);
+        LOG2("@%s: qValue = %d, jpegSizeQValue = %d", __FUNCTION__,  qValue, jpegSizeQValue);
+        assembleJpeg(&msg->captureBuf, NULL);
+        // return the buffer to isp -> putSnapshot
+        msg->captureBuf.owner->returnBuffer(&msg->captureBuf);
+        LOG1("@%s: full jpeg done", __FUNCTION__);
+        break;
+
+    case JPEG_FRAME_TYPE_SPLIT:
+        LOG1("@%s: split jpeg", __FUNCTION__);
+        LOG2("@%s: qValue = %d, jpegSizeQValue = %d", __FUNCTION__,  qValue, jpegSizeQValue);
+        switch (jpeginfo[JPEG_INFO_COUNT_ADDR]) {
+        case 0x00:
+            LOG1("@%s: split jpeg first part", __FUNCTION__);
+            mFirstPartBuf = msg->captureBuf;
+            break;
+        case 0x01:
+            LOG1("@%s: split jpeg second part", __FUNCTION__);
+            assembleJpeg(&mFirstPartBuf, &msg->captureBuf);
+            // return the buffer to isp -> putSnapshot
+            mFirstPartBuf.owner->returnBuffer(&mFirstPartBuf);
+            mFirstPartBuf.owner = NULL;
+            msg->captureBuf.owner->returnBuffer(&msg->captureBuf);
+            LOG1("@%s: split jpeg done", __FUNCTION__);
+            break;
+         default:
+             LOGE("Unknown jpeg count!");
+             // return the buffer to isp -> putSnapshot
+             msg->captureBuf.owner->returnBuffer(&msg->captureBuf);
+             return UNKNOWN_ERROR;
+             break;
+        }
+        break;
+
+    default:
+        LOGE("Unknown jpeg mode!");
+        // return the buffer to isp -> putSnapshot
+        msg->captureBuf.owner->returnBuffer(&msg->captureBuf);
+        return UNKNOWN_ERROR;
+        break;
+    }
+
+    return NO_ERROR;
+}
+
+/*
+ * Get jpeg data size from continuous jpeg capture frame
+ */
+uint32_t PictureThread::getJpegDataSize(const void* framePtr) const
+{
+    uint32_t result = *((uint32_t*)((uint8_t*)framePtr + JPEG_INFO_START + JPEG_INFO_SIZE_ADDR));
+
+    //conversion from big-endia
+    result = be32toh(result);
+
+    LOG2("@%s: frame jpeg data size = %d", __FUNCTION__, result);
+
+    return result;
+}
+
+void PictureThread::setupExifWithNv12Meta(AtomBuffer *mainBuf)
+{
+    LOG1("@%s", __FUNCTION__);
+    unsigned char *nv12meta = (unsigned char*)mainBuf->dataPtr + NV12_META_START;
+    uint32_t nv12metaFrameCount(getU32fromFrame(nv12meta, NV12_META_FRAME_COUNT_ADDR));
+    LOG2("@%s: frame count = %d", __FUNCTION__, nv12metaFrameCount);
+    uint32_t iso(getU32fromFrame(nv12meta, NV12_META_ISO_ADDR));
+    uint32_t exposureBias(getU32fromFrame(nv12meta, NV12_META_EXPOSURE_BIAS_ADDR));
+    uint32_t tv(getU32fromFrame(nv12meta, NV12_META_TV_ADDR));
+    uint32_t bv(getU32fromFrame(nv12meta, NV12_META_BV_ADDR));
+    uint32_t exposureTimeDenominator(getU32fromFrame(nv12meta, NV12_META_EXPOSURE_TIME_DENOMINATOR_ADDR));
+    uint32_t flash(getU32fromFrame(nv12meta, NV12_META_FLASH_ADDR));
+    uint16_t av(getU16fromFrame(nv12meta, NV12_META_AV_ADDR));
+
+    LOG2("@%s: ISO = %d", __FUNCTION__, iso);
+    LOG2("@%s: exposureBias = %d", __FUNCTION__, exposureBias);
+    LOG2("@%s: TV = %d", __FUNCTION__, tv);
+    LOG2("@%s: BV = %d", __FUNCTION__, bv);
+    LOG2("@%s: exposureTimeDenominator = %d", __FUNCTION__, exposureTimeDenominator);
+    LOG2("@%s: flash = %d", __FUNCTION__, flash);
+    LOG2("@%s: av = %d", __FUNCTION__, av);
+
+    mExifMaker->setExtIspAeConfig(iso, exposureBias, tv, bv, exposureTimeDenominator, av);
+
+    if (flash != 0)
+        mExifMaker->enableFlash();
+}
+
+status_t PictureThread::assembleJpeg(AtomBuffer *mainBuf, AtomBuffer *mainBuf2)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status(NO_ERROR);
+    int finalSize(0);
+    int mainSize(0);
+    int mainSize1(0);
+    int mainSize2(0);
+    char *copyTo(0);
+
+    AtomBuffer destBuf = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT_JPEG);
+    AtomBuffer postviewBuf = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
+
+    uint32_t thumbnailId(getU32fromFrame((uint8_t*)mainBuf->dataPtr,
+                                         JPEG_INFO_START + JPEG_INFO_YUV_FRAME_ID_ADDR));
+
+    if (mExifBuf.dataPtr == NULL) {
+        mCallbacks->allocateMemory(&mExifBuf, EXIF_SIZE_LIMITATION + sizeof(JPEG_MARKER_SOI));
+    }
+
+    /* Allocate Output buffer for thumbnail */
+    if (mOutBuf.dataPtr == NULL) {
+        mCallbacks->allocateMemory(&mOutBuf, EXIF_SIZE_LIMITATION);
+    }
+
+    // prepare EXIF data (focal length etc)
+    mExifMaker->setDriverData(mMakerInfo);
+    // Read exif info from META data
+    setupExifWithNv12Meta(mainBuf);
+
+    mCapturePostViewBufListLock.lock();
+    while (!mCapturePostViewBufList.empty()) {
+        List<AtomBuffer>::iterator it = mCapturePostViewBufList.begin();
+        uint32_t postviewBufId = (it)->id;
+        if (thumbnailId == postviewBufId) {
+            postviewBuf = *(it);
+            mCapturePostViewBufList.erase(it);
+            break;
+        } else if (thumbnailId > postviewBufId) {
+            LOGW("Old thumbnail(%u) buffer in queue (expect %u)", postviewBufId, thumbnailId);
+            mCapturePostViewBufList.erase(it);
+        } else {
+            LOGW("Could not find thumbnail (%u) for capture.", thumbnailId);
+            break;
+        }
+    }
+    mCapturePostViewBufListLock.unlock();
+
+    if (postviewBuf.dataPtr != NULL) {
+        LOG2("@%s: Thumbnail id, %u - %u", __FUNCTION__, postviewBuf.id,
+             getU32fromFrame((uint8_t*)mainBuf->dataPtr, JPEG_INFO_START + JPEG_INFO_YUV_FRAME_ID_ADDR));
+        encodeExif(&postviewBuf);
+    } else {
+        LOGW("No thumbnail available during JPEG assemble.");
+        encodeExif(NULL);
+    }
+
+    MemoryUtils::freeAtomBuffer(postviewBuf);
+
+    LOG2("@%s: part one JPEG frame count = %u", __FUNCTION__,
+         getU32fromFrame((uint8_t*) mainBuf->dataPtr, JPEG_META_START + JPEG_META_FRAME_COUNT_ADDR));
+
+    // skip SOI MARKER start of JPEG data because it is already in EXIF
+    mainSize1 = getJpegDataSize(mainBuf->dataPtr) - sizeof(JPEG_MARKER_SOI);
+    if (mainBuf2 == NULL) {
+        mainSize = mainSize1;
+    } else {
+        mainSize2 = getJpegDataSize(mainBuf2->dataPtr);
+        mainSize = mainSize1 + mainSize2;
+        LOG2("@%s: part two JPEG frame count = %u", __FUNCTION__,
+             getU32fromFrame((uint8_t*) mainBuf2->dataPtr, JPEG_META_START + JPEG_META_FRAME_COUNT_ADDR));
+    }
+
+    finalSize = mExifBuf.size + mainSize;
+    //allocate JPEG buffer base on the actual coded JPEG size
+    mCallbacks->allocateMemory(&destBuf, finalSize);
+    if (destBuf.dataPtr == NULL) {
+        LOGE("No memory for final JPEG file!");
+        status = NO_MEMORY;
+        return status;
+    }
+
+    //Copy EXIF (it will also have the SOI marker)
+    memcpy(destBuf.dataPtr, mExifBuf.dataPtr, mExifBuf.size);
+
+    // Copy Jpeg data
+    if (mainBuf2 == NULL) {
+        copyTo = (char*)destBuf.dataPtr + mExifBuf.size;
+        memcpy(copyTo, (char*)mainBuf->dataPtr + JPEG_DATA_START + sizeof(JPEG_MARKER_SOI), mainSize1);
+    } else {
+        copyTo = (char*)destBuf.dataPtr + mExifBuf.size;
+        memcpy(copyTo, (char*)mainBuf->dataPtr + JPEG_DATA_START + sizeof(JPEG_MARKER_SOI), mainSize1);
+        copyTo = (char*)destBuf.dataPtr + mExifBuf.size + mainSize1;
+        memcpy(copyTo, (char*)mainBuf2->dataPtr + JPEG_DATA_START, mainSize2);
+    }
+
+    /* Update the fields in the AtomBuffer structure */
+    destBuf.width = mainBuf->width;
+    destBuf.height = mainBuf->height;
+    destBuf.fourcc = V4L2_PIX_FMT_JPEG;
+    destBuf.frameCounter = mainBuf->frameCounter;
+    destBuf.id = thumbnailId;
+
+    mCallbacksThread->rawFrameDone(NULL);
+    mCallbacksThread->compressedFrameDone(&destBuf, NULL, NULL);
+
     return status;
 }
 
@@ -347,6 +713,11 @@ void PictureThread::MetaData::free(I3AControls *aaaControls)
         delete aeConfig;
         aeConfig = NULL;
     }
+
+    if (faceState.faces) {
+        delete[] faceState.faces;
+        faceState.faces = NULL;
+    }
 }
 
 /**
@@ -363,6 +734,8 @@ void PictureThread::setupExifWithMetaData(const PictureThread::MetaData &metaDat
         mExifMaker->setSensorAeConfig(*metaData.aeConfig);
     if (metaData.flashFired)
         mExifMaker->enableFlash();
+    if (metaData.faceState.num_faces > 0)
+        mExifMaker->setFaceData(metaData.faceState);
 }
 
 status_t PictureThread::handleMessageEncode(MessageEncode *msg)
@@ -395,7 +768,7 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
             mirrorBuffer(postviewBuf, msg->metaData.currentOrientation, msg->metaData.cameraOrientation);
     }
 
-    status = encodeToJpeg(&msg->snapshotBuf, postviewBuf, &jpegBuf);
+    status = encodeToJpeg(&msg->snapshotBuf, postviewBuf, &jpegBuf, msg->dataHasBeenFlushed);
     if (status != NO_ERROR) {
         LOGE("Error generating JPEG image!");
         LOG1("Releasing jpegBuf @%p", jpegBuf.dataPtr);
@@ -520,7 +893,7 @@ status_t PictureThread::allocateInputBuffers(AtomBuffer& formatDescriptor, int n
     // temporary workaround until CSS supports buffers with different bpls
     // until then we need to align all buffers to display subsystem bpl
     // requirements.... even the snapshot buffers that do not go to screen
-    int bpl = SGXandDisplayBpl(formatDescriptor.fourcc, formatDescriptor.width);
+    int bpl = SGXandDisplayBpl(formatDescriptor.fourcc, formatDescriptor.bpl);
     LOG1("@%s bpl %d", __FUNCTION__, bpl);
 
     formatDescriptor.bpl = bpl;
@@ -621,7 +994,7 @@ status_t PictureThread::allocatePostviewBuffers(const AtomBuffer &formatDescript
     AtomBuffer postv = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
 
     for (int i = 0; i < numBufs; ++i) {
-        LOGD("allocating postview %d", i+1);
+        LOG1("allocating postview %d", i+1);
         postv.buff = NULL;
         postv.size = 0;
         postv.dataPtr = NULL;
@@ -637,7 +1010,7 @@ status_t PictureThread::allocatePostviewBuffers(const AtomBuffer &formatDescript
         } else if (status == NO_ERROR) {
             if (registerToScaler)
                 mScaler->registerBuffer(postv, ScalerService::SCALER_OUTPUT);
-            LOGD("postview dataPtr %p", postv.dataPtr);
+            LOG1("postview dataPtr %p", postv.dataPtr);
             mPostviewBufferArray[i] = postv;
         } else {
             status = UNKNOWN_ERROR;
@@ -760,6 +1133,22 @@ status_t PictureThread::handleMessageFlush()
     return status;
 }
 
+void PictureThread::setMakerNote(atomisp_makernote_info makerNote)
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_SET_MAKERNOTE;
+    msg.data.maker.makerNote = makerNote;
+    mMessageQueue.send(&msg);
+}
+
+status_t PictureThread::handleMessageSetMakernote(MessageSetMakernote *msg)
+{
+    LOG1("@%s", __FUNCTION__);
+    mMakerInfo = msg->makerNote;
+    return OK;
+}
+
 status_t PictureThread::waitForAndExecuteMessage()
 {
     LOG2("@%s", __FUNCTION__);
@@ -777,6 +1166,10 @@ status_t PictureThread::waitForAndExecuteMessage()
             status = handleMessageEncode(&msg.data.encode);
             break;
 
+        case MESSAGE_ID_SET_MAKERNOTE:
+            status = handleMessageSetMakernote(&msg.data.maker);
+            break;
+
         case MESSAGE_ID_ALLOC_BUFS:
             status = handleMessageAllocBufs(&msg.data.alloc);
             break;
@@ -791,6 +1184,10 @@ status_t PictureThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_FLUSH:
             status = handleMessageFlush();
+            break;
+
+        case MESSAGE_ID_CAPTURE:
+            status = handleMessageCapture(&msg.data.capture);
             break;
 
         case MESSAGE_ID_INITIALIZE:
@@ -847,12 +1244,8 @@ status_t PictureThread::startHwEncoding(AtomBuffer* mainBuf)
 
     PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("In",mainBuf->frameCounter);
     inBuf.clear();
-    if (mainBuf->shared) {
-        inBuf.buf = (unsigned char *) *((char **)mainBuf->dataPtr);
-    } else {
-        inBuf.buf = (unsigned char *) mainBuf->dataPtr;
-    }
 
+    inBuf.buf = (unsigned char *) mainBuf->dataPtr;
     inBuf.width = mainBuf->width;
     inBuf.height = mainBuf->height;
     inBuf.fourcc = mainBuf->fourcc;
@@ -980,14 +1373,10 @@ status_t PictureThread::doSwEncode(AtomBuffer *mainBuf, AtomBuffer* destBuf)
 
     PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("In",mainBuf->frameCounter);
     inBuf.clear();
-    if (mainBuf->shared) {
-        inBuf.buf = (unsigned char *) *((char **)mainBuf->dataPtr);
-    } else {
-        inBuf.buf = (unsigned char *) mainBuf->dataPtr;
-    }
 
     int realWidth = (mainBuf->bpl > mainBuf->width)? mainBuf->bpl:
                                                        mainBuf->width;
+    inBuf.buf = (unsigned char *) mainBuf->dataPtr;
     inBuf.width = realWidth;
     inBuf.height = mainBuf->height;
     inBuf.fourcc = mainBuf->fourcc;

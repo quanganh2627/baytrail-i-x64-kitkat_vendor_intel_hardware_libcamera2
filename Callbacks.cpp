@@ -16,11 +16,20 @@
 
 #define LOG_TAG "Camera_Callbacks"
 
+#include <sys/stat.h> // chmod
 #include "LogHelper.h"
 #include "Callbacks.h"
 #include "intel_camera_extensions.h"
 #include "PerformanceTraces.h"
 #include "cutils/atomic.h"
+#include "CamHeapMem.h"
+
+// Use non-empty default path to force always writing burst captures to file system.
+// For example:
+// const char DEFAULT_BURST_FILEPATH[] = "/data/media/0/DCIM/Camera";
+const char DEFAULT_BURST_FILEPATH[] = "";
+
+// TODO: default path should be in camera_profiles.xml
 
 namespace android {
 
@@ -35,6 +44,8 @@ Callbacks::Callbacks() :
     ,mPanoramaMetadata(NULL)
     ,mSceneDetectionMetadata(NULL)
     ,mStoreMetaDataInBuffers(false)
+    ,mContShootingEnabled(false)
+    ,mBurstCount(0)
 {
     LOG1("@%s", __FUNCTION__);
 }
@@ -112,6 +123,9 @@ void Callbacks::previewFrameDone(AtomBuffer *buff)
         LOG2("Sending message: CAMERA_MSG_PREVIEW_FRAME, buff id = %d, size = %zu", buff->id,  buff->buff->size);
         mDataCB(CAMERA_MSG_PREVIEW_FRAME, buff->buff, 0, NULL, mUserToken);
     }
+    if (buff->owner != NULL && buff->returnAfterCB) {
+        buff->owner->returnBuffer(buff);
+    }
 }
 
 void Callbacks::videoFrameDone(AtomBuffer *buff, nsecs_t timestamp)
@@ -127,10 +141,100 @@ void Callbacks::videoFrameDone(AtomBuffer *buff, nsecs_t timestamp)
     }
 }
 
+void Callbacks::setContShooting(bool val, const char* filepath)
+{
+    mContShootingEnabled = val;
+    if (val) {
+        mBurstCount = 0;
+        mContShootingFilepath.setPathName(filepath ? filepath : DEFAULT_BURST_FILEPATH);
+    } else {
+        mContShootingFilepath.clear();
+    }
+}
+
 void Callbacks::compressedFrameDone(AtomBuffer *buff)
 {
+    LOG1("@%s, mContShootingEnabled: %d, file path: %s", __FUNCTION__, mContShootingEnabled, mContShootingFilepath.string());
+
+    // In continuous shooting mode, app may set a file path via burst-capture-path
+    // parameter. In this case instead of sending compressed images via callback,
+    // they are saved to a file and only file name is notified to framework.
+    if (mContShootingEnabled && !mContShootingFilepath.isEmpty()) {
+        String8 filename;
+        char burstTime[20];
+        FILE *fp;
+        time_t rawtime;
+        struct tm *timeinfo;
+        time(&rawtime);
+        timeinfo = localtime(&rawtime);
+        if (timeinfo == NULL) { // Suppress Klockwork warning, should never happen
+            LOGE("Null pointer error!");
+            return;
+        }
+        strftime(burstTime, 20, "%Y%m%d_%H%M%S", timeinfo); // TODO: use capture time stamp.
+
+        filename.appendFormat("%s/%s_%d.jpg", mContShootingFilepath.string(), burstTime, ++mBurstCount);
+        LOG1("@%s, filename:%s", __FUNCTION__, filename.string());
+
+        fp = fopen(filename.string(), "w+b");
+        if (fp == NULL) {
+            LOGE("opening file failed: %s", filename.string());
+            return;
+        }
+        if (fwrite(buff->dataPtr, buff->size, 1, fp) == 0)
+            LOGE("Failed to write to %s: %d", filename.string(), buff->size);
+        fclose(fp);
+
+        // Set permissions so that file is readable elsewhere.
+        if (chmod(filename.string(), 0664) < 0) {
+            LOGE("failed chmod '%s'",filename.string());
+        }
+
+        // File saved, finally send the filename via callback.
+        // TODO: how to indicate errors to client?
+        if ((mMessageFlags & CAMERA_MSG_COMPRESSED_IMAGE) && mDataCB != NULL) {
+            LOG1("Sending message: CAMERA_MSG_COMPRESSED_IMAGE, buff id = %d, size = %zu", buff->id, buff->buff->size);
+            camera_memory_t* filenameBuff = NULL;
+            allocateMemory(&filenameBuff, filename.size());
+            if (filenameBuff == NULL) {
+                LOGE("Out of memory!");
+                return;
+            }
+            memcpy(filenameBuff->data, filename.string(), filename.size());
+            mDataCB(CAMERA_MSG_COMPRESSED_IMAGE, filenameBuff, 0, NULL, mUserToken);
+            filenameBuff->release(filenameBuff);
+        }
+    } else {
+        if ((mMessageFlags & CAMERA_MSG_COMPRESSED_IMAGE) && mDataCB != NULL) {
+            LOG1("Sending message: CAMERA_MSG_COMPRESSED_IMAGE, buff id = %d, size = %zu", buff->id, buff->buff->size);
+            mDataCB(CAMERA_MSG_COMPRESSED_IMAGE, buff->buff, 0, NULL, mUserToken);
+        }
+    }
+}
+
+void Callbacks::extIspFrameDone(AtomBuffer *buff, int offset, int size)
+{
     LOG1("@%s", __FUNCTION__);
-    if ((mMessageFlags & CAMERA_MSG_COMPRESSED_IMAGE) && mDataCB != NULL) {
+    // we don't obey the flags for this, as several callbacks are wanted
+    if (mDataCB != NULL) {
+        LOG1("Sending message: CAMERA_MSG_COMPRESSED_IMAGE, buff id = %d, size = %zu", buff->id, buff->buff->size);
+        sp<CameraHeapMemory> mem(static_cast<CameraHeapMemory *>(buff->buff->handle));
+        sp<MemoryBase> memBase = mem->mBuffers[0];
+        sp<CameraMemoryBase> newMemoryBase = new CameraMemoryBase(mem->mBuffers[0], offset, size);
+        // send with the offset and size of the new memory base object
+        mem->mBuffers[0] = newMemoryBase;
+        mDataCB(CAMERA_MSG_COMPRESSED_IMAGE, buff->buff, 0, NULL, mUserToken);
+        // restore old memory base object
+        mem->mBuffers[0] = memBase;
+    }
+}
+
+void Callbacks::smartStabilizationFrameDone(AtomBuffer *buff)
+{
+    LOG1("@%s", __FUNCTION__);
+
+    // we don't obey the flags for this, as several callbacks are wanted
+    if (mDataCB != NULL) {
         LOG1("Sending message: CAMERA_MSG_COMPRESSED_IMAGE, buff id = %d, size = %zu", buff->id, buff->buff->size);
         mDataCB(CAMERA_MSG_COMPRESSED_IMAGE, buff->buff, 0, NULL, mUserToken);
     }
@@ -187,7 +291,7 @@ void Callbacks::cameraError(int err)
     }
 }
 
-void Callbacks::facesDetected(camera_frame_metadata_t &face_metadata)
+void Callbacks::facesDetected(camera_frame_metadata_t *face_metadata)
 {
     /* If the Call back is enabled for meta data and face detection is
     * active, inform about faces.*/
@@ -199,7 +303,7 @@ void Callbacks::facesDetected(camera_frame_metadata_t &face_metadata)
         mDataCB(CAMERA_MSG_PREVIEW_METADATA,
              mDummyByte,
              0,
-             &face_metadata,
+             face_metadata,
              mUserToken);
     }
 }
@@ -307,6 +411,16 @@ void Callbacks::lowBattery()
     if (mNotifyCB != NULL) {
         LOG1("Sending message: CAMERA_MSG_LOW_BATTERY");
         mNotifyCB(CAMERA_MSG_LOW_BATTERY, 1, 0, mUserToken);
+    }
+}
+
+void Callbacks::sendFrameId(int id)
+{
+    LOG1("@%s", __FUNCTION__);
+
+    if (mNotifyCB != NULL) {
+        LOG1("Sending message: CAMERA_MSG_FRAME_ID");
+        mNotifyCB(CAMERA_MSG_FRAME_ID, id, 0, mUserToken);
     }
 }
 

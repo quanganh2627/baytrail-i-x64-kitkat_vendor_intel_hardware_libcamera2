@@ -24,6 +24,9 @@
 #include "MessageQueue.h"
 #include "AtomCommon.h"
 #include "IAtomIspObserver.h"
+#include "HALVideoStabilization.h"
+#include "CamHeapMem.h"
+#include "AtomISP.h"
 
 namespace android {
 
@@ -102,11 +105,14 @@ public:
  * This class is in charge of configuring the preview window send by the client
  * and render the preview buffers sent by CtrlThread
  */
-class PreviewThread : public Thread, public IAtomIspObserver {
+class PreviewThread : public Thread
+                     ,public IAtomIspObserver
+                     ,public IBufferOwner
+{
 
 // constructor destructor
 public:
-    PreviewThread(sp<CallbacksThread> callbacksThread, Callbacks* callbacks);
+    PreviewThread(sp<CallbacksThread> callbacksThread, Callbacks* callbacks, int cameraId, IHWIspControl *ispControl);
     virtual ~PreviewThread();
 
 // prevent copy constructor and assignment operator
@@ -132,27 +138,57 @@ public:
         STATE_ENABLED_HIDDEN,
     };
 
+    enum CallbackMode {
+        PREVIEW_CALLBACK_NORMAL,        /* normal callbacks, sent after displaying */
+        PREVIEW_CALLBACK_BEFORE_DISPLAY /* currently this mode only supports shared memory NV21 callbacks */
+    };
+
     PreviewState getPreviewState() const;
     unsigned int getFramesDone() const { return mFramesDone; };
     status_t setPreviewState(PreviewState state);
     status_t hidePreview(struct timeval &after_frame);
     status_t setCallback(ICallbackPreview *cb, ICallbackPreview::CallbackType t);
-    void getDefaultParameters(CameraParameters *params);
+    status_t detachCallback(ICallbackPreview *cb, ICallbackPreview::CallbackType t);
+    void getDefaultParameters(CameraParameters *params, int cameraId);
     void setCallbackPreviewSize(int width, int height, int videoMode);
     bool isWindowConfigured();
     status_t preview(AtomBuffer *buff);
     status_t postview(AtomBuffer *buff, bool hidePreview = false, bool synchronous = false);
     status_t setPreviewWindow(struct preview_stream_ops *window);
     status_t setPreviewConfig(int preview_width, int preview_height,
-                              int preview_cb_format, bool shared_mode = true, int buffer_count = -1);
+                              int preview_cb_format, bool shared_mode = true,
+                              bool video_mode = false, int buffer_count = -1);
     status_t fetchPreviewBuffers(Vector<AtomBuffer> &pvBufs);
     status_t fetchPreviewBufferGeometry(int *w, int *h, int *bpl);
     status_t returnPreviewBuffers();
     status_t flushBuffers();
     status_t enableOverlay(bool set = true, int rotation = 90);
+    void setPreviewCallbackFps(int fps);
+    void setCallbackMode(CallbackMode mode);
+
+    status_t pausePreviewFrameUpdate();
+    status_t resumePreviewFrameUpdate();
+    status_t setPreviewFrameCaptureId(int count);
+    status_t getPreviewBufferById(AtomBuffer &buff);
+
+    // IBufferOwner override
+    virtual void returnBuffer(AtomBuffer* buff);
 
 // private types
 private:
+    // fake heap for avoiding memory copy for preview callbacks with buffers from gralloc
+    class FakeHeap : public MemoryHeapBase {
+    public:
+        FakeHeap(int size, void *ptr) : mSize(size), mPtr(ptr) {};
+        virtual ~FakeHeap() {};
+        int         getHeapID() const { return 0; }
+        void*       getBase() const { return mPtr; }
+        size_t      getSize() const { return mSize; }
+        uint32_t    getFlags() const { return 0; }
+        uint32_t    getOffset() const { return 0; }
+        int mSize;
+        void *mPtr;
+    };
 
     // thread message id's
     enum MessageId {
@@ -166,9 +202,15 @@ private:
         MESSAGE_ID_RETURN_PREVIEW_BUFS,
         MESSAGE_ID_FLUSH,
         MESSAGE_ID_WINDOW_QUERY,
+        MESSAGE_ID_RETURN_BUFFER,
         MESSAGE_ID_SET_CALLBACK,
+        MESSAGE_ID_SET_CALLBACK_MODE,
+        MESSAGE_ID_FPS,
         MESSAGE_ID_SET_CALLBACK_PREVIEW_SIZE,
         MESSAGE_ID_FETCH_BUF_GEOMETRY,
+        MESSAGE_ID_PAUSE_PREVIEW_FRAME_UPDATE,
+        MESSAGE_ID_RESUME_PREVIEW_FRAME_UPDATE,
+        MESSAGE_ID_SET_PREVIEW_FRAME_CAPTURE_ID,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -184,6 +226,14 @@ private:
         bool synchronous;
     };
 
+    struct MessageFPS {
+        int fps;
+    };
+
+    struct MessageCallbackMode {
+        CallbackMode mode;
+    };
+
     struct MessageSetPreviewWindow {
         struct preview_stream_ops *window;
         bool synchronous;
@@ -192,6 +242,7 @@ private:
     struct MessageSetCallback {
         ICallbackPreview *icallback;
         ICallbackPreview::CallbackType type;
+        bool detach;
     };
 
     struct MessageSetCallbackPreviewSize {
@@ -206,6 +257,15 @@ private:
         int cb_format;
         int bufferCount;
         bool sharedMode;
+        bool halVSVideo;
+    };
+
+    struct MessageReturnBuffer {
+        AtomBuffer buff;
+    };
+
+    struct MessageFrameId{
+        int id;
     };
 
     // union of all message data
@@ -220,12 +280,23 @@ private:
         // MESSAGE_ID_SET_PREVIEW_CONFIG
         MessageSetPreviewConfig setPreviewConfig;
 
+        // MESSAGE_ID_RETURN_BUFFER
+        MessageReturnBuffer returnBuffer;
+
         // MESSAGE_ID_SET_CALLBACK
         MessageSetCallback setCallback;
+
+        // MESSAGE_ID_SET_CALLBACK_MODE
+        MessageCallbackMode callbackMode;
 
         // MESSAGE_ID_SET_CALLBACK_PREVIEW_SIZE
         MessageSetCallbackPreviewSize callbackPreviewSize;
 
+        // MESSAGE_ID_FPS
+        MessageFPS fps;
+
+        // MESSAGE_ID_SET_PREVIEW_FRAME_CAPTURE_ID
+        MessageFrameId frameId;
     };
 
     // message id and message data
@@ -243,6 +314,9 @@ private:
     struct GfxAtomBuffer {
         GfxBufferOwner owner;
         AtomBuffer  buffer;
+        bool queuedToWindow;
+        bool queuedToVideo;
+        IBufferOwner* originalAtomBufferOwner;
     };
 
 protected:
@@ -258,6 +332,9 @@ private:
     status_t handleMessageIsWindowConfigured();
     status_t handleMessageSetCallback(MessageSetCallback *msg);
     status_t handleMessageSetCallbackPreviewSize(MessageSetCallbackPreviewSize *msg);
+    status_t handleMessageReturnBuffer(MessageReturnBuffer *msg);
+    status_t handleMessageFPS(MessageFPS *msg);
+    status_t handleMessagePreviewCallbackMode(MessageCallbackMode *msg);
     status_t handleSetPreviewWindow(MessageSetPreviewWindow *msg);
     status_t handleSetPreviewConfig(MessageSetPreviewConfig *msg);
     status_t handlePreview(MessagePreview *msg);
@@ -265,6 +342,13 @@ private:
     status_t handleReturnPreviewBuffers(void);
     status_t handlePostview(MessagePreview *msg);
     status_t handleMessageFetchBufferGeometry(void);
+    status_t handleVSPreview(MessagePreview *msg);
+    status_t handlePreviewCore(AtomBuffer *buf);
+    status_t handlePreviewCallback(AtomBuffer &srcBuf);
+
+    status_t handlePausePreviewFrameUpdate();
+    status_t handleResumePreviewFrameUpdate();
+    status_t handleSetPreviewFrameCaptureId(MessageFrameId *msg);
 
     // main message function
     status_t waitForAndExecuteMessage();
@@ -280,18 +364,21 @@ private:
     status_t allocateGfxPreviewBuffers(int numberOfBuffers);
     status_t freeGfxPreviewBuffers();
     int getGfxBufferBytesPerLine();
-    void padPreviewBuffer(GfxAtomBuffer* &gfx, MessagePreview* &msg);
+    void padPreviewBuffer(GfxAtomBuffer* &gfx, AtomBuffer *buf);
     GfxAtomBuffer* dequeueFromWindow();
     void copyPreviewBuffer(AtomBuffer* src, AtomBuffer* dst);
     void getEffectiveDimensions(int *w, int *h);
+    bool callbacksEnabled();
 
+    void processVS(AtomBuffer *src, AtomBuffer *dst);
+
+    GfxAtomBuffer* lookForFreeGfxBufferHandle();
     GfxAtomBuffer* lookForGfxBufferHandle(buffer_handle_t *);
     GfxAtomBuffer* lookForAtomBuffer(AtomBuffer *buffer);
     status_t fetchReservedBuffers(int numOfReservedBuffers);
     GfxAtomBuffer* pickReservedBuffer();
 
-
-
+    status_t handlePreviewBufferQueue(AtomBuffer *buff);
 // private data
 private:
     MessageQueue<Message, MessageId> mMessageQueue;
@@ -305,11 +392,15 @@ private:
     nsecs_t         mLastFrameTs;
     unsigned int    mFramesDone;
     sp<CallbacksThread> mCallbacksThread;
+    sp<HALVideoStabilization> mHALVS;
 
     preview_stream_ops_t *mPreviewWindow;   /*!< struct passed from Service to control the native window */
     AtomBuffer          mPreviewBuf;        /*!< Local preview buffer to give to the user */
     unsigned char       *mTransferingBuffer;/*!< Local transfering buffer for real preview callback*/
     Callbacks           *mCallbacks;
+
+    int mCameraId;
+    IHWIspControl *mIsp;
     int                 mMinUndequeued;     /*!< Minimum number frames
                                                  to keep in window */
     Vector<GfxAtomBuffer> mPreviewBuffers;    /*!< Vector with the buffers retrieved from window */
@@ -333,6 +424,17 @@ private:
     bool mSharedMode; /*!< true if gfx buffers are shared with AtomISP for 0-copy */
     int mRotation;   /*!< Relative rotation of the camera scan order to
                           the display attached to overlay plane */
+    bool mHALVideoStabilization;
+    sp<CameraHeapMemory> *mFakeHeaps;
+    int mFps; /*!< Desired callback fps */
+    int64_t mPreviewCbTs; /*!< (last) Preview callback timestamp */
+    CallbackMode mPreviewCallbackMode; /*!< Preview callback mode. E.g. "normal" or before display */
+
+    int mPreviewFrameId;
+    bool mPreviewBufferQueueUpdate;
+    int mPreviewBufferNum;  /*!< preview buffer number */
+    Vector<AtomBuffer> mPreviewBufferQueue;
+
 }; // class PreviewThread
 
 }; // namespace android

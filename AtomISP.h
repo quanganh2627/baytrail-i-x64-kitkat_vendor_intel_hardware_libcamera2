@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2011 The Android Open Source Project
+ * Copyright (c) 2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,7 +35,9 @@
 #include "ScalerService.h"
 #include "ICameraHwControls.h"
 #include "IDvs.h"
-#include "SensorHW.h"
+#include "SensorHWExtIsp.h"
+#include "SensorEmbeddedMetaData.h"
+#include "CamHeapMem.h"
 
 namespace android {
 
@@ -57,6 +60,17 @@ struct devNameGroup
     bool in_use;
 };
 
+enum NarrowGammaStatus {
+    NARROW_GAMMA_ON = 0,
+    NARROW_GAMMA_OFF = 1
+};
+
+enum IspFlip {
+    ISP_FLIP_NONE = 0,
+    ISP_FLIP_H = 0x1,
+    ISP_FLIP_V = 0x2,
+};
+
 class Callbacks;
 
 class AtomISP :
@@ -70,7 +84,7 @@ public:
     explicit AtomISP(int cameraId, sp<ScalerService> scalerService, Callbacks *callbacks);
     virtual ~AtomISP();
 
-    status_t initDevice();
+
     status_t init();
     void deInitDevice();
     bool isDeviceInitialized() const;
@@ -84,6 +98,7 @@ private:
 public:
 
     IHWSensorControl* getSensorControlInterface();
+
     void getDefaultParameters(CameraParameters *params, CameraParameters *intel_params);
 
     status_t configure(AtomMode mode);
@@ -100,7 +115,13 @@ public:
     int continuousBurstNegMinOffset(void) const;
     int continuousBurstNegOffset(int skip, int startIndex) const;
     int getContinuousCaptureNumber() const;
-    status_t prepareOfflineCapture(ContinuousCaptureConfig &config, bool capturePriority);
+    status_t prepareOfflineCapture(ContinuousCaptureConfig &config);
+
+    // APIs for capture with raw buffer lock
+    status_t rawBufferUnlock(int expId);
+    status_t rawBufferCapture(int expId);
+
+    void setExternalIspActionHint(ExtIspActionHint hint);
 
     status_t returnRecordingBuffers();
     bool isSharedPreviewBufferConfigured(bool *reserved = NULL) const;
@@ -108,6 +129,9 @@ public:
     // TODO: client no longer using, can be moved to privates
     status_t getPreviewFrame(AtomBuffer *buff);
     status_t putPreviewFrame(AtomBuffer *buff);
+
+    status_t getJpegCapturePreviewFrame(AtomBuffer *buff);
+    status_t putJpegCapturePreviewFrame(AtomBuffer *buff);
 
     status_t setGraphicPreviewBuffers(const AtomBuffer *buffs, int numBuffs, bool cached);
     status_t getRecordingFrame(AtomBuffer *buff);
@@ -119,15 +143,23 @@ public:
 
     status_t setPostviewBuffers(Vector<AtomBuffer> *buffs, int numBuffs, bool cached);
 
-    int pollPreview(int timeout);
     int pollCapture(int timeout);
+
+    status_t requestJpegCapture();
+    status_t startJpegModeContinuousShooting();
+    status_t stopJpegModeContinuousShooting();
 
     bool dataAvailable();
 
     bool isHALZSLEnabled() const { return mHALZSLEnabled; }
 
+    // for saving mirrored feature, set ISP mirror in runtime
+    // this only affects capture and recording devices
+    status_t setIspMirror(int flip);
+
     status_t setPreviewFrameFormat(int width, int height, int bpl, int fourcc = 0);
     status_t setPostviewFrameFormat(AtomBuffer& formatDescriptor);
+    void getSnapshotFrameFormat(AtomBuffer& formatDescriptor) const { formatDescriptor = mConfig.snapshot; }
     void getPostviewFrameFormat(AtomBuffer& formatDescriptor) const;
     status_t setSnapshotFrameFormat(AtomBuffer& formatDescriptor);
     status_t setVideoFrameFormat(int width, int height, int fourcc = 0);
@@ -139,10 +171,125 @@ public:
     void getPreviewSize(int *width, int *height, int *bpl);
     int getNumSnapshotBuffers();
 
+    // set/get recording frame rate
+    void setRecordingFramerate(int fps);
+    int getRecordingFramerate() { return mConfig.recording_fps; }
+    bool checkSkipFrameRecording(int frameNum);
+    bool checkSkipFrameForVideoZoom();
+
+    void setPreviewBufNum(int num);
+
+    status_t initDVS();
+    status_t setDVSSkipFrames(unsigned int skips);
+    bool dvsEnabled();
+
+    status_t enableFrameSyncEvent(bool enable);
+    status_t pollFrameSyncEvent();
+
+    // file input/injection API
+    int configureFileInject(const char* fileName, int width, int height, int fourcc, int bayerOrder);
+    bool isFileInjectionEnabled(void) const { return mFileInject.active; }
+    String8 getFileInjectionFileName(void) const { return mFileInject.fileName; }
+
     void getZoomRatios(CameraParameters *params) const;
     void getFocusDistances(CameraParameters *params);
+
+    // Enable metadata buffer mode API
+    status_t storeMetaDataInBuffers(bool enabled, int sID);
+    // AtomIspObserver controls
+    status_t attachObserver(IAtomIspObserver *observer, ObserverType t);
+    status_t detachObserver(IAtomIspObserver *observer, ObserverType t);
+    void pauseObserver(ObserverType t);
+    void startObserver(ObserverType t);
+
+    // IBufferOwner override
+    virtual void returnBuffer(AtomBuffer* buff);
+
+    // high speed fps setting
+    status_t setHighSpeedResolutionFps(char* resolution, int fps);
+
+    status_t allocateMetaDataBuffers(AtomBuffer *buffers, int numBuffers);
+
+    status_t setSRESmode(bool mode);
+
+    AtomBuffer getSnapshotDescriptor() const { return mConfig.snapshot; }
+
+    AtomBuffer getPostviewDescriptor() const { return mConfig.postview; }
+
+    status_t setColorBarPattern(bool enable);
+
+protected:
+    /* [BEGIN] IHWFlashControl overloads, */
+    status_t setFlash(int numFrames);
+    status_t setFlashIndicator(int intensity);
+    status_t setTorch(int intensity);
+    int setFlashIntensity(int intensity);
+
+    // Check if battery is too low for flash control
+    BatteryStatus getBatteryStatus();
+
+    /* [END] IHWFlashControl overloads, */
+
+protected:
+    /* [BEGIN] IHWLensControl overloads, */
+    int moveFocusToPosition(int position);
+    int moveFocusToBySteps(int steps);
+    int getFocusPosition(int * position);
+    int getFocusStatus(int *status);
+    /* [END] IHWLensControl overloads, */
+
+protected:
+    /* [BEGIN] IHWSensorControl overloads, */
+    int getCameraId(void);
+    const char * getSensorName(void);
+    float getFrameRate() const { return mConfig.fps; }
+    virtual unsigned int getExposureDelay() { return PlatformData::getSensorExposureLag(mCameraId); };
+    virtual int setExposure(struct atomisp_exposure *exposure);
+
+    void getSensorData(sensorPrivateData *sensor_data);
+    int getModeInfo(struct atomisp_sensor_mode_data *mode_data);
+    int getExposureTime(int *exposure_time);
+    int getAperture(int *aperture);
+    int getFNumber(unsigned short  *fnum_num, unsigned short *fnum_denom);
+    int setExposureTime(int time);
+    int setExposureMode(v4l2_exposure_auto_type type);
+    int getExposureMode(v4l2_exposure_auto_type * type);
+    int setExposureBias(int bias);
+    int getExposureBias(int * bias);
+    int setSceneMode(v4l2_scene_mode mode);
+    int getSceneMode(v4l2_scene_mode * mode);
+    int setWhiteBalance(v4l2_auto_n_preset_white_balance mode);
+    int getWhiteBalance(v4l2_auto_n_preset_white_balance * mode);
+    int setIso(int iso);
+    int getIso(int * iso);
+    int setAeMeteringMode(v4l2_exposure_metering mode);
+    int getAeMeteringMode(v4l2_exposure_metering * mode);
+    int setAeFlickerMode(v4l2_power_line_frequency mode);
+    int setAfMode(v4l2_auto_focus_range mode);
+    int getAfMode(v4l2_auto_focus_range * mode);
+    int setAfEnabled(bool enable);
+    int set3ALock(int aaaLock);
+    int get3ALock(int * aaaLock);
+    int setAeFlashMode(v4l2_flash_led_mode mode);
+    int getAeFlashMode(v4l2_flash_led_mode * mode);
+
+    void getMotorData(sensorPrivateData *sensor_data);
+    int getRawFormat();
+    /* [END] IHWSensorControl overloads, */
+
+protected:
+    /* [BEGIN] IHWIspControl overloads */
+    int getCssMajorVersion();
+    int getCssMinorVersion();
+    int getIspHwMajorVersion();
+    int getIspHwMinorVersion();
+    // Get the ISP pipeline output frame size
+    void getOutputSize(int *width, int *height, int *bpl = NULL);
+    // return zoom ratio multiplied by 100 from given zoom value
+    int zoomRatio(int zoomValue) const;
     status_t setZoom(int zoom);
     int getDrvZoom(int zoom);
+
     status_t setColorEffect(v4l2_colorfx effect);
     status_t applyColorEffect();
     status_t getMakerNote(atomisp_makernote_info *info);
@@ -153,27 +300,49 @@ public:
     status_t getSharpness(int *value);
     status_t setSharpness(int value);
     status_t setXNR(bool enable);
-    status_t setLowLight(bool enable);
-    status_t setGDC(bool enable);
-    bool getPreviewTooBigForVFPP() { return mPreviewTooBigForVFPP; }
     bool getXNR() const { return mXnr; };
+    status_t setLowLight(bool enable);
     bool getLowLight() const { return mLowLight; };
-    void setPreviewBufNum(int num);
-
-    status_t initDVS();
-    status_t setDVSSkipFrames(unsigned int skips);
+    status_t setGDC(bool enable);
     status_t setDVS(bool enable);
-    bool dvsEnabled();
+    void setNrEE(bool en);
+    status_t setHDR(int mode);
+    status_t setLLS(int mode);
+    status_t setShotMode(int mode);
+
+    /* ISP related controls */
+    int setAicParameter(struct atomisp_parameters *aic_params);
+    int setIspParameter(struct atomisp_parm *isp_params);
+    int getIspStatistics(struct atomisp_3a_statistics *statistics);
+    int setGdcConfig(const struct morph_table *tbl);
+    int setShadingTable(struct atomisp_shading_table *table);
+    int setMaccConfig(struct atomisp_macc_config *macc_cfg);
+    int setCtcTable(const struct atomisp_ctc_table *ctc_tbl);
+    int setDeConfig(struct atomisp_de_config *de_cfg);
+    int setTnrConfig(struct atomisp_tnr_config *tnr_cfg);
+    int setEeConfig(struct atomisp_ee_config *ee_cfg);
+    int setNrConfig(struct atomisp_nr_config *nr_cfg);
+    int setDpConfig(struct atomisp_dp_config *dp_cfg);
+    int setWbConfig(struct atomisp_wb_config *wb_cfg);
+    int setObConfig(struct atomisp_ob_config *ob_cfg);
+    int set3aConfig(const struct atomisp_3a_config *cfg);
+    int setGammaTable(const struct atomisp_gamma_table *gamma_tbl);
+    int setGcConfig(const struct atomisp_gc_config *gc_cfg);
+
+    int setDvsConfig(const struct atomisp_dvs_6axis_config *dvs_6axis_cfg);
+
     status_t getDvsStatistics(struct atomisp_dis_statistics *stats,
                               bool *tryAgain) const;
     status_t setMotionVector(const struct atomisp_dis_vector *vector) const;
+    status_t getIspDvs2BqResolutions(struct atomisp_dvs2_bq_resolutions *bq_res) const;
     status_t setDvsCoefficients(const struct atomisp_dis_coefficients *coefs) const;
     status_t getIspParameters(struct atomisp_parm *isp_param) const;
 
-    // file input/injection API
-    int configureFileInject(const char* fileName, int width, int height, int fourcc, int bayerOrder);
-    bool isFileInjectionEnabled(void) const { return mFileInject.active; }
-    String8 getFileInjectionFileName(void) const { return mFileInject.fileName; }
+    /* Sensor Embedded Metadata */
+    int getSensorEmbeddedMetaData(atomisp_metadata *metaData) const;
+    status_t getDecodedExposureParams(ia_aiq_exposure_sensor_parameters* sensor_exp_p,
+                                      ia_aiq_exposure_parameters* generic_exp_p, unsigned int exp_id = 0);
+    int getSensorFrameId(unsigned int exp_id);
 
     /* Acceleration API extensions */
     int loadAccFirmware(void *fw, size_t size, unsigned int *fwHandle);
@@ -189,68 +358,7 @@ public:
     int startFirmware(unsigned int fwHandle);
     int waitForFirmware(unsigned int fwHandle);
     int abortFirmware(unsigned int fwHandle, unsigned int timeout);
-
-    // Enable metadata buffer mode API
-    status_t storeMetaDataInBuffers(bool enabled, int sID);
-
-    /* IHWFlashControl overloads, */
-    status_t setFlash(int numFrames);
-    status_t setFlashIndicator(int intensity);
-    status_t setTorch(int intensity);
-    int setFlashIntensity(int intensity);
-    // Check if battery is too low for flash control
-    BatteryStatus getBatteryStatus();
-
-    /* IHWLensControl overloads, */
-    int moveFocusToPosition(int position);
-    int moveFocusToBySteps(int steps);
-    int getFocusPosition(int * position);
-    int getFocusStatus(int *status);
-
-    /* ISP related controls */
-    int setAicParameter(struct atomisp_parameters *aic_params);
-    int setIspParameter(struct atomisp_parm *isp_params);
-    int getIspStatistics(struct atomisp_3a_statistics *statistics);
-    int setGdcConfig(const struct atomisp_morph_table *tbl);
-    int setShadingTable(struct atomisp_shading_table *table);
-    int setMaccConfig(struct atomisp_macc_config *macc_cfg);
-    int setCtcTable(const struct atomisp_ctc_table *ctc_tbl);
-    int setDeConfig(struct atomisp_de_config *de_cfg);
-    int setTnrConfig(struct atomisp_tnr_config *tnr_cfg);
-    int setEeConfig(struct atomisp_ee_config *ee_cfg);
-    int setNrConfig(struct atomisp_nr_config *nr_cfg);
-    int setDpConfig(struct atomisp_dp_config *dp_cfg);
-    int setWbConfig(struct atomisp_wb_config *wb_cfg);
-    int setObConfig(struct atomisp_ob_config *ob_cfg);
-    int set3aConfig(const struct atomisp_3a_config *cfg);
-    int setGammaTable(const struct atomisp_gamma_table *gamma_tbl);
-    int setGcConfig(const struct atomisp_gc_config *gc_cfg);
-    int setDvsConfig(const struct atomisp_dvs_6axis_config *dvs_6axis_cfg);
-    int getCssMajorVersion();
-    int getCssMinorVersion();
-    int getIspHwMajorVersion();
-    int getIspHwMinorVersion();
-    /* file injection controls */
-    void getSensorDataFromFile(const char *file_name, sensorPrivateData *sensor_data);
-
-    void setNrEE(bool en);
-
-    // AtomIspObserver controls
-    status_t attachObserver(IAtomIspObserver *observer, ObserverType t);
-    status_t detachObserver(IAtomIspObserver *observer, ObserverType t);
-    void pauseObserver(ObserverType t);
-
-    // IBufferOwner override
-    virtual void returnBuffer(AtomBuffer* buff);
-
-    // return zoom ratio multiplied by 100 from given zoom value
-    int zoomRatio(int zoomValue) const;
-
-    // set/get recording frame rate
-    void setRecordingFramerate(int fps);
-    int getRecordingFramerate() { return mConfig.recording_fps; }
-    bool checkSkipFrameRecording(int frameNum);
-    bool checkSkipFrameForVideoZoom();
+    /* [END] IHWIspControl overloads */
 
 // private types
 private:
@@ -292,13 +400,20 @@ private:
         int num_postviews;          // number of allocated postviews
         int num_recording_buffers;  // number of recording buffers used
         int num_preview_buffers;    // number of preview buffers used
+        int num_snapshot_buffers;   // number of snapshot buffer used
+        int num_postview_buffers;   // number of postview buffer used
         int zoom;                   // zoom value
     };
 
 // private methods
 private:
+    status_t initDevice();
+    bool isPostviewInitialized() const;
 
+    void computeZoomRatiosLinear();
+    void computeZoomRatiosFactor();
     status_t computeZoomRatios();
+
     status_t initCameraInput();
     void initFileInject();
     void initFrameConfig();
@@ -311,19 +426,23 @@ private:
     status_t stopRecording();
     status_t configureCapture();
     status_t configureContinuousMode(bool enable);
+    status_t configureDepthMode(bool enable);
     status_t configureContinuousRingBuffer();
     status_t configureContinuous();
+    status_t configureContinuousJpegCapture();
     status_t configureContinuousSOC();
+    status_t configureContinuousVideo();
+    status_t configureContinuousJpegVideo();
     status_t startCapture();
     status_t stopCapture();
     status_t stopContinuousPreview();
+    status_t stopContinuousVideo();
 
     status_t requestContCapture(int numCaptures, int offset, unsigned int skip);
+    status_t rawBufferLockEnable(bool enable);
 
     void runStartISPActions();
     void runStopISPActions();
-
-    void markBufferCached(struct v4l2_buffer_info *vinfo, bool cached);
 
     Size getHALZSLResolution();
     status_t allocateHALZSLBuffers();
@@ -366,6 +485,8 @@ private:
 
     int atomisp_set_zoom (int zoom);
 
+    int setNarrowGamma(const struct atomisp_formats_config *formats_config);
+
     int startFileInject(void);
     int stopFileInject(void);
     status_t fileInjectSetSize(void);
@@ -373,7 +494,7 @@ private:
     size_t setupCameraInfo();
     unsigned int getNumOfSkipFrames(void);
     unsigned int getNumOfSkipStatistics(void);
-    status_t applySensorFlip(void);
+    status_t applyIspFlipForDevice(sp<V4L2VideoNode> device);
     void fetchIspVersions();
 
     // TODO: Remove once BZ #119181 gets fixed by the firmware team!!
@@ -381,6 +502,18 @@ private:
 
     bool checkSkipFrame(int frameNum, int targetFPS);
     status_t setSkipFramesForVideoZoom();
+    inline bool inContinuousMode() const;
+    inline bool inVideoMode() const;
+
+    void initBufferArray(AtomBuffer *buffers, AtomBuffer &formatDescriptor, void **bufPool, int bufPoolNum);
+    status_t configureMultiStreamsContinuousSOC();
+    status_t configurePreviewAndCaptureStreamsSOC();
+    status_t allocateMultiStreamsHALZSLBuffers();
+    status_t freeMultiStreamsHALZSLBuffers();
+    status_t getMultiStreamsHALZSLPreviewFrame(AtomBuffer *buff);
+    status_t putMultiStreamsHALZSLPreviewFrame(AtomBuffer *buff);
+    status_t getMultiStreamsHALZSLSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf);
+    status_t configureMultiStreamsContinuousVideoSOC();
 
 private:
     // AtomIspObserver
@@ -391,7 +524,7 @@ private:
     {
     public:
         PreviewStreamSource(const char*name, AtomISP *aisp)
-            :mName(name), mISP(aisp) { };
+            :mName(name), mISP(aisp), mISPTimeoutCount(0) { };
 
         // IObserverSubject override
         virtual const char* getName() { return mName.string(); };
@@ -400,6 +533,7 @@ private:
     private:
         String8  mName;
         AtomISP *mISP;
+        int mISPTimeoutCount;
     } mPreviewStreamSource;
 
     class AAAStatSource: public IObserverSubject
@@ -421,6 +555,9 @@ private:
 private:
     int mCameraId;
 
+    // Embedded Metadata
+    SensorEmbeddedMetaData*  mSensorEmbeddedMetaData;
+
     // Dvs
     IDvs *mDvs;
     bool mDvsEnabled;
@@ -437,18 +574,26 @@ private:
     AtomBuffer *mRecordingBuffers;
     bool mSwapRecordingDevice;
     bool mRecordingDeviceSwapped;
-    bool mPreviewTooBigForVFPP;
 
-    bool mHALZSLEnabled;
-    AtomBuffer *mHALZSLBuffers;
-    Vector<AtomBuffer> mHALZSLPreviewBuffers;
-    Vector<AtomBuffer> mHALZSLCaptureBuffers;
+    bool mHALZSLEnabled; // use only one stream or 3 streams. not use raw ring buffers in driver like the raw sesnor, use buffer queue in hal instead.
+    bool mHALSDVEnabled; // use 4 streams. not use raw ring buffers in driver like the raw sensor, use buffer queue in hal instead.
+    bool mUseMultiStreamsForSoC; // this could be configured by according to the configuration file
+    AtomBuffer *mHALZSLBuffers; // the 1 stream hal zsl will use it
+    Vector<AtomBuffer> mHALZSLPreviewBuffers; // the 1 stream hal zsl will use it
+    Vector<AtomBuffer> mHALZSLCaptureBuffers; // store the capture data in the hal
     Mutex mHALZSLLock;
     static const unsigned int sMaxHALZSLBuffersHeldInHAL = 2;
     static const int sNumHALZSLBuffers = sMaxHALZSLBuffersHeldInHAL + 4;
     static const int sHALZSLRetryCount = 5;
     static const int sHALZSLRetryUSleep = 33000;
     static const int ISP_DEVICE_NAME_LENGTH_MAX = 1024;
+
+    bool mContinuousJpegCaptureEnabled;
+
+    AtomBuffer *mMultiStreamsHALZSLCaptureBuffers;
+    AtomBuffer *mMultiStreamsHALZSLPostviewBuffers;
+    Vector<AtomBuffer> mMultiStreamsHALZSLCaptureBuffersQueue; // this queue is used to buffer the capture stream in hal
+    Vector<AtomBuffer> mMultiStreamsHALZSLPostviewBuffersQueue; // this queue is used to buffer the postview stream in hal
 
     bool mClientSnapshotBuffersCached;
     bool mUsingClientSnapshotBuffers;
@@ -465,7 +610,6 @@ private:
     Config mConfig;
     ContinuousCaptureConfig mContCaptConfig;
     bool mContCaptPrepared;
-    bool mContCaptPriority;
     unsigned int mInitialSkips;
     unsigned int mStatisticSkips;
     unsigned int mDVSFrameSkips;
@@ -481,30 +625,14 @@ private:
     sp<V4L2Subdevice>  m3AEventSubdevice;
     sp<V4L2VideoNode>  mOriginalPreviewDevice;
     sp<V4L2VideoNode>  mFileInjectDevice;
-    SensorHW           mSensorHW;
-
-    /* for SoC sensor */
-    sp<V4L2VideoNode>  mPreviewDeviceBackup;
-    sp<V4L2VideoNode>  mRecordingDeviceBackup;
-
-    /**
-     * for SoC sensor's video preview and recording,
-     * we need to use ISP capture mode which has zoom function. so:
-     * for preview node which is video2, it should use the postview node which is video1
-     * for recording node which is video3, it should use the still node which is video0
-     */
-    void swapDeviceNodeForSOC(void);
-    /**
-     * this function will restore to the original device node,
-     * even the swapDeviceNodeForSOC function has been called.
-     */
-    void restoreDeviceNode(void);
+    sp<SensorHW>       mSensorHW;              /* AtomISP owns this! */
 
     int dumpPreviewFrame(int previewIndex);
     int dumpRecordingFrame(int recordingIndex);
     int dumpSnapshot(int snapshotIndex, int postviewIndex);
     int dumpRawImageFlush(void);
     bool isDumpRawImageReady(void);
+    bool isAllowedToSetFps(V4L2VideoNode *device, int deviceMode) const;
 
     bool mIsFileInject;
     struct FileInject {
@@ -535,6 +663,7 @@ private:
     int mRawDataDumpSize;
     int m3AStatRequested;
     bool m3AStatscEnabled;
+    bool mSensorEmbeddedMetaDataSupported;
     v4l2_colorfx mColorEffect;
 
     sp<ScalerService> mScaler;
@@ -546,7 +675,14 @@ private:
     int mIspHwMajorVersion;
     int mIspHwMinorVersion;
 
+    bool mHALVideoStabilization;
+    bool mExtIspVideoHighSpeed;
     bool mNoiseReductionEdgeEnhancement;
+
+    // ISP flip configuration for save-mirrored feature
+    int mIspFlip;
+    // Use software solution instead if ISP doesn't support vertical flip
+    bool mSwVerticalFlip;
 
     // Sensor helper fields
     Vector <v4l2_fmtdesc>    mSensorSupportedFormats;     /*!< List of V4L2 pixel format supported by the sensor */

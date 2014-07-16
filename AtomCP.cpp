@@ -105,8 +105,10 @@ status_t AtomCP::composeHDR(const CiUserBuffer& inputBuf, const CiUserBuffer& ou
 
     LOG1("@%s: inputBuf=%p, outputBuf=%p", __FUNCTION__, &inputBuf, &outputBuf);
 
-    mIntelHdrCfg->gbce.ygamma_lut_size    = gbce_results.ygamma_lut_size;
-    mIntelHdrCfg->gbce.ygamma_lut         = gbce_results.ygamma_lut;
+    mIntelHdrCfg->gbce.gamma_lut_size    = gbce_results.gamma_lut_size;
+    mIntelHdrCfg->gbce.r_gamma_lut       = gbce_results.r_gamma_lut;
+    mIntelHdrCfg->gbce.g_gamma_lut       = gbce_results.g_gamma_lut;
+    mIntelHdrCfg->gbce.b_gamma_lut       = gbce_results.b_gamma_lut;
     mIntelHdrCfg->gbce.ctc_gains_lut_size = gbce_results.ctc_gains_lut_size;
     mIntelHdrCfg->gbce.ctc_gains_lut      = gbce_results.ctc_gains_lut;
 
@@ -136,7 +138,7 @@ status_t AtomCP::initializeHDR(unsigned width, unsigned height, ia_binary_data *
         return NO_MEMORY;
     }
 
-    ia_err = ia_cp_hdr_init(width, height, aiqb_data);
+    ia_err = ia_cp_hdr_init(width, height, aiqb_data, ia_cp_tgt_ipu);
     if (ia_err != ia_err_none) {
         LOGE("@%s: failed to allocate HDR intermediate buffers", __FUNCTION__);
         return NO_MEMORY;

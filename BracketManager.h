@@ -17,22 +17,23 @@
 #ifndef ANDROID_LIBCAMERA_BRACKETMANAGER_H
 #define ANDROID_LIBCAMERA_BRACKETMANAGER_H
 
-#include <utils/threads.h>
 #include <system/camera.h>
 #include <utils/List.h>
 #include <utils/UniquePtr.h>
 #include "I3AControls.h"
 #include "ICameraHwControls.h"
-#include "MessageQueue.h"
 
 namespace android {
-
-#define MAX_RETRY_COUNT 1
 
 enum BracketingMode {
     BRACKET_NONE = 0,
     BRACKET_EXPOSURE,
     BRACKET_FOCUS,
+};
+
+enum BracketImplMethod {
+    IMPL_OFFLINE = 0,
+    IMPL_ONLINE,
 };
 
 struct BracketingType {
@@ -44,11 +45,27 @@ struct BracketingType {
     UniquePtr<float[]> values;
 };
 
-class BracketManager : public Thread {
+class AtomISP;
+
+class BracketImpl {
+// constructor destructor
+public:
+    virtual ~BracketImpl() {};
+
+// public methods
+public:
+    virtual status_t init(int length, int skip) = 0;
+    virtual status_t startBracketing(int *expIdFrom = NULL) = 0;
+    virtual status_t stopBracketing() = 0;
+    virtual status_t getSnapshot(AtomBuffer &snapshotBuf, AtomBuffer &postviewBuf) = 0;
+    virtual status_t putSnapshot(AtomBuffer &snapshotBuf, AtomBuffer &postviewBuf) = 0;
+}; // class BracketImpl
+
+class BracketManager {
 
 // constructor destructor
 public:
-    BracketManager(HWControlGroup &hwcg, I3AControls *aaaControls);
+    BracketManager(AtomISP *atomISP, I3AControls *aaaControls, int cameraId);
     virtual ~BracketManager();
 
 // prevent copy constructor and assignment operator
@@ -56,101 +73,45 @@ private:
     BracketManager(const BracketManager& other);
     BracketManager& operator=(const BracketManager& other);
 
-// Thread overrides
-public:
-    status_t requestExitAndWait();
-
 // public methods
 public:
-    status_t initBracketing(int length, int skip, float *bracketValues = NULL);
+    status_t initBracketing(int length, int skip, BracketImplMethod method, float *bracketValues = NULL);
     void setBracketMode(BracketingMode mode);
     BracketingMode getBracketMode();
     void getNextAeConfig(SensorAeConfig *aeConfig);
-    status_t startBracketing();
+    status_t startBracketing(int *expIdFrom = NULL);
     status_t stopBracketing();
     // wrapper for AtomISP getSnapShot() and putSnapshot()
     status_t getSnapshot(AtomBuffer &snapshotBuf, AtomBuffer &postviewBuf);
     status_t putSnapshot(AtomBuffer &snapshotBuf, AtomBuffer &postviewBuf);
 
-// inherited from Thread
-private:
-    virtual bool threadLoop();
-
-
 // private types
 private:
-    // thread message id's
-    enum MessageId {
-
-        MESSAGE_ID_EXIT = 0,            // call requestExitAndWait
-        MESSAGE_ID_START_BRACKETING,
-        MESSAGE_ID_STOP_BRACKETING,
-        MESSAGE_ID_GET_SNAPSHOT,
-        MESSAGE_ID_PUT_SNAPSHOT,
-
-        // max number of messages
-        MESSAGE_ID_MAX
-    };
-
-    struct MessageCapture {
-        AtomBuffer snapshotBuf;
-        AtomBuffer postviewBuf;
-    };
-
-    // union of all message data
-    union MessageData {
-        // MESSAGE_ID_PUT_SNAPSHOT
-        MessageCapture capture;
-    };
-
-    // message structure
-    struct Message {
-        MessageId id;
-        MessageData data;
-    };
-
     // thread states
     enum State {
         STATE_STOPPED,
         STATE_BRACKETING,
-        STATE_CAPTURE
     };
 
+    friend class OnlineBracket;
+    friend class OfflineBracket;
 // private methods
 private:
-    status_t applyBracketing();
-    status_t applyBracketingParams();
-    status_t skipFrames(int numFrames, int doBracket = 0);
-    int getNumLostFrames(int frameSequenceNbr);
-    void getRecoveryParams(int &skipNum, int &bracketNum);
-
-    // main message function and message handlers
-    status_t waitForAndExecuteMessage();
-    status_t handleMessageStartBracketing();
-    status_t handleMessageStopBracketing();
-    status_t handleMessageGetSnapshot();
-    status_t handleMessagePutSnapshot(MessageCapture capture);
-    status_t handleExit();
+    status_t createImpl(BracketImplMethod method);
+    void destroyImpl();
 
 // private data
 private:
     I3AControls *m3AControls;
-    IHWIspControl *mISP;
-    IHWSensorControl *mSensorCI;
-    int  mFpsAdaptSkip;
-    int  mBurstLength;
-    int  mBurstCaptureNum;
-    int  mSnapshotReqNum;
-    int  mBracketNum;
-    int  mLastFrameSequenceNbr;
-    BracketingType mBracketing;
-    List<SensorAeConfig> mBracketingParams;
-    State mState;
-    MessageQueue<Message, MessageId> mMessageQueue;
-    bool mThreadRunning;
-    UniquePtr<AtomBuffer[]> mSnapshotBufs;
-    UniquePtr<AtomBuffer[]> mPostviewBufs;
+    AtomISP *mISP;
 
+    State mState;
+    BracketingType mBracketing;
+    BracketImplMethod mImplMethod;
+    BracketImpl *mBracketImpl;
+    List<SensorAeConfig> mBracketingParams;
+    int  mBurstLength;
+    int mCameraId;
 }; // class BracketManager
 
 } // namespace android

@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012 The Android Open Source Project
+ * Copyright (c) 2012-2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -53,6 +54,37 @@ void EXIFMaker::setMakerNote(const ia_binary_data &aaaMkNoteData)
         exifAttributes.makerNoteDataSize = aaaMkNoteData.size;
         exifAttributes.makerNoteData = (unsigned char*) aaaMkNoteData.data;
     }
+}
+
+/**
+ *  Sets face detection information which contain the number of face,
+ *  and the location of every face.
+ *  These informations are recorded in user_commment member of EXIF.
+ */
+void EXIFMaker::setFaceData(const ia_face_state &faceState)
+{
+    LOG1("@%s: Face number is %d", __FUNCTION__, faceState.num_faces);
+
+    if (faceState.num_faces > 0) {
+        int i;
+        int val = 0;
+        int maxLen = sizeof(exifAttributes.user_comment);
+        char *ptr = (char *)exifAttributes.user_comment;
+        val += sprintf((ptr + val), "Face Number:%d ", faceState.num_faces);
+        val += sprintf((ptr + val), "Location:");
+        for (i = 0; i < faceState.num_faces; i++) {
+            if (val >= maxLen)
+                break;
+            val += snprintf((ptr + val), (maxLen - val), " (%d,%d,%d,%d)",
+                    faceState.faces[i].face_area.left,
+                    faceState.faces[i].face_area.top,
+                    faceState.faces[i].face_area.right,
+                    faceState.faces[i].face_area.bottom);
+        }
+        if (i != faceState.num_faces)
+            LOGW("Face information is too large, only save first %d groups of face data", i);
+    }
+    LOG1("Face information written to Exif = %s\n", exifAttributes.user_comment);
 }
 
 /**
@@ -565,6 +597,53 @@ void EXIFMaker::initializeLocation(const CameraParameters &params)
             exifAttributes.gps_img_direction.num,
             exifAttributes.gps_img_direction.den);
     }
+}
+
+
+void EXIFMaker::setExtIspAeConfig(uint32_t iso, uint32_t exposureBias, uint32_t tv, uint32_t bv, uint32_t exposureTimeDenominator, uint16_t av) {
+    LOG1("@%s", __FUNCTION__);
+
+    // ISO
+    exifAttributes.iso_speed_rating = iso;
+
+    // exposure bias
+    exifAttributes.exposure_bias.num =  exposureBias;
+    exifAttributes.exposure_bias.den = 10;
+
+    // APEX shutter speed
+    exifAttributes.shutter_speed.num = tv;
+    exifAttributes.shutter_speed.den = 65536;
+
+    // brightness
+    exifAttributes.brightness.num = bv;
+    exifAttributes.brightness.den = 65536;
+
+    // Exposure time
+    exifAttributes.exposure_time.num = 1;
+    exifAttributes.exposure_time.den = exposureTimeDenominator;
+
+    // APEX aperture value
+    exifAttributes.aperture.num = av;
+    exifAttributes.aperture.den = 100;
+
+    // F-number
+    // F-number = sqrt(2) ^ apertur
+    double fnumber = pow(sqrt(2.0), ((double) av) / 100);
+    exifAttributes.fnumber.num = fnumber * 100;
+    exifAttributes.fnumber.den = 100;
+
+
+    LOG1("EXIF: ISO=%u", exifAttributes.iso_speed_rating);
+    LOG1("EXIF: Ev=%u/%u", exifAttributes.exposure_bias.num, exifAttributes.exposure_bias.den);
+    LOG1("EXIF: brightness=%u/%u", exifAttributes.brightness.num, exifAttributes.brightness.den);
+    LOG1("EXIF: shutter speed=%u/%u", exifAttributes.shutter_speed.num,
+         exifAttributes.shutter_speed.den);
+    LOG1("EXIF: exposure time=%u/%u", exifAttributes.exposure_time.num,
+         exifAttributes.exposure_time.den);
+    LOG1("EXIF: aperture=%u/%u", exifAttributes.aperture.num,
+         exifAttributes.aperture.den);
+    LOG1("EXIF: F-number=%u/%u", exifAttributes.fnumber.num,
+         exifAttributes.fnumber.den);
 }
 
 void EXIFMaker::setSensorAeConfig(const SensorAeConfig& aeConfig)

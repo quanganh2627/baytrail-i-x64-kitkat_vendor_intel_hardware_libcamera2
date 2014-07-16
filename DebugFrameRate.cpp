@@ -31,7 +31,7 @@ DebugFrameRate::DebugFrameRate() :
     ,mActive(false)
 {
 
-    if (gLogLevel & CAMERA_DEBUG_LOG_PERF_TRACES) {
+    if (gPerfLevel & CAMERA_DEBUG_LOG_PERF_TRACES) {
         mActive = true;
     }
 }

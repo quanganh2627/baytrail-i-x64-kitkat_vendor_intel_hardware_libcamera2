@@ -27,13 +27,16 @@ void trimConvertNV12ToRGB565(int width, int height, int srcBpl, void *src, void 
 
 void convertYV12ToNV21(int width, int height, int srcBpl, int dstBpl, void *src, void *dst);
 void copyYV12ToYV12(int width, int height, int srcBpl, int dstBpl, void *src, void *dst);
+void copyNV21ToNV21(int width, int height, int srcBpl, int dstBpl, char *src, char *dst);
 
 void trimConvertNV12ToNV21(int width, int height, int srcBpl, void *src, void *dst);
 
 void align16ConvertNV12ToYV12(int width, int height, int srcBpl, void *src, void *dst);
 
 void NV12ToP411(int width, int height, void *src, void *dst);
+void NV21ToP411(int width, int height, void *src, void *dst);
 void NV12ToP411Separate(int width, int height, void *srcY, void *srcUV, void *dst);
+void NV21ToP411Separate(int width, int height, void *srcY, void *srcUV, void *dst);
 
 void YUY2ToP411(int width, int height, void *src, void *dst);
 

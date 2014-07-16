@@ -23,6 +23,7 @@
 #include "UltraLowLight.h"
 #include "MessageQueue.h"
 #include "IAtomIspObserver.h"
+#include "SensorThread.h"
 
 namespace android {
 
@@ -49,11 +50,11 @@ namespace android {
  * Ultra Low Light algorithm
  *
  */
-class AAAThread : public Thread, public IAtomIspObserver {
+class AAAThread : public Thread, public IAtomIspObserver, public IOrientationListener {
 
 // constructor destructor
 public:
-    AAAThread(ICallbackAAA *aaaDone, UltraLowLight *ull, I3AControls *aaaControls, sp<CallbacksThread> callbacksThread);
+    AAAThread(ICallbackAAA *aaaDone, UltraLowLight *ull, I3AControls *aaaControls, sp<CallbacksThread> callbacksThread, int cameraId, bool extIsp = false);
     virtual ~AAAThread();
 
     enum FlashStage {
@@ -81,6 +82,10 @@ public:
 public:
     bool atomIspNotify(IAtomIspObserver::Message *msg, const ObserverState state);
 
+// IOrientationListener
+public:
+    void orientationChanged(int orientation);
+
 // public methods
 public:
 
@@ -94,7 +99,10 @@ public:
     status_t newFrame(AtomBuffer* b);
     status_t newStats(timeval &t, unsigned int seqNo);
     status_t applyRedEyeRemoval(AtomBuffer *snapshotBuffer, AtomBuffer *postviewBuffer, int width, int height, int fourcc);
+    status_t switchModeAndRate(AtomMode mode, float fps);
     status_t setFaces(const ia_face_state& faceState);
+    int32_t getFaceNum(void) const;
+    status_t getFaces(ia_face_state& faceState) const;
     void getCurrentSmartScene(String8 &sceneMode, bool &sceneHdr);
     void resetSmartSceneValues();
 
@@ -114,6 +122,8 @@ private:
         MESSAGE_ID_ENABLE_AE_LOCK,
         MESSAGE_ID_ENABLE_AWB_LOCK,
         MESSAGE_ID_FLASH_STAGE,
+        MESSAGE_ID_SWITCH_MODE_AND_RATE,
+        MESSAGE_ID_SET_ORIENTATION,
         // max number of messages
         MESSAGE_ID_MAX
     };
@@ -146,9 +156,18 @@ private:
 
     // for MESSAGE_ID_NEW_FRAME
     struct MessageNewFrame {
-        FrameBufferStatus status;
-        struct timeval capture_timestamp;
-        unsigned int    sequence_number;
+        const AtomBuffer *buff;
+    };
+
+    // for MESSAGE_ID_SWITCH_MODE_AND_RATE
+    struct MessageSwitchInfo {
+        AtomMode mode;
+        float fps;
+    };
+
+    // for  MESSAGE_ID_SET_ORIENTATION
+    struct MessageOrientation {
+        int orientation;
     };
 
     // union of all message data
@@ -158,6 +177,8 @@ private:
         MessageNewStats stats;
         MessageNewFrame frame;
         MessageFlashStage flashStage;
+        MessageSwitchInfo switchInfo;
+        MessageOrientation orientation;
     };
 
     // message id and message data
@@ -180,9 +201,14 @@ private:
     status_t handleMessageEnableAeLock(MessageEnable* msg);
     status_t handleMessageEnableAwbLock(MessageEnable* msg);
     status_t handleMessageFlashStage(MessageFlashStage* msg);
+    status_t handleMessageSwitchModeAndRate(MessageSwitchInfo *msg);
+    status_t handleMessageSetOrientation(MessageOrientation *msg);
 
     // Miscellaneous helper methods
     void updateULLTrigger(void);
+    // External ISP "normal AF" status handler
+    status_t handleAutoFocusExtIsp(const AtomBuffer *buff);
+    AfStatus parseAfMeta(const AtomBuffer *buff);
 
     // flash sequence handler
     bool handleFlashSequence(FrameBufferStatus frameStatus, struct timeval capture_timestamp);
@@ -204,8 +230,10 @@ private:
     sp<CallbacksThread> mCallbacksThread;
     UltraLowLight *mULL;
 
+    int mCameraId;
     bool m3ARunning;
-    bool mStartAF;
+    bool mStartAF;              // Indicates that autoFocus() command was issued by the app.
+    bool mWaitForScanStart;     // Indicates the waiting for information of AF sequence start. (ATM for ext-ISP only).
     bool mStopAF;
     AfStatus mPreviousCafStatus;
     bool mPublicAeLock;
@@ -220,6 +248,12 @@ private:
     FlashStage mBlockForStage;
     unsigned int mSkipStatistics;
     unsigned int mSkipForEv; // for flash sequence
+    bool mSensorEmbeddedMetaDataEnabled;
+    int32_t mTrigger3A;
+    bool mExtIsp;
+    int mOrientation;
+    IAtomIspObserver::Message mCachedStatsEventMsg;
+
 }; // class AAAThread
 
 }; // namespace android

@@ -197,7 +197,14 @@ namespace android {
     static const char KEY_SUPPORTED_HIGH_SPEED_RESOLUTION_FPS[];
 
     // dual video
+    static const char KEY_DUAL_VIDEO[];
     static const char KEY_DUAL_VIDEO_SUPPORTED[];
+
+    // dual camera mode
+    static const char KEY_DUAL_CAMERA_MODE[];
+    static const char KEY_SUPPORTED_DUAL_CAMERA_MODE[];
+    static const char DUAL_CAMERA_MODE_NORMAL[];
+    static const char DUAL_CAMERA_MODE_DEPTH[];
 
     // Time nudge
     static const char KEY_BURST_START_INDEX[];
@@ -251,16 +258,35 @@ namespace android {
     static const char GPS_IMG_DIRECTION_REF_TRUE[];
     static const char GPS_IMG_DIRECTION_REF_MAGNETIC[];
 
+    // intelligent mode
+    static const char KEY_INTELLIGENT_MODE[];
+    static const char KEY_SUPPORTED_INTELLIGENT_MODE[];
+
+    // SDV
+    static const char KEY_SDV[];
+    static const char KEY_SDV_SUPPORTED[];
+
+    // continuous shooting
+    static const char KEY_CONTINUOUS_SHOOTING[];
+    static const char KEY_CONTINUOUS_SHOOTING_SUPPORTED[];
+    static const char KEY_CONTINUOUS_SHOOTING_FILEPATH[];
+
+    // Color-bar test pattern
+    static const char KEY_COLORBAR[];
+    static const char KEY_SUPPORTED_COLORBAR[];
+    static const char KEY_COLORBAR_TRUE[];
+    static const char KEY_COLORBAR_FALSE[];
+
     // Others
     static const char REC_BUFFER_SHARING_SESSION_ID[];
 
     static void getPanoramaLivePreviewSize(int &width, int &height, const CameraParameters &params);
     static const char* getSupportedPanoramaLivePreviewSizes(const CameraParameters &params);
     static void parseResolutionList(const char *sizeStr, Vector<Size> &sizes);
+    static status_t parseResolution(const char *p, int &width, int &height, char **endptr = NULL);
   private:
       IntelCameraParameters(void) {}
 
-      static status_t parseResolution(const char *p, int &width, int &height, char **endptr = NULL);
   };
 }; // ns android
 

@@ -41,11 +41,29 @@ namespace android {
     const char IntelCameraParameters::KEY_ROTATION_MODE[] = "rotation-mode";
     const char IntelCameraParameters::KEY_SUPPORTED_ROTATION_MODES[] = "rotation-mode-values";
     const char IntelCameraParameters::KEY_FRONT_SENSOR_FLIP[] = "front-sensor-flip";
+
+    // Dual video
+    const char IntelCameraParameters::KEY_DUAL_VIDEO[] = "dual-video";
     const char IntelCameraParameters::KEY_DUAL_VIDEO_SUPPORTED[] = "dual-video-supported";
+
+    // Dual camera mode
+    const char IntelCameraParameters::KEY_DUAL_CAMERA_MODE[] = "dual-camera-mode";
+    const char IntelCameraParameters::KEY_SUPPORTED_DUAL_CAMERA_MODE[] = "dual-camera-mode-values";
+    const char IntelCameraParameters::DUAL_CAMERA_MODE_NORMAL[] = "normal";
+    const char IntelCameraParameters::DUAL_CAMERA_MODE_DEPTH[] = "depth";
 
     // Ultra low light
     const char IntelCameraParameters::KEY_ULL[] = "ull";
     const char IntelCameraParameters::KEY_SUPPORTED_ULL[] = "ull-values";
+
+    // SDV
+    const char IntelCameraParameters::KEY_SDV[] = "sdv";
+    const char IntelCameraParameters::KEY_SDV_SUPPORTED[] = "sdv-supported";
+
+    // continuous shooting
+    const char IntelCameraParameters::KEY_CONTINUOUS_SHOOTING[] = "continuous-shooting";
+    const char IntelCameraParameters::KEY_CONTINUOUS_SHOOTING_SUPPORTED[] = "continuous-shooting-supported";
+    const char IntelCameraParameters::KEY_CONTINUOUS_SHOOTING_FILEPATH[] = "capture-burst-filepath";
 
     // 3A related
     const char IntelCameraParameters::KEY_AE_MODE[] = "ae-mode";
@@ -244,6 +262,13 @@ namespace android {
     // possible value for the KEY_GPS_IMG_DIRECTION_REF
     const char IntelCameraParameters::GPS_IMG_DIRECTION_REF_TRUE[] = "true-direction";
     const char IntelCameraParameters::GPS_IMG_DIRECTION_REF_MAGNETIC[] = "magnetic-direction";
+
+    const char IntelCameraParameters::KEY_INTELLIGENT_MODE[] = "intelligent-mode";
+    const char IntelCameraParameters::KEY_SUPPORTED_INTELLIGENT_MODE[] = "intelligent-mode-values";
+
+    // color-bar preview test pattern
+    const char IntelCameraParameters::KEY_COLORBAR[] = "color-bar-preview";
+    const char IntelCameraParameters::KEY_SUPPORTED_COLORBAR[] = "color-bar-preview-values";
 
     // Others
     const char IntelCameraParameters::REC_BUFFER_SHARING_SESSION_ID[] = "buffer-sharing-session-id";

@@ -17,6 +17,8 @@
 #ifndef ANDROID_LIBCAMERA_SENSOR_CLASS
 #define ANDROID_LIBCAMERA_SENSOR_CLASS
 
+#include <utils/RefBase.h>
+
 #include "ICameraHwControls.h"
 #include "PlatformData.h"
 #include "AtomIspObserverManager.h" // IObserverSubject
@@ -33,11 +35,14 @@ class SensorHW
     :public IHWSensorControl //!< Provides sensor control interface
     ,private IObserverSubject //!< Provides frame synchronization source
     ,private IAtomIspObserver //!< for temporary workaround, see AtomISP::start()
+    ,public RefBase
 {
 
 public:
     SensorHW(int cameraId);
-    ~SensorHW();
+    virtual ~SensorHW();
+    virtual void reset(int cameraId);
+
     status_t selectActiveSensor(sp<V4L2VideoNode> &device);
     status_t prepare(bool preQueuedExposure);
     status_t start();
@@ -45,6 +50,7 @@ public:
     IObserverSubject* getFrameSyncSource() { return (IObserverSubject*) this; };
     nsecs_t getFrameTimestamp(nsecs_t event_ts);
     status_t getIspDevicePath(char *fd, int size);
+    status_t setIspSubDevId(int id);
 
     /* IHWSensorControl overloads, */
     virtual const char * getSensorName(void);
@@ -66,23 +72,28 @@ public:
     virtual int getWhiteBalance(v4l2_auto_n_preset_white_balance * mode);
     virtual int setIso(int iso);
     virtual int getIso(int * iso);
+    virtual int setIsoMode(int mode);
     virtual int setAeMeteringMode(v4l2_exposure_metering mode);
     virtual int getAeMeteringMode(v4l2_exposure_metering * mode);
     virtual int setAeFlickerMode(v4l2_power_line_frequency mode);
-    virtual int setAfMode(v4l2_auto_focus_range mode);
-    virtual int getAfMode(v4l2_auto_focus_range * mode);
+    virtual int setAfMode(int mode);
+    virtual int getAfMode(int *mode);
     virtual int setAfEnabled(bool enable);
+    virtual int setAfWindows(const CameraWindow *windows, int numWindows);
     virtual int set3ALock(int aaaLock);
     virtual int get3ALock(int * aaaLock);
-    virtual int setAeFlashMode(v4l2_flash_led_mode mode);
-    virtual int getAeFlashMode(v4l2_flash_led_mode * mode);
+    virtual int setAeFlashMode(int mode);
+    virtual int getAeFlashMode(int *mode);
     virtual int getRawFormat();
 
     virtual unsigned int getExposureDelay();
     virtual int setExposure(struct atomisp_exposure *exposure);
+    virtual int setExposureGroup(struct atomisp_exposure exposures[], int depth);
 
     virtual float getFramerate() const;
     virtual status_t setFramerate(int fps);
+
+    virtual void getFrameSizes(Vector<v4l2_subdev_frame_size_enum> &sizes);
 
     virtual status_t waitForFrameSync();
 
@@ -110,6 +121,10 @@ private:
     status_t findConnectedEntity(sp<V4L2DeviceBase> &mediaCtl,
         const struct media_entity_desc &mediaEntityDescSrc,
         struct media_entity_desc &mediaEntityDescDst, int &padIndex);
+    status_t findConnectedEntityByName(sp<V4L2DeviceBase> &mediaCtl,
+        struct media_entity_desc mediaEntityDescSrc,
+        struct media_entity_desc &mediaEntityDescDst,
+        int &padIndex, char const *name, int nameLen, int depth);
     status_t findMediaEntityByName(sp<V4L2DeviceBase> &mediaCtl,
             char const* entityName, struct media_entity_desc &mediaEntityDesc);
     status_t findMediaEntityById(sp<V4L2DeviceBase> &mediaCtl, int index,
@@ -137,9 +152,12 @@ private:
     void updateExposureEstimate(nsecs_t timestamp);
     struct exposure_history_item* getPrevAppliedItem(int &id);
     void resetEstimates(struct exposure_history_item *activeItem);
+    // sensor flip
+    status_t applySensorFlip(void);
 
-
-private:
+// protected member variables, accessible by subclasses
+// TODO: Rename to p* instead of m*
+protected:
     sp<V4L2DeviceBase> mSensorSubdevice;
     sp<V4L2DeviceBase> mIspSubdevice;
     sp<V4L2VideoNode> mDevice;
@@ -148,7 +166,10 @@ private:
     struct cameraInfo mCameraInput;
     int mCameraId;
     bool mStarted; //<! state used to indentify controls in streamon state
+    char mIspSubDevName[MAX_SENSOR_NAME_LENGTH];
 
+// private member variables:
+private:
     // ModeData stored
     struct atomisp_sensor_mode_data mInitialModeData;
     bool mInitialModeDataValid;
@@ -160,7 +181,11 @@ private:
     // Common frame synchronization
     Mutex mFrameSyncMutex;
     Condition mFrameSyncCondition;
-    bool mFrameSyncEnabled;
+    enum FrameSyncSource {
+        FRAME_SYNC_NA,
+        FRAME_SYNC_SOF = V4L2_EVENT_FRAME_SYNC,
+        FRAME_SYNC_EOF = V4L2_EVENT_FRAME_END
+    } mFrameSyncSource;
     int mCssVersion;
 
     // Exposure synchronization
@@ -168,9 +193,11 @@ private:
     bool mDirectExposureIo;     /* set exposure directly in setExposure() caller context*/
     bool mPostponePrequeued;    /* do not discard if more than one exposure settings applied per frame */
     unsigned int mExposureLag;  /* delay of exposure applying based on configuration */
+    unsigned int mLatestExpId;  /* the latest exposure id from SOF or EOF event */
     AtomDelayFilter <unsigned int>   *mGainDelayFilter;
     AtomFifo <struct exposure_history_item> *mExposureHistory;
     struct atomisp_exposure          mCurrentExposure;
+    int mGroupId;
 }; // class SensorHW
 
 }; // namespace android

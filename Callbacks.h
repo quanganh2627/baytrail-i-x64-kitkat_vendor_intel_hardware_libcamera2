@@ -56,6 +56,8 @@ public:
     void previewFrameDone(AtomBuffer *buff);
     void videoFrameDone(AtomBuffer *buff, nsecs_t timstamp);
     void compressedFrameDone(AtomBuffer *buff);
+    void smartStabilizationFrameDone(AtomBuffer *buff);
+    void extIspFrameDone(AtomBuffer *buff, int offset, int size);
     void postviewFrameDone(AtomBuffer *buff);
     void rawFrameDone(AtomBuffer *buff);
     void cameraError(int err);
@@ -65,7 +67,7 @@ public:
 
     void allocateMemory(AtomBuffer *buff, int size);
     void allocateMemory(camera_memory_t **buff, size_t size);
-    void facesDetected(camera_frame_metadata_t &face_metadata);
+    void facesDetected(camera_frame_metadata_t *face_metadata);
     void sceneDetected(camera_scene_detection_metadata &metadata);
     void panoramaDisplUpdate(camera_panorama_metadata &metadata);
     void panoramaSnapshot(const AtomBuffer &livePreview);
@@ -73,12 +75,16 @@ public:
     void ullTriggered(int id);
     void ullPictureDone(AtomBuffer *ullJpegPicture);
 
+    void sendFrameId(int id);
+
     void lowBattery();
     void accManagerPointer(int isp_ptr, int idx);
     void accManagerFinished();
     void accManagerPreviewBuffer(camera_memory_t *buffer);
     void accManagerArgumentBuffer(camera_memory_t *buffer);
     void accManagerMetadataBuffer(camera_memory_t *buffer);
+
+    void setContShooting(bool val, const char* filepath = NULL);
 
 private:
     camera_notify_callback mNotifyCB;
@@ -91,8 +97,11 @@ private:
     camera_memory_t* mPanoramaMetadata;
     camera_memory_t* mSceneDetectionMetadata;
     bool mStoreMetaDataInBuffers;
-    };
 
+    bool mContShootingEnabled;
+    String8 mContShootingFilepath;
+    int mBurstCount;
+    };
 };
 
 #endif  // ANDROID_LIBCAMERA_CALLBACKS

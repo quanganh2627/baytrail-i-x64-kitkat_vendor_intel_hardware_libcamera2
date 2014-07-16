@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012 The Android Open Source Project
+ * Copyright (c) 2012-2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -44,6 +45,8 @@ public:
     bool isInitialized() { return initialized; }
     void setMakerNote(const ia_binary_data &aaaMkNoteData);
     void setDriverData(const atomisp_makernote_info &ispData);
+    void setFaceData(const ia_face_state &faceState);
+    void setExtIspAeConfig(uint32_t iso, uint32_t exposureBias, uint32_t tv, uint32_t bv, uint32_t exposureTimeDenominator, uint16_t av);
     void setSensorAeConfig(const SensorAeConfig &sensorParams);
     void pictureTaken();
     void enableFlash();

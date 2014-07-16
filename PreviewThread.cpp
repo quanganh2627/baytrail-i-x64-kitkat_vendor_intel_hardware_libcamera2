@@ -30,10 +30,22 @@
 #include "nv12rotation.h"
 #include "PlatformData.h"
 #include "MemoryUtils.h"
+#ifndef GRAPHIC_IS_GEN
+#include <hal_public.h>
+#else
+#include <ufo/graphics.h>
+#include "VAScaler.h"
+#endif
 
 namespace android {
 
-PreviewThread::PreviewThread(sp<CallbacksThread> callbacksThread, Callbacks* callbacks) :
+void release_camera_memory_t(struct camera_memory *mem)
+{
+    LOG1("@%s: releasing fake heap camera_memory_t", __FUNCTION__);
+    delete mem;
+}
+
+PreviewThread::PreviewThread(sp<CallbacksThread> callbacksThread, Callbacks* callbacks, int cameraId, IHWIspControl *ispControl) :
     Thread(true) // callbacks may call into java
     ,mMessageQueue("PreviewThread", (int) MESSAGE_ID_MAX)
     ,mThreadRunning(false)
@@ -41,22 +53,36 @@ PreviewThread::PreviewThread(sp<CallbacksThread> callbacksThread, Callbacks* cal
     ,mLastFrameTs(0)
     ,mFramesDone(0)
     ,mCallbacksThread(callbacksThread)
+    ,mHALVS(NULL)
     ,mPreviewWindow(NULL)
     ,mPreviewBuf(AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_PREVIEW))
     ,mTransferingBuffer(NULL)
     ,mCallbacks(callbacks)
+    ,mCameraId(cameraId)
+    ,mIsp(ispControl)
+    ,mMinUndequeued(0)
     ,mBuffersInWindow(0)
     ,mNumOfPreviewBuffers(0)
     ,mFetchDone(false)
     ,mDebugFPS(new DebugFrameRate())
+    ,mCallbackPreviewWidth(0)
+    ,mCallbackPreviewHeight(0)
     ,mPreviewWidth(0)
     ,mPreviewHeight(0)
     ,mPreviewBpl(0)
-    ,mPreviewFourcc(PlatformData::getPreviewPixelFormat())
+    ,mPreviewFourcc(PlatformData::getPreviewPixelFormat(cameraId))
     ,mPreviewCbFormat(V4L2_PIX_FMT_NV21)
     ,mGfxBpl(640)
     ,mOverlayEnabled(false)
     ,mRotation(0)
+    ,mHALVideoStabilization(false)
+    ,mFakeHeaps(0)
+    ,mFps(30)
+    ,mPreviewCbTs(0)
+    ,mPreviewCallbackMode(PREVIEW_CALLBACK_NORMAL)
+    ,mPreviewFrameId(-1)
+    ,mPreviewBufferQueueUpdate(false)
+    ,mPreviewBufferNum(0)
 {
     LOG1("@%s", __FUNCTION__);
     mPreviewBuffers.setCapacity(MAX_NUMBER_PREVIEW_GFX_BUFFERS);
@@ -65,6 +91,10 @@ PreviewThread::PreviewThread(sp<CallbacksThread> callbacksThread, Callbacks* cal
 PreviewThread::~PreviewThread()
 {
     LOG1("@%s", __FUNCTION__);
+    for (uint32_t i = 0; i < mNumOfPreviewBuffers; i++) {
+        mFakeHeaps[i].clear();
+    }
+    delete[] mFakeHeaps;
     mDebugFPS.clear();
     freeGfxPreviewBuffers();
     freeLocalPreviewBuf();
@@ -77,7 +107,37 @@ status_t PreviewThread::setCallback(ICallbackPreview *cb, ICallbackPreview::Call
     msg.id = MESSAGE_ID_SET_CALLBACK;
     msg.data.setCallback.icallback = cb;
     msg.data.setCallback.type = t;
+    msg.data.setCallback.detach = false;
+
     return mMessageQueue.send(&msg);
+}
+
+status_t PreviewThread::detachCallback(ICallbackPreview *cb, ICallbackPreview::CallbackType t)
+{
+    LOG2("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_SET_CALLBACK;
+    msg.data.setCallback.icallback = cb;
+    msg.data.setCallback.type = t;
+    msg.data.setCallback.detach = true;
+
+    return mMessageQueue.send(&msg);
+}
+
+void PreviewThread::setPreviewCallbackFps(int fps) {
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_FPS;
+    msg.data.fps.fps = fps;
+
+    mMessageQueue.send(&msg);
+}
+
+status_t PreviewThread::handleMessageFPS(MessageFPS *msg)
+{
+    LOG1("@%s fps:%d", __FUNCTION__, msg->fps);
+    mFps = msg->fps;
+    return OK;
 }
 
 status_t PreviewThread::handleMessageSetCallback(MessageSetCallback *msg)
@@ -88,16 +148,46 @@ status_t PreviewThread::handleMessageSetCallback(MessageSetCallback *msg)
          &mInputBufferCb : &mOutputBufferCb;
 
     CallbackVector::iterator it = cbVector->begin();
-    for (;it != cbVector->end(); ++it) {
-        if (it->value == msg->icallback)
-            return ALREADY_EXISTS;
-        if (msg->type == ICallbackPreview::OUTPUT_WITH_DATA &&
-            it->key == ICallbackPreview::OUTPUT_WITH_DATA) {
-            return ALREADY_EXISTS;
+
+    // TODO: Could be cleaner if split the attach and detach to their own functions..
+    if (!msg->detach) {
+        // Attach a new callback:
+        for (;it != cbVector->end(); ++it) {
+            if (it->value == msg->icallback) {
+                return ALREADY_EXISTS;
+            }
+            if (msg->type == ICallbackPreview::OUTPUT_WITH_DATA &&
+                it->key == ICallbackPreview::OUTPUT_WITH_DATA) {
+                    return ALREADY_EXISTS;
+            }
+        }
+
+        if (msg->icallback != NULL) {
+            cbVector->push(callback_pair_t(msg->type, msg->icallback));
+        } else {
+            LOGW("NULL preview buffer cb given - not attaching.");
+        }
+
+    } else {
+        // detatch callback(s)
+        Vector<CallbackVector::iterator> toDrop;
+        for (;it != cbVector->end(); ++it) {
+            if (msg->icallback == NULL && msg->type == it->key) {
+                // NULL pointer, add all with matching type to be dropped
+                toDrop.push(it);
+            } else if (it->value == msg->icallback && msg->type == it->key) {
+                // add only the matcing cb to be dropped
+                toDrop.push(it);
+            }
+        }
+
+        // Do the actual drop
+        while (!toDrop.empty()) {
+            cbVector->erase(toDrop.top());
+            toDrop.pop();
         }
     }
 
-    cbVector->push(callback_pair_t(msg->type, msg->icallback));
     return NO_ERROR;
 }
 
@@ -163,7 +253,7 @@ bool PreviewThread::outputBufferCallback(AtomBuffer *buff)
             toDrop.push(it);
     }
     while (!toDrop.empty()) {
-        mInputBufferCb.erase(toDrop.top());
+        mOutputBufferCb.erase(toDrop.top());
         toDrop.pop();
     }
     return ownership_passed;
@@ -184,7 +274,7 @@ status_t PreviewThread::enableOverlay(bool set, int rotation)
     return status;
 }
 
-void PreviewThread::getDefaultParameters(CameraParameters *params)
+void PreviewThread::getDefaultParameters(CameraParameters *params, int cameraId)
 {
     LOG2("@%s", __FUNCTION__);
     if (!params) {
@@ -198,15 +288,22 @@ void PreviewThread::getDefaultParameters(CameraParameters *params)
     params->setPreviewFormat(cameraParametersFormat(mPreviewCbFormat));
 
     char previewFormats[100] = {0};
-    if (snprintf(previewFormats, sizeof(previewFormats), "%s,%s",
-                 CameraParameters::PIXEL_FORMAT_YUV420SP,
-                 CameraParameters::PIXEL_FORMAT_YUV420P) < 0) {
+    int ret = 0;
+    if (PlatformData::isExtendedCamera(cameraId))
+        ret = snprintf(previewFormats, sizeof(previewFormats), "%s,%s,%s",
+                 CameraParameters::PIXEL_FORMAT_YUV420SP, CameraParameters::PIXEL_FORMAT_YUV420P,
+                 CameraParameters::PIXEL_FORMAT_YUV422I);
+    else
+        ret = snprintf(previewFormats, sizeof(previewFormats), "%s,%s",
+                 CameraParameters::PIXEL_FORMAT_YUV420SP, CameraParameters::PIXEL_FORMAT_YUV420P);
+    if (ret < 0) {
         LOGE("Could not generate %s string: %s", CameraParameters::KEY_SUPPORTED_PREVIEW_FORMATS, strerror(errno));
         return;
     }
     else {
         LOG1("supported preview cb formats %s\n", previewFormats);
     }
+
     params->set(CameraParameters::KEY_SUPPORTED_PREVIEW_FORMATS, previewFormats);
 }
 
@@ -236,7 +333,7 @@ status_t PreviewThread::setPreviewWindow(struct preview_stream_ops *window)
  * \param buffer_count      amount of buffers to allocate
  */
 status_t PreviewThread::setPreviewConfig(int preview_width, int preview_height,
-                                         int preview_cb_format, bool shared_mode, int buffer_count)
+                                         int preview_cb_format, bool shared_mode, bool vs_video, int buffer_count)
 {
     LOG1("@%s", __FUNCTION__);
 
@@ -251,6 +348,7 @@ status_t PreviewThread::setPreviewConfig(int preview_width, int preview_height,
     msg.data.setPreviewConfig.cb_format = preview_cb_format;
     msg.data.setPreviewConfig.bufferCount = buffer_count;
     msg.data.setPreviewConfig.sharedMode = shared_mode;
+    msg.data.setPreviewConfig.halVSVideo = vs_video;
     setState(STATE_CONFIGURED);
     return mMessageQueue.send(&msg);
 }
@@ -407,6 +505,7 @@ status_t PreviewThread::flushBuffers()
     msg.id = MESSAGE_ID_FLUSH;
     mMessageQueue.remove(MESSAGE_ID_PREVIEW);
     mMessageQueue.remove(MESSAGE_ID_POSTVIEW);
+    mPreviewBufferQueue.clear();
     return mMessageQueue.send(&msg, MESSAGE_ID_FLUSH);
 }
 
@@ -545,6 +644,22 @@ void PreviewThread::frameDone(AtomBuffer &buff)
     mFramesDone++;
 }
 
+void PreviewThread::setCallbackMode(CallbackMode mode)
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_SET_CALLBACK_MODE;
+    msg.data.callbackMode.mode = mode;
+    mMessageQueue.send(&msg);
+}
+
+status_t PreviewThread::handleMessagePreviewCallbackMode(MessageCallbackMode *msg)
+{
+    LOG1("@%s", __FUNCTION__);
+    mPreviewCallbackMode = msg->mode;
+    return OK;
+}
+
 status_t PreviewThread::waitForAndExecuteMessage()
 {
     LOG2("@%s", __FUNCTION__);
@@ -582,6 +697,10 @@ status_t PreviewThread::waitForAndExecuteMessage()
             status = handleSetPreviewConfig(&msg.data.setPreviewConfig);
             break;
 
+        case MESSAGE_ID_RETURN_BUFFER:
+            status = handleMessageReturnBuffer(&msg.data.returnBuffer);
+            break;
+
         case MESSAGE_ID_FLUSH:
             status = handleMessageFlush();
             break;
@@ -604,6 +723,26 @@ status_t PreviewThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_FETCH_BUF_GEOMETRY:
             status = handleMessageFetchBufferGeometry();
+            break;
+
+        case MESSAGE_ID_FPS:
+            status = handleMessageFPS(&msg.data.fps);
+            break;
+
+        case MESSAGE_ID_SET_CALLBACK_MODE:
+            status = handleMessagePreviewCallbackMode(&msg.data.callbackMode);
+            break;
+
+        case MESSAGE_ID_PAUSE_PREVIEW_FRAME_UPDATE:
+            status = handlePausePreviewFrameUpdate();
+            break;
+
+        case MESSAGE_ID_RESUME_PREVIEW_FRAME_UPDATE:
+            status = handleResumePreviewFrameUpdate();
+            break;
+
+        case MESSAGE_ID_SET_PREVIEW_FRAME_CAPTURE_ID:
+            status = handleSetPreviewFrameCaptureId(&msg.data.frameId);
             break;
 
         default:
@@ -700,6 +839,7 @@ void PreviewThread::allocateLocalPreviewBuf(void)
         break;
 
     case V4L2_PIX_FMT_RGB565:
+    case V4L2_PIX_FMT_YUYV:
         bpl  = mPreviewBuf.width * 2;
         size = bpl * mPreviewBuf.height;
         break;
@@ -764,10 +904,18 @@ PreviewThread::GfxAtomBuffer* PreviewThread::dequeueFromWindow()
      * if they are not shared then CPU is copying into the buffers in the PreviewThread
      * and nobody is reading, since these buffers are not passed to PostProcThread
      */
-    if (mSharedMode)
-        lockMode = GRALLOC_USAGE_SW_READ_OFTEN | GRALLOC_USAGE_SW_WRITE_NEVER;
-    else
+    if (mSharedMode) {
+        if (mPreviewCallbackMode == PREVIEW_CALLBACK_BEFORE_DISPLAY)
+            lockMode = GRALLOC_USAGE_SW_READ_OFTEN | GRALLOC_USAGE_SW_WRITE_OFTEN; // camera service code is allowed to write to buf, thus "often"
+        else
+            lockMode = GRALLOC_USAGE_SW_READ_OFTEN | GRALLOC_USAGE_SW_WRITE_NEVER;
+    } else
         lockMode = GRALLOC_USAGE_SW_READ_NEVER | GRALLOC_USAGE_SW_WRITE_OFTEN;
+
+    if (mHALVideoStabilization) {
+        lockMode = GRALLOC_USAGE_SW_READ_OFTEN |
+                   GRALLOC_USAGE_HW_TEXTURE;
+    }
 
     GraphicBufferMapper &mapper = GraphicBufferMapper::get();
 
@@ -809,12 +957,20 @@ PreviewThread::GfxAtomBuffer* PreviewThread::dequeueFromWindow()
                         tmpBuf.size = frameSize(mPreviewFourcc, pixel_stride, h);
                         tmpBuf.fourcc = mPreviewFourcc;
                         tmpBuf.status = FRAME_STATUS_NA;
+                        tmpBuf.metadata_buff = NULL;
                         if(mapper.lock(*buf, lockMode, bounds, &mapperPointer.ptr) != NO_ERROR) {
                             LOGE("Failed to lock GraphicBufferMapper!");
                             mPreviewWindow->cancel_buffer(mPreviewWindow, buf);
                         } else {
                             tmpBuf.dataPtr = mapperPointer.ptr;
                             GfxAtomBuffer newBuf;
+
+                            if (mHALVideoStabilization) {
+                                // first fetch, mark as free
+                                newBuf.queuedToWindow = false;
+                                newBuf.queuedToVideo = false;
+                            }
+
                             newBuf.buffer = tmpBuf;
                             newBuf.owner = OWNER_PREVIEWTHREAD;
                             newBuf.buffer.gfxInfo.gfxBufferHandle = buf;
@@ -835,6 +991,9 @@ PreviewThread::GfxAtomBuffer* PreviewThread::dequeueFromWindow()
                         ret = NULL;
                     } else {
                         ret->owner = OWNER_PREVIEWTHREAD;
+                        if (mHALVideoStabilization) {
+                            ret->queuedToWindow = false;
+                        }
                         if (ret->buffer.id >= MAX_NUMBER_PREVIEW_GFX_BUFFERS) {
                             LOG2("Received one of reserved buffers from Gfx, dequeueing another one");
                             ret = NULL;
@@ -912,6 +1071,20 @@ freeDeQueued:
 }
 
 PreviewThread::GfxAtomBuffer*
+PreviewThread::lookForFreeGfxBufferHandle()
+{
+    Vector<GfxAtomBuffer>::iterator it = mPreviewBuffers.begin();
+
+    for (;it != mPreviewBuffers.end(); ++it) {
+        if (!it->queuedToVideo && !it->queuedToWindow) {
+            return it;
+        }
+    }
+
+    return NULL;
+}
+
+PreviewThread::GfxAtomBuffer*
 PreviewThread::lookForGfxBufferHandle(buffer_handle_t *handle)
 {
     Vector<GfxAtomBuffer>::iterator it = mPreviewBuffers.begin();
@@ -967,122 +1140,91 @@ PreviewThread::lookForAtomBuffer(AtomBuffer *buffer)
  *  issues as we have had, more details please refer to:
  *  http://android.intel.com:8080/#/c/102603/
  */
-void PreviewThread::padPreviewBuffer(GfxAtomBuffer* &gfxBuf, MessagePreview* &msg)
+void PreviewThread::padPreviewBuffer(GfxAtomBuffer* &gfxBuf, AtomBuffer *buf)
 {
-    if (mPreviewBpl != 0 && msg->buff.bpl < mGfxBpl && msg->buff.type == ATOM_BUFFER_PREVIEW_GFX) {
-        LOG2("@%s bpl-gfx=%d, bpl-msg=%d", __FUNCTION__, mGfxBpl, msg->buff.bpl);
+    if (mPreviewBpl != 0 && buf->bpl < mGfxBpl && buf->type == ATOM_BUFFER_PREVIEW_GFX) {
+        LOG2("@%s bpl-gfx=%d, bpl-msg=%d", __FUNCTION__, mGfxBpl, buf->bpl);
+
         repadYUV420(gfxBuf->buffer.width, gfxBuf->buffer.height, gfxBuf->buffer.bpl,
                     mGfxBpl, gfxBuf->buffer.dataPtr, gfxBuf->buffer.dataPtr);
-        msg->buff.bpl = mGfxBpl;
+        buf->bpl = mGfxBpl;
     }
 }
 
-/**
- *  This method gets executed for each preview frames that the Thread
- *  receives.
- *  The message is sent by the observer thread that polls the preview
- *  stream
- */
-status_t PreviewThread::handlePreview(MessagePreview *msg)
+status_t PreviewThread::handleVSPreview(PreviewThread::MessagePreview *msg)
 {
     status_t status = NO_ERROR;
-    bool passedToGfx = false;
-    GraphicBufferMapper &mapper = GraphicBufferMapper::get();
     LOG2("@%s: id = %d, width = %d, height = %d, fourcc = %s, bpl = %d", __FUNCTION__,
             msg->buff.id, msg->buff.width, msg->buff.height, v4l2Fmt2Str(msg->buff.fourcc), msg->buff.bpl);
 
-    PreviewState state = getPreviewState();
-    if (state != STATE_ENABLED) {
-        LOG2("Received preview frame in state %d, skipping", state);
-        goto skip_displaying;
-    }
-
     if (mPreviewWindow != 0) {
-        int err;
         GfxAtomBuffer *bufToEnqueue = NULL;
         if (msg->buff.type != ATOM_BUFFER_PREVIEW_GFX) {
-            // client not passing our buffers, not in 0-copy path
-            // do basic checks that configuration matches for a frame copy
-            // Note: ignoring format, as we seem to use fixed NV12
-            // while PreviewThread is configured according to public
-            // parameter for callback conversions
-            if (msg->buff.width != mPreviewWidth ||
-                msg->buff.height != mPreviewHeight ||
-                (msg->buff.bpl != mPreviewBpl && mPreviewBpl != 0)) {
-                LOG1("%s: not passing buffer to window, conflicting format", __FUNCTION__);
-                LOG1(", input : %dx%d(%d:%x:%s)",
-                     msg->buff.width, msg->buff.height, msg->buff.bpl, msg->buff.fourcc,
-                    v4l2Fmt2Str(msg->buff.fourcc));
-                LOG1(", preview : %dx%d(%d:%x:%s)",
-                     mPreviewWidth, mPreviewHeight,
-                     mPreviewBpl, mPreviewFourcc, v4l2Fmt2Str(mPreviewFourcc));
-            } else {
+            // dequeue ready frames from window
+            do {
                 bufToEnqueue = dequeueFromWindow();
-                if (bufToEnqueue) {
-                    LOG2("copying frame %p -> %p : size %d", msg->buff.dataPtr, bufToEnqueue->buffer.dataPtr, msg->buff.size);
-                    LOG2("src frame  %dx%d bpl %d ", msg->buff.width, msg->buff.height,msg->buff.bpl);
-                    LOG2("dst frame  %dx%d bpl %d ", bufToEnqueue->buffer.width, bufToEnqueue->buffer.height, bufToEnqueue->buffer.bpl);
-                    // If mPreviewBpl is not equal with 0, it had set to Gfx bpl when window configuration.
-                    // If Gfx current bpl is not equal with window configuration setting, this frame should be dropped.
-                    if ((mPreviewBpl != 0) && (bufToEnqueue->buffer.bpl != mPreviewBpl)) {
-                        LOGE("msg->buff.bpl=%d, bufToEnqueue->buffer.bpl=%d, bpl don't match for a frame copy",msg->buff.bpl,bufToEnqueue->buffer.bpl);
-                        mapper.unlock(*(bufToEnqueue->buffer.gfxInfo.gfxBufferHandle));
-                        mPreviewWindow->cancel_buffer(mPreviewWindow, bufToEnqueue->buffer.gfxInfo.gfxBufferHandle);
-                        bufToEnqueue->owner = OWNER_WINDOW;
-                        bufToEnqueue = NULL;
-                    } else {
-                        copyPreviewBuffer(&msg->buff, &bufToEnqueue->buffer);
-                    }
-                } else {
-                    LOGE("failed to dequeue from window");
-                }
-            }
-        } else {
-            bufToEnqueue = lookForAtomBuffer(&msg->buff);
-            if (bufToEnqueue) {
-                passedToGfx = true;
-            }
-        }
+            } while (bufToEnqueue != NULL);
+            // find first free buffer
+            bufToEnqueue = lookForFreeGfxBufferHandle();
 
-        if (bufToEnqueue != NULL) {
-            // TODO: If ISP can be configured to match Gfx buffer stride alignment, please delete below line.
-            padPreviewBuffer(bufToEnqueue, msg);
-            bufToEnqueue->buffer.gfxInfo.scalerId = msg->buff.gfxInfo.scalerId;
-            bufToEnqueue->buffer.shared = msg->buff.shared;
-            bufToEnqueue->buffer.capture_timestamp = msg->buff.capture_timestamp;
-            bufToEnqueue->buffer.frameCounter = msg->buff.frameCounter;
-            mapper.unlock(*(bufToEnqueue->buffer.gfxInfo.gfxBufferHandle));
-            if ((err = mPreviewWindow->enqueue_buffer(mPreviewWindow,
-                            bufToEnqueue->buffer.gfxInfo.gfxBufferHandle)) != 0) {
-                LOGE("Surface::queueBuffer returned error %d", err);
-                passedToGfx = false;
+            if (bufToEnqueue) {
+                // process VS, push to window
+                // todo: have the processVS function change the flag
+                bufToEnqueue->queuedToWindow = true;
+                processVS(&msg->buff, &bufToEnqueue->buffer);
+
+                status = handlePreviewCallback(bufToEnqueue->buffer);
+
+                // tell others to return the buffer to us
+                bufToEnqueue->buffer.owner = this;
+                bufToEnqueue->buffer.capture_timestamp = msg->buff.capture_timestamp;
+                // send the buffer to callbacks (to video)
+                bufToEnqueue->queuedToVideo = true;
+                outputBufferCallback(&bufToEnqueue->buffer);
             } else {
-                bufToEnqueue->owner = OWNER_WINDOW;
-                mBuffersInWindow++;
-                // preview frame shown, update perf traces
-                PERFORMANCE_TRACES_PREVIEW_SHOWN(msg->buff.frameCounter);
+                LOGE("failed to find free buffer");
             }
         }
     }
+
+    return status;
+}
+
+/**
+ * This method handles the preview callback during preview
+ * (split off from handlePreview)
+ */
+status_t PreviewThread::handlePreviewCallback(AtomBuffer &srcBuff)
+{
+    status_t status = OK;
 
     if(!mPreviewBuf.buff) {
         allocateLocalPreviewBuf();
     }
 
-    if (mCallbacks->msgTypeEnabled(CAMERA_MSG_PREVIEW_FRAME) && mPreviewBuf.dataPtr) {
-        void *src = msg->buff.dataPtr;
-        int src_bpl = msg->buff.bpl;
+    AtomBuffer *callbackBuffer = &mPreviewBuf;
+
+    if (callbacksEnabled() || mPreviewCallbackMode == PREVIEW_CALLBACK_BEFORE_DISPLAY) {
+        void *src = srcBuff.dataPtr;
+        int src_bpl = srcBuff.bpl;
         if (mTransferingBuffer) {
             int transfer_bpl = pixelsToBytes(mPreviewFourcc, mPreviewBuf.width);
             // scale to transfering buffer if requested preview size is not equal to actual preview size
             ImageScaler::downScaleImage(src, mTransferingBuffer,
                     mPreviewBuf.width, mPreviewBuf.height, transfer_bpl,
-                    mPreviewWidth, mPreviewHeight, msg->buff.bpl,
+                    mPreviewWidth, mPreviewHeight, src_bpl,
                     mPreviewFourcc, 0, 0);
             src = mTransferingBuffer;
             src_bpl = transfer_bpl;
         }
 
+        if (PlatformData::getIntelligentMode(mCameraId)) {
+            char *pDst = (char *)mPreviewBuf.dataPtr;
+            char *pSrc = (char *)src;
+            for (int i = 0; i < mPreviewBuf.height; ++i)
+                memcpy(pDst + i * mPreviewBuf.width, pSrc + i * ALIGN128(mPreviewBuf.width), mPreviewBuf.width);
+            status = NO_ERROR;
+        } else
         switch(mPreviewCbFormat) {
                                   // Android definition: PIXEL_FORMAT_YUV420P-->YV12, please refer to
         case V4L2_PIX_FMT_YVU420: // header file: frameworks/av/include/camera/CameraParameters.h
@@ -1090,10 +1232,23 @@ status_t PreviewThread::handlePreview(MessagePreview *msg)
                              mPreviewBuf.height, src_bpl,
                              mPreviewBuf.bpl, src, mPreviewBuf.dataPtr);
             break;
+
+        case V4L2_PIX_FMT_YUYV:
+            memcpy(mPreviewBuf.dataPtr, src, mPreviewBuf.height * src_bpl);
+            break;
+
         case V4L2_PIX_FMT_NV21: // you need to do this for the first time
-            convertBuftoNV21(mPreviewFourcc, mPreviewBuf.width,
-                             mPreviewBuf.height, src_bpl,
-                             mPreviewBuf.bpl, src, mPreviewBuf.dataPtr);
+            if (srcBuff.fourcc == CAM_HAL_PIXEL_FORMAT_NV21) {
+                if (mSharedMode && (srcBuff.bpl == srcBuff.width ||
+                    mPreviewCallbackMode == PREVIEW_CALLBACK_BEFORE_DISPLAY)) {
+                    callbackBuffer = &srcBuff; // zero-copy, already NV21
+                } else
+                    copyNV21ToNV21(srcBuff.width, srcBuff.height, srcBuff.bpl, srcBuff.width, (char*) src, (char *) mPreviewBuf.dataPtr);
+            } else {
+                convertBuftoNV21(mPreviewFourcc, mPreviewBuf.width,
+                                 mPreviewBuf.height, src_bpl,
+                                 mPreviewBuf.bpl, src, mPreviewBuf.dataPtr);
+            }
             break;
         case V4L2_PIX_FMT_RGB565:
             if (mPreviewFourcc == V4L2_PIX_FMT_NV12)
@@ -1105,9 +1260,124 @@ status_t PreviewThread::handlePreview(MessagePreview *msg)
             status = -1;
             break;
         }
-        if (status == NO_ERROR)
-            mCallbacksThread->previewFrameDone(&mPreviewBuf);
+
+        if (status == NO_ERROR) {
+            int64_t now = systemTime();
+            int64_t nsFromLastCb = now - mPreviewCbTs;
+            int64_t nsFrameInterval = 1000000000 / mFps;
+            if (nsFromLastCb < nsFrameInterval) {
+                // sleep for 90% of the full time, to satisfy frame interval CTS test and to not cause too much preview lag
+                int usSleepTime = (0.9 * (nsFrameInterval - nsFromLastCb)) / 1000;
+                LOG2("@%s sleeping %d us to satisfy callback frame intervals", __FUNCTION__, usSleepTime);
+                usleep(usSleepTime);
+            }
+
+            if (mPreviewCallbackMode == PREVIEW_CALLBACK_BEFORE_DISPLAY) {
+                // "before display" type of callback buffers are returned to us and thus we need to steal ownership for that to work
+                // see also ::handleMessageReturnBuffer which calls handlePreviewCore
+                GfxAtomBuffer *buff = lookForAtomBuffer(&srcBuff);
+
+                if (buff == NULL) {
+                    LOGE("Couldn't find gfx buffer?!");
+                    return BAD_VALUE;
+                }
+
+                buff->originalAtomBufferOwner = srcBuff.owner;
+                srcBuff.owner = this;
+                srcBuff.returnAfterCB = true;
+            } else
+                srcBuff.returnAfterCB = false;
+
+            mCallbacksThread->previewFrameDone(callbackBuffer);
+            mPreviewCbTs = systemTime();
+        }
     }
+
+    return status;
+}
+
+status_t PreviewThread::handlePreviewCore(AtomBuffer *buff) {
+    LOG2("@%s:", __FUNCTION__);
+    status_t status = NO_ERROR;
+    bool passedToGfx = false;
+    GraphicBufferMapper &mapper = GraphicBufferMapper::get();
+
+    PreviewState state = getPreviewState();
+    if (state != STATE_ENABLED) {
+        LOG2("Received preview frame in state %d, skipping", state);
+        goto skip_displaying;
+    }
+
+    if (mPreviewWindow != 0) {
+        int err;
+        GfxAtomBuffer *bufToEnqueue = NULL;
+        if (buff->type != ATOM_BUFFER_PREVIEW_GFX) {
+            // client not passing our buffers, not in 0-copy path
+            // do basic checks that configuration matches for a frame copy
+            // Note: ignoring format, as we seem to use fixed NV12
+            // while PreviewThread is configured according to public
+            // parameter for callback conversions
+            if (buff->width != mPreviewWidth ||
+                buff->height != mPreviewHeight ||
+                (buff->bpl != mPreviewBpl && mPreviewBpl != 0)) {
+                LOG1("%s: not passing buffer to window, conflicting format", __FUNCTION__);
+                LOG1(", input : %dx%d(%d:%x:%s)",
+                     buff->width, buff->height, buff->bpl, buff->fourcc,
+                    v4l2Fmt2Str(buff->fourcc));
+                LOG1(", preview : %dx%d(%d:%x:%s)",
+                     mPreviewWidth, mPreviewHeight,
+                     mPreviewBpl, mPreviewFourcc, v4l2Fmt2Str(mPreviewFourcc));
+            } else {
+                bufToEnqueue = dequeueFromWindow();
+                if (bufToEnqueue) {
+                    LOG2("copying frame %p -> %p : size %d", buff->dataPtr, bufToEnqueue->buffer.dataPtr, buff->size);
+                    LOG2("src frame  %dx%d bpl %d ", buff->width, buff->height,buff->bpl);
+                    LOG2("dst frame  %dx%d bpl %d ", bufToEnqueue->buffer.width, bufToEnqueue->buffer.height, bufToEnqueue->buffer.bpl);
+                    // If mPreviewBpl is not equal with 0, it had set to Gfx bpl when window configuration.
+                    // If Gfx current bpl is not equal with window configuration setting, this frame should be dropped.
+                    if ((mPreviewBpl != 0) && (bufToEnqueue->buffer.bpl != mPreviewBpl)) {
+                        LOGE("buff->bpl=%d, bufToEnqueue->buffer.bpl=%d, bpl don't match for a frame copy",buff->bpl,bufToEnqueue->buffer.bpl);
+                        mapper.unlock(*(bufToEnqueue->buffer.gfxInfo.gfxBufferHandle));
+                        mPreviewWindow->cancel_buffer(mPreviewWindow, bufToEnqueue->buffer.gfxInfo.gfxBufferHandle);
+                        bufToEnqueue->owner = OWNER_WINDOW;
+                        bufToEnqueue = NULL;
+                    } else {
+                        copyPreviewBuffer(buff, &bufToEnqueue->buffer);
+                    }
+                } else {
+                    LOGE("failed to dequeue from window");
+                }
+            }
+        } else {
+            bufToEnqueue = lookForAtomBuffer(buff);
+            if (bufToEnqueue) {
+                passedToGfx = true;
+            }
+        }
+
+        if (bufToEnqueue != NULL) {
+            // TODO: If ISP can be configured to match Gfx buffer stride alignment, please delete below line.
+            padPreviewBuffer(bufToEnqueue, buff);
+            bufToEnqueue->buffer.gfxInfo.scalerId = buff->gfxInfo.scalerId;
+            bufToEnqueue->buffer.shared = buff->shared;
+            bufToEnqueue->buffer.capture_timestamp = buff->capture_timestamp;
+            bufToEnqueue->buffer.frameCounter = buff->frameCounter;
+            mapper.unlock(*(bufToEnqueue->buffer.gfxInfo.gfxBufferHandle));
+            if ((err = mPreviewWindow->enqueue_buffer(mPreviewWindow,
+                            bufToEnqueue->buffer.gfxInfo.gfxBufferHandle)) != 0) {
+                LOGE("Surface::queueBuffer returned error %d", err);
+                passedToGfx = false;
+            } else {
+                bufToEnqueue->owner = OWNER_WINDOW;
+                mBuffersInWindow++;
+                // preview frame shown, update perf traces
+                PERFORMANCE_TRACES_PREVIEW_SHOWN(buff->frameCounter);
+            }
+        }
+    }
+
+    if (mPreviewCallbackMode == PREVIEW_CALLBACK_NORMAL)
+        status = handlePreviewCallback(*buff);
 
 skip_displaying:
     inputBufferCallback();
@@ -1116,24 +1386,110 @@ skip_displaying:
 
     if (!passedToGfx) {
         // passing the input buffer as output
-        if (!outputBufferCallback(&(msg->buff)))
-            msg->buff.owner->returnBuffer(&msg->buff);
+        if (!outputBufferCallback(buff))
+            buff->owner->returnBuffer(buff);
     } else {
         // input buffer was passed to Gfx queue, now try
         // dequeueing to replace output callback buffer
         GfxAtomBuffer *outputBuffer = dequeueFromWindow();
         if (outputBuffer) {
             outputBuffer->owner = OWNER_CLIENT;
-            // restore the owner and state of input AtomBuffer to output
-            outputBuffer->buffer.owner = msg->buff.owner;
-            outputBuffer->buffer.status = msg->buff.status;
+            // restore the owner, state and aux buf of input AtomBuffer to output
+            outputBuffer->buffer.owner = buff->owner;
+            outputBuffer->buffer.status = buff->status;
+            outputBuffer->buffer.auxBuf = buff->auxBuf;
             if (!outputBufferCallback(&outputBuffer->buffer))
-                msg->buff.owner->returnBuffer(&outputBuffer->buffer);
+                buff->owner->returnBuffer(&outputBuffer->buffer);
         }
     }
 
     return status;
 }
+
+bool PreviewThread::callbacksEnabled() {
+    return mCallbacks->msgTypeEnabled(CAMERA_MSG_PREVIEW_FRAME) && mPreviewBuf.dataPtr;
+}
+
+/**
+ *  This method gets executed for each preview frames that the Thread
+ *  receives.
+ *  The message is sent by the observer thread that polls the preview
+ *  stream
+ */
+status_t PreviewThread::handlePreview(MessagePreview *msg)
+{
+    LOG2("@%s: id = %d, width = %d, height = %d, fourcc = %s, bpl = %d", __FUNCTION__,
+            msg->buff.id, msg->buff.width, msg->buff.height, v4l2Fmt2Str(msg->buff.fourcc), msg->buff.bpl);
+
+    if (PlatformData::getMaxDepthPreviewBufferQueueSize(mCameraId) > 0)
+        return handlePreviewBufferQueue(&msg->buff);
+    else if (mHALVideoStabilization)
+        return handleVSPreview(msg);
+    else if (mPreviewCallbackMode == PREVIEW_CALLBACK_BEFORE_DISPLAY)
+        return handlePreviewCallback(msg->buff);
+
+    return handlePreviewCore(&msg->buff);
+}
+
+void PreviewThread::processVS(AtomBuffer *src, AtomBuffer *dst)
+{
+    status_t err = OK;
+    mHALVS->process(src, dst);
+    dst->capture_timestamp = src->capture_timestamp;
+
+    // enqueue the buffer to window
+    GraphicBufferMapper &mapper = GraphicBufferMapper::get();
+    mapper.unlock(*dst->gfxInfo.gfxBufferHandle);
+    if ((err = mPreviewWindow->enqueue_buffer(mPreviewWindow,
+            dst->gfxInfo.gfxBufferHandle)) != 0) {
+        LOGE("Surface::queueBuffer returned error %d", err);
+    } else {
+        mBuffersInWindow++;
+    }
+
+    inputBufferCallback();
+
+    mDebugFPS->update(); // update fps counter
+
+    src->owner->returnBuffer(src);
+}
+
+void PreviewThread::returnBuffer(AtomBuffer *buff)
+{
+    LOG2("@%s", __FUNCTION__);
+
+    if (!buff) {
+        LOGE("NULL buffer returned to preview thread");
+        return;
+    }
+
+    Message msg;
+    msg.id = MESSAGE_ID_RETURN_BUFFER;
+    msg.data.returnBuffer.buff = *buff;
+    mMessageQueue.send(&msg);
+}
+
+status_t PreviewThread::handleMessageReturnBuffer(MessageReturnBuffer *msg)
+{
+    LOG2("@%s", __FUNCTION__);
+
+    status_t status = OK;
+
+    GfxAtomBuffer *buff = lookForGfxBufferHandle(msg->buff.gfxInfo.gfxBufferHandle);
+    if (buff == NULL) {
+        LOGE("Couldn't find gfx buffer?!");
+        status = BAD_VALUE;
+    } else if (mHALVideoStabilization) {
+        buff->queuedToVideo = false;
+    } else {
+        // this is a callback buffer returning to us
+        msg->buff.owner = buff->originalAtomBufferOwner;
+        status = handlePreviewCore(&msg->buff);
+    }
+
+    return status;
+}
+
 
 status_t PreviewThread::handleSetPreviewWindow(MessageSetPreviewWindow *msg)
 {
@@ -1161,6 +1517,7 @@ status_t PreviewThread::handleSetPreviewWindow(MessageSetPreviewWindow *msg)
                 // read-never: we do not use this buffer for callbacks. We never read from it
                 usage = GRALLOC_USAGE_SW_WRITE_OFTEN |
                         GRALLOC_USAGE_SW_READ_NEVER  |
+                        GRALLOC_USAGE_HW_CAMERA_MASK |
                         GRALLOC_USAGE_HW_COMPOSER    |
                         GRALLOC_USAGE_HW_RENDER      |
                         GRALLOC_USAGE_HW_TEXTURE;
@@ -1168,12 +1525,29 @@ status_t PreviewThread::handleSetPreviewWindow(MessageSetPreviewWindow *msg)
             } else {
                 // write-never: main use-case, stream image data to window by ISP only
                 // read-rarely: 2nd use-case, memcpy to application data callback
-                usage = GRALLOC_USAGE_SW_READ_RARELY |
-                        GRALLOC_USAGE_SW_WRITE_NEVER |
-                        GRALLOC_USAGE_HW_COMPOSER    |
-                        GRALLOC_USAGE_HW_RENDER      |
-                        GRALLOC_USAGE_HW_TEXTURE;
+                if (mPreviewCallbackMode == PREVIEW_CALLBACK_BEFORE_DISPLAY)
+                    usage = GRALLOC_USAGE_SW_READ_RARELY |
+                            GRALLOC_USAGE_SW_WRITE_OFTEN |
+                            GRALLOC_USAGE_HW_CAMERA_MASK |
+                            GRALLOC_USAGE_HW_COMPOSER    |
+                            GRALLOC_USAGE_HW_RENDER      |
+                            GRALLOC_USAGE_HW_TEXTURE;
+                else
+                    usage = GRALLOC_USAGE_SW_READ_RARELY |
+                            GRALLOC_USAGE_SW_WRITE_NEVER |
+                            GRALLOC_USAGE_HW_CAMERA_MASK |
+                            GRALLOC_USAGE_HW_COMPOSER    |
+                            GRALLOC_USAGE_HW_RENDER      |
+                            GRALLOC_USAGE_HW_TEXTURE;
             }
+
+            // in the rather rare case when preview buffers are used for video
+            // recording, the encoder needs to know that we use strides
+            // dividable by 64. GRALLOC_USAGE_HW_CAMERA_READ and
+            // GRALLOC_USAGE_HW_CAMERA_WRITE will do the trick, so we set
+            // GRALLOC_USAGE_HW_CAMERA_WRITE. The problematic resolution is 720x480.
+            // ref: vendor/intel/hardware/PRIVATE/libmix/videoencoder/VideoEncoderUtils.cpp function "GetGfxBufferInfo"
+            usage |= GRALLOC_USAGE_HW_CAMERA_WRITE;
 
             LOG1("Setting new preview window %p (%dx%d)", mPreviewWindow,w,h);
             mPreviewWindow->set_usage(mPreviewWindow, usage);
@@ -1215,10 +1589,29 @@ status_t PreviewThread::handleSetPreviewConfig(MessageSetPreviewConfig *msg)
     int bufferCount = 0;
     int reservedBufferCount = 0;
 
+    mPreviewBufferNum = msg->bufferCount;
+    mHALVideoStabilization = msg->halVSVideo;
+    if (mHALVideoStabilization && mHALVS == NULL)
+        mHALVS = new HALVideoStabilization();
+
     mSharedMode = msg->sharedMode;
 
     if ((w != 0 && h != 0)) {
         LOG1("Setting new preview size: %dx%d", w, h);
+
+        // ATM, we can't yet configure all resolutions for NV21, so we
+        // will only configure the special ext-isp 6MP preview and
+        // mode PREVIEW_CALLBACK_BEFORE_DISPLAY callbacks for that.
+        // rest of cases will have whatever is the default in camera
+        // profiles
+        if (mSharedMode && ((w == RESOLUTION_6MP_WIDTH && h == RESOLUTION_6MP_HEIGHT) ||
+            mPreviewCallbackMode == PREVIEW_CALLBACK_BEFORE_DISPLAY))
+            mPreviewFourcc = V4L2_PIX_FMT_NV21;
+        else if (PlatformData::getIntelligentMode(mCameraId))
+            mPreviewFourcc = V4L2_PIX_FMT_SGRBG8;
+        else
+            mPreviewFourcc = PlatformData::getPreviewPixelFormat(mCameraId);
+
         if (mPreviewWindow != NULL) {
 
             /**
@@ -1292,11 +1685,20 @@ status_t PreviewThread::handleSetPreviewConfig(MessageSetPreviewConfig *msg)
     } else {
         // shared mode disabled, allocate minimum amount of buffers to
         // circulate
-        bufferCount = mMinUndequeued + 1;
+        if (!mHALVideoStabilization)
+            bufferCount = mMinUndequeued + 1;
+        else
+            bufferCount = mMinUndequeued + 5;
     }
 
     if ( mMinUndequeued < 0 || mMinUndequeued > bufferCount - 1) {
         LOGE("unexpected min undeueued requirement %d", mMinUndequeued);
+        freeLocalPreviewBuf();
+        setState(STATE_STOPPED);
+        mPreviewWidth = 0;
+        mPreviewHeight = 0;
+        mPreviewBpl = 0;
+        mMinUndequeued = 0;
         return INVALID_OPERATION;
     }
 
@@ -1308,6 +1710,7 @@ status_t PreviewThread::handleSetPreviewConfig(MessageSetPreviewConfig *msg)
 
     if (status == NO_ERROR) {
         mNumOfPreviewBuffers = bufferCount;
+        mFakeHeaps = new sp<CameraHeapMemory>[bufferCount];
         status = fetchReservedBuffers(reservedBufferCount);
     }
 
@@ -1337,9 +1740,16 @@ status_t PreviewThread::handleFetchPreviewBuffers()
         buffer_handle_t *buf(NULL);
         MapperPointer mapperPointer;
         mapperPointer.ptr = NULL;
+        // default lock mode
         int lockMode = GRALLOC_USAGE_SW_READ_OFTEN |
                        GRALLOC_USAGE_SW_WRITE_NEVER |
                        GRALLOC_USAGE_HW_COMPOSER;
+        // in PREVIEW_CALLBACK_BEFORE_DISPLAY cam service is allowed to write, thus "often"
+        if (mPreviewCallbackMode == PREVIEW_CALLBACK_BEFORE_DISPLAY)
+            lockMode = GRALLOC_USAGE_SW_READ_OFTEN |
+                       GRALLOC_USAGE_SW_WRITE_OFTEN |
+                       GRALLOC_USAGE_HW_COMPOSER;
+
         const Rect bounds(mPreviewWidth, mPreviewHeight);
         int pixel_stride(0);
 
@@ -1390,6 +1800,31 @@ status_t PreviewThread::handleFetchPreviewBuffers()
             }
 
             tmpBuf.dataPtr = mapperPointer.ptr;
+            // create fake heaps for zero-copy callbacks for the ATM only NV21
+            // use-cases (ext-isp 6MP preview for panorama, direct callbacks before display)
+            if (mSharedMode && ((tmpBuf.width == RESOLUTION_6MP_WIDTH &&
+                tmpBuf.height == RESOLUTION_6MP_HEIGHT) ||
+                mPreviewCallbackMode == PREVIEW_CALLBACK_BEFORE_DISPLAY)) {
+                // ATM, not all use cases use NV21, but a few does
+                tmpBuf.fourcc = CAM_HAL_PIXEL_FORMAT_NV21;
+                // fake heap is for callbacks and thus stride should match width
+                // size calculation is bpl*h*3/2
+                int fakeHeapSize = tmpBuf.bpl * tmpBuf.height * 3 / 2;
+                if (tmpBuf.bpl != tmpBuf.width) {
+                    LOGW("@%s different stride than width (%d vs %d) - this won't work with CTS verifier!", __FUNCTION__, tmpBuf.bpl, tmpBuf.width);
+                }
+                // create fake heap
+                CameraHeapMemory *camHeap = new CameraHeapMemory(fakeHeapSize, 1);
+                // store in sp<CameraHeapMemory> for destruction
+                mFakeHeaps[tmpBuf.id] = camHeap;
+                camHeap->mHeap = new FakeHeap(fakeHeapSize, tmpBuf.dataPtr);
+                camHeap->commonInitialization();
+                tmpBuf.buff = new camera_memory_t();
+                tmpBuf.buff->release = release_camera_memory_t;
+                tmpBuf.buff->handle = camHeap;
+                tmpBuf.buff->size = fakeHeapSize;
+                tmpBuf.buff->data = tmpBuf.dataPtr;
+            }
 
             GfxAtomBuffer newBuf;
             newBuf.buffer = tmpBuf;
@@ -1726,4 +2161,144 @@ void PreviewThread::getEffectiveDimensions(int *w, int *h)
         *h = mPreviewHeight;
     }
 }
+
+status_t PreviewThread::getPreviewBufferById(AtomBuffer &buff)
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    bool find = false;
+
+    if (mPreviewBufferQueue.empty()) {
+        LOGE("There is no buffer in preview buffer queue");
+        return INVALID_OPERATION;
+    }
+
+    Vector<AtomBuffer>::iterator it = mPreviewBufferQueue.begin();
+    for(; it != mPreviewBufferQueue.end(); ++it) {
+        if (it->sensorFrameId == mPreviewFrameId) {
+            find = true;
+            LOG2("find captured sensorFrameId, target = %d", mPreviewFrameId);
+            break;
+        }
+    }
+
+    // if don't find matching frame count, return the last one to finish takepicture operation.
+    if (find) {
+        buff = *it;
+    } else {
+        buff = mPreviewBufferQueue.top();
+        LOGE("can't find captured sensorFrameId, target = %d, current = %d", mPreviewFrameId, buff.sensorFrameId);
+    }
+
+    return status;
+}
+
+status_t PreviewThread::handlePreviewBufferQueue(AtomBuffer *buff)
+{
+    LOG1("@%s", __FUNCTION__);
+
+    AtomBuffer *returnBuff = buff;
+    int maxQueueSize = PlatformData::getMaxDepthPreviewBufferQueueSize(mCameraId);
+
+    // If max queue size is less than 0 or larger than preview buffer number, don't hold buffer.
+    if ((maxQueueSize > 0) && (maxQueueSize < mPreviewBufferNum && mPreviewFrameId == -1)) {
+        if (mPreviewBufferQueueUpdate) {
+            // Saving maxQueueSize buffer into buffer queue to use later
+            if ((int)mPreviewBufferQueue.size() < maxQueueSize) {
+                mPreviewBufferQueue.push_front(*buff);
+                return NO_ERROR;
+            } else {
+                Vector<AtomBuffer>::iterator it = mPreviewBufferQueue.begin();
+                for(; it != mPreviewBufferQueue.end(); ++it) {
+                    if (it->sensorFrameId == -1) {
+                        it->sensorFrameId = mIsp->getSensorFrameId(it->expId);
+                        LOG2("sensorFrameId = %d, expId=%d", it->sensorFrameId, it->expId);
+                    }
+                }
+            }
+        } else {
+            // Keep the latest frame in preview buffer queue.
+            if (mPreviewBufferQueue.empty()) {
+                mPreviewBufferQueue.push_front(*buff);
+                return NO_ERROR;
+            } else {
+                mPreviewBufferQueue.push_front(*buff);
+                *returnBuff = mPreviewBufferQueue.top();
+                mPreviewBufferQueue.pop();
+            }
+        }
+    }
+
+    return handlePreviewCore(returnBuff);
+}
+
+status_t PreviewThread::pausePreviewFrameUpdate()
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_PAUSE_PREVIEW_FRAME_UPDATE;
+    return mMessageQueue.send(&msg, MESSAGE_ID_PAUSE_PREVIEW_FRAME_UPDATE);
+}
+
+status_t PreviewThread::resumePreviewFrameUpdate()
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_RESUME_PREVIEW_FRAME_UPDATE;
+    return mMessageQueue.send(&msg, MESSAGE_ID_RESUME_PREVIEW_FRAME_UPDATE);
+}
+
+status_t PreviewThread::setPreviewFrameCaptureId(int id)
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.data.frameId.id= id;
+    msg.id = MESSAGE_ID_SET_PREVIEW_FRAME_CAPTURE_ID;
+    return mMessageQueue.send(&msg, MESSAGE_ID_SET_PREVIEW_FRAME_CAPTURE_ID);
+}
+
+status_t PreviewThread::handlePausePreviewFrameUpdate()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    mPreviewBufferQueueUpdate = true;
+    mMessageQueue.reply(MESSAGE_ID_PAUSE_PREVIEW_FRAME_UPDATE, status);
+    return status;
+}
+
+status_t PreviewThread::handleResumePreviewFrameUpdate()
+{
+    LOG1("@%s", __FUNCTION__);
+    status_t status = NO_ERROR;
+    Vector<AtomBuffer>::iterator it;
+    while (!mPreviewBufferQueue.empty()) {
+        it = mPreviewBufferQueue.begin();
+        LOG2("release sensorFrameId = %d, expId=%d", it->sensorFrameId, it->expId);
+        it->owner->returnBuffer(it);
+        mPreviewBufferQueue.erase(it);
+    }
+    mPreviewFrameId = -1;
+    mPreviewBufferQueueUpdate = false;
+    mMessageQueue.reply(MESSAGE_ID_RESUME_PREVIEW_FRAME_UPDATE, status);
+    return status;
+}
+
+status_t PreviewThread::handleSetPreviewFrameCaptureId(MessageFrameId *msg)
+{
+    LOG1("@%s mPreviewFrameId = %d", __FUNCTION__, msg->id);
+    status_t status = NO_ERROR;
+    mPreviewFrameId = msg->id;
+    if (!mPreviewBufferQueue.empty()) {
+        Vector<AtomBuffer>::iterator it = mPreviewBufferQueue.begin();
+        for(; it != mPreviewBufferQueue.end(); ++it) {
+            if (it->sensorFrameId == -1) {
+                it->sensorFrameId = mIsp->getSensorFrameId(it->expId);
+                LOG2("sensorFrameId = %d, expId=%d", it->sensorFrameId, it->expId);
+            }
+        }
+    }
+    mMessageQueue.reply(MESSAGE_ID_SET_PREVIEW_FRAME_CAPTURE_ID, status);
+    return status;
+}
+
 } // namespace android

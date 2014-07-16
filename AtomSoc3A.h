@@ -80,6 +80,7 @@ public:
     virtual MeteringMode getAeMeteringMode();
     virtual status_t set3AColorEffect(const char *effect);
     virtual status_t setAeFlickerMode(FlickerMode flickerMode);
+    virtual status_t setUllEnabled(bool enabled);
     virtual status_t setAfMode(AfMode mode);
     virtual AfMode getAfMode();
     virtual status_t setAfEnabled(bool en);
@@ -102,23 +103,25 @@ public:
     virtual status_t getAiqConfig(ia_binary_data *cpfData) { return INVALID_OPERATION; }
     virtual status_t getAeManualBrightness(float *ret) { return INVALID_OPERATION; }
     virtual size_t   getAeMaxNumWindows() { return 0; }
-    virtual size_t   getAfMaxNumWindows() { return 0; }
-    virtual status_t setAeWindow(const CameraWindow *window) { return INVALID_OPERATION; }
-    virtual status_t setAfWindows(const CameraWindow *windows, size_t numWindows) { return INVALID_OPERATION; }
+    virtual size_t   getAfMaxNumWindows() { return mMaxNumAfAreas; }
+    virtual status_t setAeWindow(CameraWindow *window, const AAAWindowInfo *convWindow = NULL) { return INVALID_OPERATION; }
+    virtual status_t setAfWindows(CameraWindow *windows, size_t numWindows, const AAAWindowInfo *convWindow = NULL) { return INVALID_OPERATION; }
     virtual status_t setManualFocusIncrement(int step) { return INVALID_OPERATION; }
     virtual status_t initAfBracketing(int stops,  AFBracketingMode mode) { return INVALID_OPERATION; }
     virtual status_t initAeBracketing() { return INVALID_OPERATION; }
+    virtual status_t deinitAeBracketing() { return INVALID_OPERATION; }
+    virtual int      applyEvGroup(float biases[], int depth, SensorAeConfig aeConfig[]) { return -1; }
     virtual status_t getExposureInfo(SensorAeConfig& sensorAeConfig) { return INVALID_OPERATION; }
     virtual status_t getGridWindow(AAAWindowInfo& window);
     virtual bool getAfNeedAssistLight() { return false; }
     virtual FlashStage getAeFlashNecessity() { return CAM_FLASH_STAGE_NONE; }
     virtual AwbMode getLightSource() { return CAM_AWB_MODE_NOT_SET; }
     virtual status_t setAeBacklightCorrection(bool en) { return INVALID_OPERATION; }
-    virtual status_t apply3AProcess(bool read_stats, struct timeval *frame_timestamp) { return INVALID_OPERATION; }
+    virtual status_t apply3AProcess(bool read_stats, struct timeval *frame_timestamp, int orientation) { return INVALID_OPERATION; }
     virtual status_t startStillAf() { return INVALID_OPERATION; }
     virtual status_t stopStillAf() { return INVALID_OPERATION; }
     virtual AfStatus isStillAfComplete() { return CAM_AF_STATUS_FAIL; }
-    virtual status_t applyPreFlashProcess(FlashStage stage, struct timeval captureTimestamp) { return INVALID_OPERATION; }
+    virtual status_t applyPreFlashProcess(FlashStage stage, struct timeval captureTimestamp, int orientation) { return INVALID_OPERATION; }
     virtual status_t getGBCEResults(ia_aiq_gbce_results *gbce_results) { return INVALID_OPERATION; }
     virtual status_t getExposureParameters(ia_aiq_exposure_parameters *exposure) { return INVALID_OPERATION; }
 
@@ -136,6 +139,7 @@ public:
 
     virtual AfStatus getCAFStatus() { return CAM_AF_STATUS_FAIL; }
     status_t getSmartSceneMode(String8 &sceneMode, bool &sceneHdr) { return INVALID_OPERATION; }
+    virtual void setFaceDetection(bool enabled) { return; }
     status_t setFaces(const ia_face_state& faceState) { return INVALID_OPERATION; }
     status_t setFlash(int numFrames);
     virtual bool getAeUllTrigger() { return false; }
@@ -144,6 +148,8 @@ public:
     virtual status_t setSaturation(char saturation) { return INVALID_OPERATION; }
     virtual status_t setSharpness(char sharpness) { return INVALID_OPERATION; }
     virtual status_t setContrast(char contrast) { return INVALID_OPERATION; }
+
+    virtual void setManualFocusParameters(ia_aiq_manual_focus_parameters focusParameters) { }
 private:
     int mCameraId;
     IHWIspControl * mISP;
@@ -151,6 +157,7 @@ private:
     IHWFlashControl * mFlashCI;
     IHWLensControl * mLensCI;
     AeMode mPublicAeMode;
+    size_t mMaxNumAfAreas;
 }; // class AtomSoc3A
 
 }; // namespace android

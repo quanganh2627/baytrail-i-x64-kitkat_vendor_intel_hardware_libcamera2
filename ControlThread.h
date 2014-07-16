@@ -38,6 +38,7 @@
 #include "PanoramaThread.h"
 #include "SensorThread.h"
 #include "ScalerService.h"
+#include "WarperService.h"
 #include "PostCaptureThread.h"
 #include "CameraDump.h"
 #include "CameraAreas.h"
@@ -54,6 +55,7 @@
 
 namespace android {
 
+class AtomISP;
 //
 // ControlThread implements most of the operations defined
 // by camera_device_ops_t. Refer to hardware/camera.h
@@ -81,12 +83,12 @@ private:
     ControlThread(const ControlThread& other);
     ControlThread& operator=(const ControlThread& other);
 
+public:
+    virtual bool atomIspNotify(IAtomIspObserver::Message *msg, const ObserverState state);
+
 // Thread overrides
 public:
     status_t requestExitAndWait();
-
-public:
-    virtual bool atomIspNotify(IAtomIspObserver::Message *msg, const ObserverState state);
 
 // public methods
 public:
@@ -112,6 +114,7 @@ public:
     status_t errorPreview();
     status_t startRecording();
     status_t stopRecording();
+    status_t recoverPreview();
 
     void sendCommand( int32_t cmd, int32_t arg1, int32_t arg2);
 
@@ -134,7 +137,7 @@ public:
     status_t autoFocus();
     status_t cancelAutoFocus();
 
-    // return recording frame to driver (asynchronous)
+    // return recording frame.
     status_t releaseRecordingFrame(void *buff);
 
     void atomRelease();
@@ -143,7 +146,7 @@ public:
     virtual void returnBuffer(AtomBuffer* buff);
 
     // Implementation of IPostCaptureProcessObserver interface
-    void postCaptureProcesssingDone(IPostCaptureProcessItem* item, status_t status, int retries = MAX_MSG_RETRIES);
+    void postCaptureProcesssingDone(IPostCaptureProcessItem* item, status_t status);
 
     // IOrientationListener
     void orientationChanged(int orientation);
@@ -151,11 +154,13 @@ public:
 // callback methods
 private:
     virtual void previewBufferCallback(AtomBuffer *buff, ICallbackPreview::CallbackType t);
+    virtual void atPostviewPresent();
     virtual void encodingDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf);
     virtual void pictureDone(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf);
     virtual void postProcCaptureTrigger();
     virtual void sceneDetected(String8 sceneMode, bool sceneHdr);
     virtual void facesDetected(const ia_face_state *faceState);
+    virtual void lowLightDetected(bool needLLS);
     virtual void panoramaCaptureTrigger();
     virtual void panoramaFinalized(AtomBuffer *buff, AtomBuffer *pvBuff);
 
@@ -177,7 +182,6 @@ private:
         MESSAGE_ID_CANCEL_PICTURE,
         MESSAGE_ID_AUTO_FOCUS,
         MESSAGE_ID_CANCEL_AUTO_FOCUS,
-        MESSAGE_ID_RELEASE_RECORDING_FRAME,
         MESSAGE_ID_RELEASE_PREVIEW_FRAME,//This is only a callback from other
                                          // HAL threads to signal preview buffer
                                          // is not used and is free to queue back
@@ -201,7 +205,6 @@ private:
         // Message for enabling metadata buffer mode
         MESSAGE_ID_STORE_METADATA_IN_BUFFER,
 
-        MESSAGE_ID_DEQUEUE_RECORDING,
         MESSAGE_ID_POST_CAPTURE_PROCESSING_DONE,
         MESSAGE_ID_SET_ORIENTATION,
 
@@ -214,10 +217,6 @@ private:
     //
     // message data structures
     //
-
-    struct MessageReleaseRecordingFrame {
-        void *buff;
-    };
 
     struct MessageReturnBuffer {
         AtomBuffer returnBuf;
@@ -271,15 +270,9 @@ private:
         AtomBuffer pvBuff;
     };
 
-    struct MessageDequeueRecording {
-        bool    skipFrame;
-        AtomBuffer previewFrame; // special case for VFPP limited cases, where recording frame is created from preview
-    };
-
     struct MessagePostCaptureProcDone {
         IPostCaptureProcessItem* item;
         status_t status;
-        int retriesLeft;
     };
 
     struct MessageOrientation {
@@ -288,9 +281,6 @@ private:
 
     // union of all message data
     union MessageData {
-
-        // MESSAGE_ID_RELEASE_RECORDING_FRAME
-        MessageReleaseRecordingFrame releaseRecordingFrame;
 
         // MESSAGE_ID_ENCODING_DONE
         MessagePicture encodingDone;
@@ -321,9 +311,6 @@ private:
         // MESSAGE_ID_PANORAMA_FINALIZE
         MessagePanoramaFinalize   panoramaFinalized;
 
-        // MESSAGE_ID_DEQUEUE_RECORDING
-        MessageDequeueRecording   dequeueRecording;
-
         // MESSAGE_ID_POST_CAPTURE_PROCESSING_DONE
         MessagePostCaptureProcDone postCapture;
 
@@ -350,7 +337,8 @@ private:
         STATE_PREVIEW_VIDEO,
         STATE_RECORDING,
         STATE_CAPTURE,
-        STATE_CONTINUOUS_CAPTURE
+        STATE_CONTINUOUS_CAPTURE,
+        STATE_JPEG_CAPTURE
     };
 
     // capture substates
@@ -362,6 +350,7 @@ private:
         STATE_CAPTURE_ENCODING_DONE, // when encoding done callback is received
         STATE_CAPTURE_PICTURE_DONE,  // when picture done callback is received
         STATE_CAPTURE_IDLE,          // when preview is started again
+        STATE_CAPTURE_CONTINUOUS_SHOOTING,  // when pictures is captured continuously
         STATE_CAPTURE_LAST           // Fake state used to calculate number of states keep always last
     };
 
@@ -377,6 +366,19 @@ private:
         SHOOTING_MODE_VIDEO_SNAP,   /*!< Picture taking while recording is active */
         SHOOTING_MODE_ZSL_BURST,    /*!< Burst of ZSL where we can take images before the shutter is pressed */
         SHOOTING_MODE_ULL,          /*!< Ultra LowLight */
+        SHOOTING_MODE_JPEG,         /*!< Continuous JPEG capture */
+        SHOOTING_MODE_EXTISP_HDR_LLS, /*!< ext-isp HDR/LLS capture */
+        SHOOTING_MODE_CONTINUOUS_SHOOTING,   /*!< Continuous shooting */
+        SHOOTING_MODE_SMARTSTABILIZATION, /*!< Smart Stabilization capture */
+    };
+
+    /**
+     * \enum ContinuousShootingStatus
+     */
+    enum ContinuousShootingState {
+        CONT_SHOOTING_NONE      = 0x1,  /*!< initial value*/
+        CONT_SHOOTING_PREPARED  = 0x2,  /*!< prepared for the first capture*/
+        CONT_SHOOTING_STARTED   = 0x4,  /*!< shooting started, usually after the first catpure*/
     };
 
     struct HdrImaging {
@@ -391,6 +393,12 @@ private:
         CiUserBuffer ciBufIn;
         CiUserBuffer ciBufOut;
         MessagePicture *inputBuffers;
+    };
+
+    struct ExtIsp {
+        bool LLS;
+        bool HDR;
+        bool kidsMode;
     };
 
     struct StillPicParamsCtx {
@@ -434,9 +442,12 @@ private:
     status_t startPreviewCore(bool videoMode);
     status_t stopPreviewCore(bool flushPictures = true);
 
+    status_t initContinuousJpegCapture();
     status_t initContinuousCapture();
     void releaseContinuousCapture(bool flushPictures);
     status_t startOfflineCapture();
+    status_t getSnapshot(AtomBuffer *snapshot, AtomBuffer *postview);
+    status_t putSnapshot(AtomBuffer *snapshot, AtomBuffer *postview);
     State selectPreviewMode(const CameraParameters &params);
     ShootingMode selectShootingMode();
     status_t handleContinuousPreviewBackgrounding();
@@ -458,7 +469,6 @@ private:
     status_t handleMessageCancelPicture();
     status_t handleMessageAutoFocus();
     status_t handleMessageCancelAutoFocus();
-    status_t handleMessageReleaseRecordingFrame(MessageReleaseRecordingFrame *msg);
     status_t handleMessagePreviewStarted();
     status_t handleMessageEncodingDone(MessagePicture *msg);
     status_t handleMessagePictureDone(MessagePicture *msg);
@@ -496,6 +506,8 @@ private:
     status_t stopFaceRecognition();
     status_t enableIspExtensions();
     status_t handleMessageRelease();
+    status_t handleKidsMode(int value);
+    status_t handleLowLightMode(bool enableLLS);
 
     status_t cancelPictureThread();
     status_t cancelPostCaptureThread();
@@ -504,12 +516,8 @@ private:
     // main message function
     status_t waitForAndExecuteMessage();
 
-    AtomBuffer* findRecordingBuffer(void *findMe);
     AtomBuffer* findBufferByData(AtomBuffer *buf,Vector<AtomBuffer> *aVector);
-
-    // dequeue buffers from driver and deliver them
-    status_t dequeuePreview();
-    status_t dequeueRecording(MessageDequeueRecording *msg);
+    AtomBuffer* rmBufferInQueue(AtomBuffer *buf,Vector<AtomBuffer> *aVector);
 
     status_t skipFrames(size_t numFrames);
     status_t initBracketing();
@@ -540,6 +548,12 @@ private:
     status_t processDynamicParameters(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamDvs(const CameraParameters *oldParams, CameraParameters *newParams);
+    status_t processParamDualVideo(const CameraParameters *oldParams,
+            CameraParameters *newParams, bool &restartPreview);
+    status_t processParamDualCameraMode(CameraParameters *oldParams,
+            CameraParameters *newParams);
+    status_t processParamContinuousShooting(const CameraParameters *oldParams,
+                CameraParameters *newParams, bool &restartPreview);
     status_t processParamBurst(const CameraParameters *oldParams,
                 CameraParameters *newParams);
     status_t processParamFlash(const CameraParameters *oldParams,
@@ -556,6 +570,8 @@ private:
             CameraParameters *newParams, bool &restartNeeded);
     status_t processParamXNR_ANR(const CameraParameters *oldParams,
             CameraParameters *newParams, bool &restartNeeded);
+    status_t processParamColorBar(const CameraParameters *oldParams,
+            CameraParameters *newParams, bool &restartNeeded);
     status_t processParamAntiBanding(const CameraParameters *oldParams,
                                            CameraParameters *newParams);
     status_t processParamFocusMode(const CameraParameters *oldParams,
@@ -565,11 +581,13 @@ private:
     status_t processParamSetMeteringAreas(const CameraParameters * oldParams,
             CameraParameters * newParams);
     status_t processParamBracket(const CameraParameters *oldParams,
-                CameraParameters *newParams);
+                CameraParameters *newParams, bool &restartNeeded);
     status_t processParamSmartShutter(const CameraParameters *oldParams,
                 CameraParameters *newParams);
     status_t processParamHDR(const CameraParameters *oldParams,
             CameraParameters *newParams);
+    status_t processParamSDV(const CameraParameters *oldParams,
+            CameraParameters *newParams, bool *restartNeeded);
     status_t processParamULL(const CameraParameters *oldParams,
             CameraParameters *newParams, bool *restartNeeded);
     status_t processParamExposureCompensation(const CameraParameters *oldParams,
@@ -588,6 +606,8 @@ private:
             CameraParameters *newParams);
     status_t processParamShutter(const CameraParameters *oldParams,
             CameraParameters *newParams);
+    status_t processParamIntelligentMode(const CameraParameters *oldParams,
+        CameraParameters *newParams);
     status_t processParamRawDataFormat(const CameraParameters *oldParams,
             CameraParameters *newParams, bool &previewRestartNeeded);
     // NOTE: processParamPreviewFrameRate is deprecated since Android API level 9
@@ -620,7 +640,7 @@ private:
     status_t processParamNREE(const CameraParameters *oldParams,
         CameraParameters *newParams);
 
-    void convertAfWindows(CameraWindow* focusWindows, size_t winCount);
+    status_t setAfWindowsTo3a(CameraWindow *focusWindows, size_t winCount);
 
     void selectFlashModeForScene(CameraParameters *newParams);
 
@@ -638,6 +658,7 @@ private:
 
     status_t stopCapture();
     void     stopOfflineCapture();
+    void     recycleUnusedBufferInISP();
     status_t waitForCaptureStart();
 
     // HDR helper functions
@@ -645,8 +666,12 @@ private:
     status_t hdrProcess(AtomBuffer * snapshotBuffer, AtomBuffer* postviewBuffer);
     status_t hdrCompose();
     void     hdrRelease();
+
+    // snapshot buffer management
+    int      getNeededSnapshotBufNum(bool videoMode);
     status_t allocateSnapshotAndPostviewBuffers(bool videoMode);
-    void     setExternalSnapshotBuffers(int fourcc, int width, int heigth);
+    status_t setExternalSnapshotBuffers(int fourcc, int width, int heigth);
+    void     forceRestoreSnapshotPostviewBuffers();
 
     // Capture Flow helpers
     status_t getFlashExposedSnapshot(AtomBuffer *snaphotBuffer, AtomBuffer *postviewBuffer);
@@ -658,24 +683,48 @@ private:
     void     burstStateReset();
     void     requestTakePicture();
     bool     compressedFrameQueueFull();
-    status_t queueSnapshotBuffers();
     status_t burstCaptureSkipFrames();
 
     status_t captureStillPic();
+    status_t captureStillPicFromPreview();
     status_t captureBurstPic(bool clientRequest);
     status_t captureFixedBurstPic(bool clientRequest);
     status_t capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffer &postviewBuffer);
     status_t captureULLPic();
-    status_t captureVideoSnap(void);
-    AtomBuffer* findVideoSnapshotBuffer(int index);
-    void     encodeVideoSnapshot(AtomBuffer &buff);
+    status_t captureJpegPic();
+    status_t captureExtIspHDRLLSPic();
+    status_t captureSmartStabilizationPic();
+    status_t startJpegPicContinuousShooting();
+    status_t stopJpegPicContinuousShooting();
+
+    // for continuous shooting
+    bool     holdOnContinuousShooting();
+    status_t prepareContinuousShooting();
+    status_t captureContinuousShooting(bool clientRequest);
+    status_t finalizeContinuousShooting();
+    // snapshot during video functions
+    status_t initSdv(bool offline);
+    status_t deinitSdv(bool offline);
+    status_t captureSdvSoC(bool fullsize);
+    status_t captureSdv(bool offline);
+    status_t cancelCaptureSdv();
+    status_t sdvUpdateParams(bool offline, bool updateCache);
+    status_t sdvRestoreParams(bool updateCache);
+    status_t getSdvSupportedMinVideoSize(int &width, int &height);
+    bool isFullSizeSdvSupportedVideoSize(int width, int height, int previewWidth, int previewHeight);
+    void saveCurrentPictureParams();
+    void clearSavedPictureParams();
+    bool selectSdvSize(int &width, int &height);
+    void encodeVideoSnapshot(AtomBuffer &buff);
+
+    // offline capture control by exposure id
+    void triggerOfflineCaptureControl(int numSounds, int startId, bool skip = false);
+    void resetOfflineCaptureControl();
+    void handleOfflineCaptureControl(AtomBuffer *buff);
 
     status_t updateSpotWindow(const int &width, const int &height);
 
     MeteringMode aeMeteringModeFromString(const String8& modeStr);
-
-    void storeCurrentPictureParams();
-    void restoreCurrentPictureParams();
 
     status_t createAtom3A();
 
@@ -686,6 +735,10 @@ private:
 
     void reconfigureThumbnailSize(int &width, int &height);
 
+    void checkAndUpdateRawSize(AtomBuffer &formatDesc);
+    // front camera saved-mirror
+    int getNeededIspFlipType();
+
 // inherited from Thread
 private:
     virtual bool threadLoop();
@@ -695,10 +748,11 @@ private:
 
     int mCameraId;
     HWControlGroup mHwcg;
-    IHWIspControl *mISP;
+    AtomISP *mISP;
     AtomCP  *mCP;
     UltraLowLight *mULL;
     I3AControls *m3AControls;
+    BracketManager *mBracketManager;
     sp<PreviewThread> mPreviewThread;
     sp<PictureThread> mPictureThread;
     sp<VideoThread> mVideoThread;
@@ -706,8 +760,7 @@ private:
     sp<PostProcThread> mPostProcThread;
     sp<PanoramaThread> mPanoramaThread;
     sp<ScalerService> mScalerService;
-    sp<SensorThread> mSensorThread;
-    sp<BracketManager> mBracketManager;
+    sp<WarperService> mWarperService;
     sp<PostCaptureThread> mPostCaptureThread;
     sp<AccManagerThread> mAccManagerThread;
     sp<ThermalThrottleThread> mThermalThrottleThread;
@@ -732,11 +785,12 @@ private:
     String8 mSavedFlashMode;        /*<! Save single shot current flash mode,
                                     in case burst multi shot capture is called and forces flash to be off.*/
 
+    String8 mSavedFocusMode;    /*<! Save current focus mode before changing focus mode for depth mode. */
+
     bool mFaceDetectionActive;
     bool mIspExtensionsEnabled;     /*<! Flag that signals whether the caller wants to run a 3rd party ISP extension*/
 
     /* Burst configuration: */
-
     int  mFpsAdaptSkip;
     int  mBurstLength;          /*<! Burst length 1..N */
     int  mBurstStart;           /*<! Relative offset at which burst
@@ -751,21 +805,23 @@ private:
     int  mBurstCaptureDoneNum;  /*<! Number of the most recent burst
                                   capture that was completed. In range
                                   1...N, where N is mBurstLength. */
-    int  mBurstQbufs;           /*<! Number of buffers queued so far
-                                  to ISP, 1..N where N is mBurstLength */
     int  mBurstBufsToReturn; /*<! Number of buffers should be returned to ISP for reuse
                                 exp:mBurstLength is 9, mAllocatedSnapshotBuffers is 5,
                                 mBurstBufsToReturn should be 4*/
+    int mUllBurstLength;     /*<! Burst length for ULL*/
+    bool mSmartStabilization; /*<! Smart stabilization for front camera */
     HdrImaging mHdr;
+    ExtIsp mExtIsp;
     FlashStage mAELockFlashStage;
     float mPublicShutter;       /* Shutter set by application */
 
     bool mDvsEnable;
+    bool mDualVideo;
+
+    bool mJpegContinuousShootingRunning;
 
     Mutex mParamCacheLock;
     char* mParamCache;
-
-    bool mStoreMetaDataInBuffers;
 
     bool mPreviewForceChanged; /*!< Stores whether preview size has been forced and no further fixing of aspect
                                     ratios or similar should be done.
@@ -777,10 +833,6 @@ private:
 
     CameraAreas mFocusAreas;
     CameraAreas mMeteringAreas;
-
-    int mVideoSnapshotrequested;    /*!< number of video snapshots requested */
-    Vector<AtomBuffer> mVideoSnapshotBuffers; /*!< buffers reserved from stream for videosnapshot */
-    Vector<AtomBuffer> mRecordingBuffers; /*!< buffers reserverd from stream for video encoding */
 
     struct StillPicParamsCtx mStillPictContext; /*!< we store the current still image parameters
                                                     It is used when video recording starts so the settings
@@ -803,15 +855,41 @@ private:
 
     Vector<AtomBuffer> mAllocatedSnapshotBuffers; /*!< Current set of allocated snapshot buffers */
     Vector<AtomBuffer> mAvailableSnapshotBuffers; /*!< Current set of available snapshot buffers */
+    Vector<AtomBuffer> mSnapshotBuffersInISP;     /*!< Current set of snapshot buffers in ISP*/
 
     Vector<AtomBuffer> mAllocatedPostviewBuffers; /*!< Current set of allocated postview buffers */
     Vector<AtomBuffer> mAvailablePostviewBuffers; /*!< Current set of available postview buffers */
+    Vector<AtomBuffer> mPostviewBuffersInISP;     /*!< Current set of postview buffers in ISP*/
 
     bool mSaveMirrored;
+    ExtIspActionHint mExtIspAction; /*!< Expected action for external ISP such as HAL video stabilization
+                                         and external ISP video high speed */
     int mCurrentOrientation;        /*!< Current orientation of the device. Used in case the image is
                                          saved as mirrored. The image will be mirrored based on the
                                          camera sensor orientation and device orientation. */
-    int mRecordingOrientation;      /*!< Device orientation at the start of video recording. */
+    bool mFullSizeSdv;              /*!< is full resolution sdv?*/
+
+    // offline burst capture control
+    Mutex mOfflineControlLock;
+    bool mRawBufferLockMode;        /*!< is raw buffer lock mode enabled? */
+    bool mSkipPreview;              /*!< if to skip this frame in preview */
+    unsigned int mCurrentExpID;     /*!< exposure ID of current preview frame*/
+    unsigned int mNextExpID;        /*!< next expected buffer exposure ID */
+    int mNumCaptures;               /*!< control the the number of capture */
+    int mNumSounds;                 /*!< shutter sound times,trigger shutter sound by EOF/preview buffer event*/
+
+    bool mDepthMode;                /*!< if working in depth mode */
+
+    // continuous capture
+    ContinuousShootingState mContShootingState;   /*!< continuous shooting state */
+    bool mContShootingEnabled;                    /*!< app controls to enable of disable continuous shooting mode*/
+    // FIXME: remove this when CSS able to clear all old frames
+    bool mContShootingSkipFirstFrame;           /*!< This is a workaround for FW bug 2477. We get remaining frames when set
+                                                     number_capture to -1. FW can clear all the tagger buffer but still
+                                                     has one buffer which has already been processing in capture
+                                                     pipe can't be retrieved safely. In camera HAL currently we need to skip
+                                                     this frame to avoid getting old frame */
+    int mContinuousPicsReady;                     /*!< number buffer ready*/
 
     /*----------- Debugging helpers --------------------*/
     static const char* sCaptureSubstateStrings[STATE_CAPTURE_LAST];

@@ -19,9 +19,12 @@
 
 #include <utils/String8.h>
 #include <camera/CameraParameters.h>
+#include "ia_aiq_types.h"
 #include "IntelParameters.h"
 #include "AtomCommon.h"
 #include "AtomIspObserverManager.h"
+#include "gdctool.h"
+#include <linux/v4l2-subdev.h>
 
 namespace android {
 
@@ -42,6 +45,10 @@ enum ObserverType {
 };
 
 struct ContinuousCaptureConfig {
+    bool rawBufferLock;     /*!< Sign of ISP raw buffer lock mode
+                             * offset and skip are invalid if this is true
+                             */
+    bool capturePriority;    /*!< affects CVF*/
     int numCaptures;        /*!< Number of captures
                              * -1 = capture continuously
                              * 0 = disabled, stop captures
@@ -73,18 +80,8 @@ public:
      */
     virtual ~IHWIspControl() {};
 
-    virtual status_t initDevice() = 0;
-    virtual status_t init() = 0;
-    virtual void deInitDevice() = 0;
-    virtual bool isDeviceInitialized() const = 0;
-
 // public methods
 public:
-    /* **********************************************************
-     * General
-     */
-    virtual void getDefaultParameters(CameraParameters *params, CameraParameters *intel_params) = 0;
-
     /* **********************************************************
      * ISP capabilities query
      */
@@ -94,77 +91,11 @@ public:
     virtual int getIspHwMinorVersion(void) = 0; // TBD
 
     /* **********************************************************
-     * Device controls
-     */
-    virtual AtomMode getMode(void) const = 0;
-    virtual void setPreviewFramerate(int fps) = 0;
-    virtual bool applyISPLimitations(CameraParameters *params, bool dvsEnabled, bool videoMode) = 0;
-
-    /* **********************************************************
-     * Pipeline controls
-     */
-    virtual status_t configure(AtomMode mode) = 0;
-    virtual status_t allocateBuffers(AtomMode mode) = 0;
-    virtual status_t start() = 0;
-    virtual status_t stop() = 0;
-
-    // For continous mode
-    virtual bool isHALZSLEnabled() const = 0;
-    virtual status_t startOfflineCapture(ContinuousCaptureConfig &config) = 0;
-    virtual status_t stopOfflineCapture() = 0;
-    virtual bool isOfflineCaptureRunning() const = 0;
-    virtual int shutterLagZeroAlign() const = 0; // TBD
-    virtual int continuousBurstNegMinOffset(void) const = 0; // TBD
-    virtual int continuousBurstNegOffset(int skip, int startIndex) const = 0; // TBD
-    virtual int getContinuousCaptureNumber() const = 0; // TBD
-    virtual status_t prepareOfflineCapture(ContinuousCaptureConfig &config, bool capturePriority) = 0; // TBD
-
-    virtual bool isSharedPreviewBufferConfigured(bool *reserved = NULL) const = 0; // TBD
-
-    virtual int pollPreview(int timeout) = 0;
-    virtual int pollCapture(int timeout) = 0;
-
-    // For preview pipeline
-    virtual status_t setPreviewFrameFormat(int width, int height, int bpl, int fourcc = 0) = 0;
-    virtual void getPreviewSize(int *width, int *height, int *bpl) = 0;
-    virtual status_t getPreviewFrame(AtomBuffer *buff) = 0;
-    virtual status_t putPreviewFrame(AtomBuffer *buff) = 0;
-    virtual status_t setGraphicPreviewBuffers(const AtomBuffer *buffs, int numBuffs, bool cached) = 0;
-    virtual void setPreviewBufNum(int num) = 0;
-
-    // For Video pipeline
-    virtual status_t setVideoFrameFormat(int width, int height, int fourcc = 0) = 0;
-    virtual void setRecordingFramerate(int fps) = 0;
-    virtual int getRecordingFramerate() = 0;
-    virtual bool checkSkipFrameRecording(int frameNum) = 0;
-    virtual void getVideoSize(int *width, int *height, int *bpl) = 0;
-    virtual status_t getRecordingFrame(AtomBuffer *buff) = 0;
-    virtual status_t putRecordingFrame(AtomBuffer *buff) = 0;
-    virtual status_t returnRecordingBuffers() = 0;
-    // Enable metadata buffer mode API
-    virtual status_t storeMetaDataInBuffers(bool enabled, int sID) = 0;
-
-    // For capture pipelines
-    virtual status_t setSnapshotFrameFormat(AtomBuffer& formatDescriptor) = 0;
-    virtual int getSnapshotPixelFormat() = 0;
-
-    virtual status_t getSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf) = 0;
-    virtual status_t putSnapshot(AtomBuffer *snaphotBuf, AtomBuffer *postviewBuf) = 0;
-    virtual int getNumSnapshotBuffers() = 0;
-    virtual status_t setSnapshotBuffers(Vector<AtomBuffer> *buffs, int numBuffs, bool cached) = 0;
-
-    virtual status_t setPostviewFrameFormat(AtomBuffer& formatDescriptor) = 0;
-    virtual void getPostviewFrameFormat(AtomBuffer& formatDescriptor) const = 0;
-    virtual status_t setPostviewBuffers(Vector<AtomBuffer> *buffs, int numBuffs, bool cached) = 0;
-
-    virtual bool dataAvailable() = 0;
-
-    /* **********************************************************
      * ISP features
      */
+    virtual void getOutputSize(int *width, int *height, int *bpl = NULL) = 0;
+
     virtual int zoomRatio(int zoomValue) const = 0;
-    virtual void getZoomRatios(CameraParameters *params) const = 0;
-    virtual void getFocusDistances(CameraParameters *params) = 0;
     virtual status_t setZoom(int zoom) = 0;
     virtual int getDrvZoom(int zoom) = 0;
     virtual status_t setColorEffect(v4l2_colorfx effect) = 0;
@@ -186,11 +117,14 @@ public:
     virtual status_t setDVS(bool enable) = 0;
     virtual bool dvsEnabled() = 0;
     virtual void setNrEE(bool en) = 0;
+    virtual status_t setHDR(int mode) = 0;
+    virtual status_t setLLS(int mode) = 0;
+    virtual status_t setShotMode(int mode) = 0;
 
     virtual int setAicParameter(struct atomisp_parameters *aic_params) = 0;
     virtual int setIspParameter(struct atomisp_parm *isp_params) = 0;
     virtual int getIspStatistics(struct atomisp_3a_statistics *statistics) = 0;
-    virtual int setGdcConfig(const struct atomisp_morph_table *tbl) = 0;
+    virtual int setGdcConfig(const struct morph_table *tbl) = 0;
     virtual int setShadingTable(struct atomisp_shading_table *table) = 0;
     virtual int setMaccConfig(struct atomisp_macc_config *macc_cfg) = 0;
     virtual int setCtcTable(const struct atomisp_ctc_table *ctc_tbl) = 0;
@@ -206,16 +140,17 @@ public:
     virtual int setGcConfig(const struct atomisp_gc_config *gc_cfg) = 0;
     virtual int setDvsConfig(const struct atomisp_dvs_6axis_config *dvs_6axis_cfg) = 0;
 
-    virtual bool getPreviewTooBigForVFPP() = 0; // TBD
-
     virtual status_t getDvsStatistics(struct atomisp_dis_statistics *stats,
                               bool *tryAgain) const = 0;
     virtual status_t setMotionVector(const struct atomisp_dis_vector *vector) const = 0;
     virtual status_t setDvsCoefficients(const struct atomisp_dis_coefficients *coefs) const = 0;
     virtual status_t getIspParameters(struct atomisp_parm *isp_param) const = 0;
+    virtual status_t getIspDvs2BqResolutions(struct atomisp_dvs2_bq_resolutions *bq_res) const = 0;
 
-    virtual void getSensorDataFromFile(const char *file_name, sensorPrivateData *sensor_data) = 0;
-
+    virtual int getSensorEmbeddedMetaData(atomisp_metadata *metaData) const = 0;
+    virtual status_t getDecodedExposureParams(ia_aiq_exposure_sensor_parameters* sensor_exp_p,
+                                              ia_aiq_exposure_parameters* generic_exp_p, unsigned int exp_id = 0) = 0;
+    virtual int getSensorFrameId(unsigned int exp_id) = 0;
 
     /* **********************************************************
      * Acceleration API extensions
@@ -241,13 +176,11 @@ public:
     virtual bool isFileInjectionEnabled(void) const = 0;
     virtual String8 getFileInjectionFileName(void) const = 0;
 
-    /* **********************************************************
-     * AtomIspObserver controls
-     */
-    virtual status_t attachObserver(IAtomIspObserver *observer, ObserverType t) = 0;
-    virtual status_t detachObserver(IAtomIspObserver *observer, ObserverType t) = 0;
-    virtual void pauseObserver(ObserverType t) = 0;
-
+    // TODO: To be removed
+    virtual void getPreviewSize(int *width, int *height, int *bpl = NULL) = 0;
+    virtual void getVideoSize(int *width, int *height, int *bpl = NULL) = 0;
+    virtual int getRecordingFramerate() = 0;
+    // --- end to be removed
 };
 
 /* Abstraction of HW sensor control interface for 3A support */
@@ -263,9 +196,12 @@ public:
     virtual status_t setFramerate(int fps) = 0;
     virtual status_t waitForFrameSync() = 0;
 
+    virtual void getFrameSizes(Vector<v4l2_subdev_frame_size_enum> &sizes) = 0;
+
     virtual unsigned int getExposureDelay() = 0;
 
     virtual int setExposure(struct atomisp_exposure *) = 0;
+    virtual int setExposureGroup(struct atomisp_exposure exposures[], int depth) = 0;
     virtual void getSensorData(sensorPrivateData *sensor_data) = 0;
     virtual int  getModeInfo(struct atomisp_sensor_mode_data *mode_data) = 0;
     virtual int  getExposureTime(int *exposure_time) = 0;
@@ -282,16 +218,18 @@ public:
     virtual int getWhiteBalance(v4l2_auto_n_preset_white_balance * mode) = 0;
     virtual int setIso(int iso) = 0;
     virtual int getIso(int * iso) = 0;
+    virtual int setIsoMode(int mode) = 0;
     virtual int setAeMeteringMode(v4l2_exposure_metering mode) = 0;
     virtual int getAeMeteringMode(v4l2_exposure_metering * mode) = 0;
     virtual int setAeFlickerMode(v4l2_power_line_frequency mode) = 0;
-    virtual int setAfMode(v4l2_auto_focus_range mode) = 0;
-    virtual int getAfMode(v4l2_auto_focus_range * mode) = 0;
+    virtual int setAfMode(int mode) = 0;
+    virtual int getAfMode(int *mode) = 0;
     virtual int setAfEnabled(bool enable) = 0;
+    virtual int setAfWindows(const CameraWindow *windows, int numWindows) = 0;
     virtual int set3ALock(int aaaLock) = 0;
     virtual int get3ALock(int * aaaLock) = 0;
-    virtual int setAeFlashMode(v4l2_flash_led_mode mode) = 0;
-    virtual int getAeFlashMode(v4l2_flash_led_mode * mode) = 0;
+    virtual int setAeFlashMode(int mode) = 0;
+    virtual int getAeFlashMode(int *mode) = 0;
 
     virtual void getMotorData(sensorPrivateData *sensor_data) = 0;
     virtual int getRawFormat() = 0;
@@ -321,7 +259,7 @@ public:
     virtual int moveFocusToPosition(int position) = 0;
     virtual int moveFocusToBySteps(int steps) = 0;
     virtual int getFocusPosition(int * position) = 0;
-    virtual int  getFocusStatus(int *status) = 0;
+    virtual int getFocusStatus(int *status) = 0;
 };
 
 /* Compound object for HW control interfaces for 3A */

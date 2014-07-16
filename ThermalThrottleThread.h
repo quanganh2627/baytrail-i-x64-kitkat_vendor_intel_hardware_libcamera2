@@ -71,8 +71,8 @@ private:
     };
 
     enum mFpsThrottleState {
-        FPS_THROTTLE_DISABLE = 0,
-        FPS_THROTTLE_ENABLE,
+        FPS_THROTTLE_DISABLED = 0,
+        FPS_THROTTLE_ENABLED,
         FPS_THROTTLE_SUCCESS
     };
 
@@ -101,6 +101,14 @@ private:
 // inherited from Thread
 private:
     virtual bool threadLoop();
+
+// const data
+private:
+    static const char SYSFS_THERMAL_THROTTLE_NOTIFY[];
+    static const char SYSFS_THERMAL_THROTTLE_HANDSHAKE[];
+    static const int ATTR_LEN = 16;
+    static const int DEFAULT_FPS_PERCENT = 100;
+    static const int THERMAL_THROTTLE_POLL_TIMEOUT = 500;
 
 // private data
 private:

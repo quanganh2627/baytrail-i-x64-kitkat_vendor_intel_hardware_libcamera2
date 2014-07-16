@@ -17,10 +17,11 @@
 
 #include <linux/media.h>
 #include <linux/v4l2-subdev.h>
+#include <assert.h>
 #include "SensorHW.h"
 #include "v4l2device.h"
 #include "PerformanceTraces.h"
-#include <assert.h>
+#include "AtomCommon.h"
 
 namespace android {
 
@@ -29,28 +30,42 @@ static sensorPrivateData gSensorDataCache[MAX_CAMERAS];
 static const int ADJUST_ESTIMATE_DELTA_THRESHOLD_US = 2000; // Threshold for adjusting frame timestamp estimate at real frame sync
 static const int MAX_EXPOSURE_HISTORY_SIZE = 10;
 static const int DEFAULT_EXPOSURE_DELAY = 2;
-static const char *ISP_SUBDEV_NAME = "ATOM ISP SUBDEV";
+static const char *ISP_SUBDEV_NAME_PREFIX = "ATOMISP_SUBDEV_";
+static const int MAX_DEPTH = 5;
+
 
 SensorHW::SensorHW(int cameraId):
+    mSensorSubdevice(NULL),
+    mIspSubdevice(NULL),
+    mSensorType(SENSOR_TYPE_NONE),
     mCameraId(cameraId),
     mStarted(false),
     mInitialModeDataValid(false),
     mRawBayerFormat(V4L2_PIX_FMT_SBGGR10),
-    mFrameSyncEnabled(false),
+    mFrameSyncSource(FRAME_SYNC_NA),
     mCssVersion(0),
     mActiveItemIndex(0),
     mDirectExposureIo(true),
     mPostponePrequeued(false),
     mExposureLag(0),
+    mLatestExpId(EXP_ID_INVALID),
     mGainDelayFilter(NULL),
-    mExposureHistory(NULL)
+    mExposureHistory(NULL),
+    mGroupId(0)
 {
-    CLEAR(mCameraInput);
-    CLEAR(mInitialModeData);
+    // note init values are set also inside reset()
+    reset(cameraId);
+    sprintf(mIspSubDevName, "%s%d", ISP_SUBDEV_NAME_PREFIX, mGroupId);
 }
 
 SensorHW::~SensorHW()
 {
+    reset(mCameraId);
+}
+
+void SensorHW::reset(int cameraId)
+{
+    LOG1("@%s", __FUNCTION__);
     mSensorSubdevice.clear();
     mIspSubdevice.clear();
     mSyncEventDevice.clear();
@@ -62,6 +77,20 @@ SensorHW::~SensorHW()
         delete mExposureHistory;
         mExposureHistory = NULL;
     }
+
+    mSensorType = SENSOR_TYPE_NONE;
+    mCameraId = cameraId;
+    mStarted = false;
+    mInitialModeDataValid = false;
+    mRawBayerFormat = V4L2_PIX_FMT_SBGGR10;
+    mFrameSyncSource = FRAME_SYNC_NA;
+    mCssVersion = 0;
+    mActiveItemIndex = 0;
+    mDirectExposureIo = true;
+    mPostponePrequeued = false;
+    mExposureLag = 0;
+    CLEAR(mCameraInput);
+    CLEAR(mInitialModeData);
 }
 
 int SensorHW::getCurrentCameraId(void)
@@ -111,7 +140,7 @@ void SensorHW::getPadFormat(sp<V4L2DeviceBase> &subdev, int padIndex, int &width
     CLEAR(subdevFormat);
     subdevFormat.pad = padIndex;
     subdevFormat.which = V4L2_SUBDEV_FORMAT_ACTIVE;
-    ret = subdev->xioctl(VIDIOC_SUBDEV_G_FMT, &subdevFormat);
+    ret = pxioctl(subdev, VIDIOC_SUBDEV_G_FMT, &subdevFormat);
     if (ret < 0) {
         LOGE("Failed VIDIOC_SUBDEV_G_FMT");
     } else {
@@ -124,7 +153,7 @@ status_t SensorHW::waitForFrameSync()
 {
     LOG1("@%s", __FUNCTION__);
     Mutex::Autolock lock(mFrameSyncMutex);
-    if (!mFrameSyncEnabled)
+    if (mFrameSyncSource == FRAME_SYNC_NA)
         return NO_INIT;
 
     return mFrameSyncCondition.wait(mFrameSyncMutex);
@@ -193,7 +222,7 @@ status_t SensorHW::selectActiveSensor(sp<V4L2VideoNode> &device)
     }
 
     // Choose the camera sensor
-    LOG1("Selecting camera sensor: %s", mCameraInput.name);
+    LOG1("Selecting camera sensor: %s, index: %d", mCameraInput.name, mCameraInput.index);
     status = mDevice->setInput(mCameraInput.index);
     if (status != NO_ERROR) {
         status = UNKNOWN_ERROR;
@@ -215,9 +244,21 @@ status_t SensorHW::selectActiveSensor(sp<V4L2VideoNode> &device)
     if (status != NO_ERROR)
         LOGE("Failed to configure exposure filter");
 
+    // sensor flip should be applied before configuring ISP
+    applySensorFlip();
+
     return status;
 }
 
+status_t SensorHW:: setIspSubDevId(int id)
+{
+    LOG1("@%s", __FUNCTION__);
+    if(id >= 0) {
+        sprintf(mIspSubDevName, "%s%d", ISP_SUBDEV_NAME_PREFIX, id);
+        mGroupId = id;
+    }
+    return NO_ERROR;
+}
 /**
  * Find V4L2 ATOMISP subdevice
  *
@@ -231,6 +272,7 @@ status_t SensorHW::getIspDevicePath(char *ispDevPath, int size)
     int ret = 0;
     int val = 0;
     int sinkPadIndex = -1;
+    int depth = 0;
     status_t status = NO_ERROR;
     char *sysName = new char[size];
     char *devName = new char[size];
@@ -252,7 +294,7 @@ status_t SensorHW::getIspDevicePath(char *ispDevPath, int size)
     }
 
     CLEAR(mediaDeviceInfo);
-    ret = mediaCtl->xioctl(MEDIA_IOC_DEVICE_INFO, &mediaDeviceInfo);
+    ret = pxioctl(mediaCtl, MEDIA_IOC_DEVICE_INFO, &mediaDeviceInfo);
     if (ret < 0) {
         status = UNKNOWN_ERROR;
         LOGE("Failed to get media device information");
@@ -265,19 +307,8 @@ status_t SensorHW::getIspDevicePath(char *ispDevPath, int size)
         goto exit;
     }
 
-    while (status == NO_ERROR) {
-        CLEAR(mediaEntityDescTmp);
-        status = findConnectedEntity(mediaCtl, mediaEntityDesc, mediaEntityDescTmp, sinkPadIndex);
-        if (status != NO_ERROR) {
-            LOGE("Failed to find connections");
-            break;
-        }
-        mediaEntityDesc = mediaEntityDescTmp;
-        if (strncmp(mediaEntityDescTmp.name, ISP_SUBDEV_NAME, MAX_SENSOR_NAME_LENGTH) == 0) {
-            LOG1("Connected ISP subdevice found");
-            break;
-        }
-    }
+    CLEAR(mediaEntityDescTmp);
+    status = findConnectedEntityByName(mediaCtl, mediaEntityDesc, mediaEntityDescTmp, sinkPadIndex, mIspSubDevName, MAX_SENSOR_NAME_LENGTH, depth);
 
     if (status != NO_ERROR) {
         LOGE("Unable to find connected ISP subdevice!");
@@ -345,6 +376,9 @@ status_t SensorHW::openSubdevices()
     int sinkPadIndex = -1;
     int ret = 0;
 
+    if (mSensorSubdevice.get() != NULL && mIspSubdevice.get() != NULL)
+        return status;
+
     sp<V4L2DeviceBase> mediaCtl = new V4L2DeviceBase("/dev/media0", 0);
     status = mediaCtl->open();
     if (status != NO_ERROR) {
@@ -353,7 +387,7 @@ status_t SensorHW::openSubdevices()
     }
 
     CLEAR(mediaDeviceInfo);
-    ret = mediaCtl->xioctl(MEDIA_IOC_DEVICE_INFO, &mediaDeviceInfo);
+    ret = pxioctl(mediaCtl, MEDIA_IOC_DEVICE_INFO, &mediaDeviceInfo);
     if (ret < 0) {
         LOGE("Failed to get media device information");
         mediaCtl.clear();
@@ -375,19 +409,9 @@ status_t SensorHW::openSubdevices()
         return status;
     }
 
-    while (status == NO_ERROR) {
-        CLEAR(mediaEntityDescTmp);
-        status = findConnectedEntity(mediaCtl, mediaEntityDesc, mediaEntityDescTmp, sinkPadIndex);
-        if (status != NO_ERROR) {
-            LOGE("Failed to find connections");
-            break;
-        }
-        mediaEntityDesc = mediaEntityDescTmp;
-        if (strncmp(mediaEntityDescTmp.name, ISP_SUBDEV_NAME, MAX_SENSOR_NAME_LENGTH) == 0) {
-            LOG1("Connected ISP subdevice found");
-            break;
-        }
-    }
+    CLEAR(mediaEntityDescTmp);
+    int depth = 0;
+    status = findConnectedEntityByName(mediaCtl, mediaEntityDesc, mediaEntityDescTmp, sinkPadIndex, mIspSubDevName, MAX_SENSOR_NAME_LENGTH, depth);
 
     if (status != NO_ERROR) {
         LOGE("Unable to find connected ISP subdevice!");
@@ -422,7 +446,7 @@ status_t SensorHW::findMediaEntityById(sp<V4L2DeviceBase> &mediaCtl, int index,
     int ret = 0;
     CLEAR(mediaEntityDesc);
     mediaEntityDesc.id = index;
-    ret = mediaCtl->xioctl(MEDIA_IOC_ENUM_ENTITIES, &mediaEntityDesc);
+    ret = pxioctl(mediaCtl, MEDIA_IOC_ENUM_ENTITIES, &mediaEntityDesc);
     if (ret < 0) {
         LOG1("No more media entities");
         return UNKNOWN_ERROR;
@@ -472,7 +496,7 @@ status_t SensorHW::findConnectedEntity(sp<V4L2DeviceBase> &mediaCtl,
     links.pads = (struct media_pad_desc*) malloc(mediaEntityDescSrc.pads * sizeof(struct media_pad_desc));
     links.links = (struct media_link_desc*) malloc(mediaEntityDescSrc.links * sizeof(struct media_link_desc));
 
-    ret = mediaCtl->xioctl(MEDIA_IOC_ENUM_LINKS, &links);
+    ret = pxioctl(mediaCtl, MEDIA_IOC_ENUM_LINKS, &links);
     if (ret < 0) {
         LOGE("Failed to query any links");
     } else {
@@ -498,6 +522,71 @@ status_t SensorHW::findConnectedEntity(sp<V4L2DeviceBase> &mediaCtl,
 
     LOG2("Connected entity ==> %s, pad %d", mediaEntityDescDst.name, padIndex);
     return status;
+}
+
+/**
+ * Find entity description for first outbound connection
+ */
+status_t SensorHW::findConnectedEntityByName(sp<V4L2DeviceBase> &mediaCtl,
+        struct media_entity_desc mediaEntityDescSrc,
+        struct media_entity_desc &mediaEntityDescDst,
+        int &padIndex, char const *name, int nameLen, int depth)
+{
+    LOG1("@%s", __FUNCTION__);
+    struct media_links_enum links;
+    status_t status = NAME_NOT_FOUND;
+    int connectedEntity = -1;
+    int ret = 0;
+
+    LOG2("%s : pads %d links %d depth:%d", mediaEntityDescSrc.name, mediaEntityDescSrc.pads, mediaEntityDescSrc.links, depth);
+    if (depth > MAX_DEPTH) {
+        LOG1("reach max depth, exit");
+        return status;
+    }
+
+    links.entity = mediaEntityDescSrc.id;
+    links.pads = (struct media_pad_desc*) malloc(mediaEntityDescSrc.pads * sizeof(struct media_pad_desc));
+    links.links = (struct media_link_desc*) malloc(mediaEntityDescSrc.links * sizeof(struct media_link_desc));
+
+    if(links.pads == NULL || links.links == NULL)
+        return NO_MEMORY;
+
+    ret = mediaCtl->xioctl(MEDIA_IOC_ENUM_LINKS, &links);
+    if (ret < 0) {
+        LOGE("Failed to query any links");
+    } else {
+        if( mediaEntityDescSrc.links == 0)
+            goto exit;
+        for (int i = 0; i < mediaEntityDescSrc.links; i++) {
+            if (links.links[i].sink.entity != mediaEntityDescSrc.id) {
+                connectedEntity = links.links[i].sink.entity;
+                if (connectedEntity >= 0) {
+                    padIndex = links.links[i].sink.index;
+                    if (findMediaEntityById(mediaCtl, connectedEntity, mediaEntityDescSrc) == NO_ERROR) {
+                        LOG2("Connected entity ==> %s, pad %d", mediaEntityDescSrc.name, padIndex);
+                        if (strncmp(mediaEntityDescSrc.name, name, nameLen) == 0) {
+                            LOG1("Connected ISP subdevice found");
+                            CLEAR(mediaEntityDescDst);
+                            memcpy(&mediaEntityDescDst, &mediaEntityDescSrc, sizeof(media_entity_desc));
+                            status = NO_ERROR;
+                            goto exit;
+                        } else {
+                            depth++;
+                            status = findConnectedEntityByName(mediaCtl, mediaEntityDescSrc, mediaEntityDescDst, padIndex, name, nameLen, depth);
+                            if (status == NO_ERROR)
+                                goto exit;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+exit:
+    free(links.pads);
+    free(links.links);
+    return status;
+
 }
 
 /**
@@ -569,7 +658,7 @@ status_t SensorHW::prepare(bool preQueuedExposure)
     int ret = 0;
 
     mPostponePrequeued = preQueuedExposure;
-    mDirectExposureIo = (mPostponePrequeued) ? false : !PlatformData::synchronizeExposure();
+    mDirectExposureIo = (mPostponePrequeued) ? false : !PlatformData::synchronizeExposure(mCameraId);
 
     // Open subdevice for direct IOCTL.
     status = openSubdevices();
@@ -623,13 +712,21 @@ status_t SensorHW::start()
     int ret = 0;
     Mutex::Autolock lock(mFrameSyncMutex);
     // Subscribe to frame sync event in case of RAW sensor
-    if (mIspSubdevice != NULL && mSensorType == SENSOR_TYPE_RAW) {
-        ret = mIspSubdevice->subscribeEvent(V4L2_EVENT_FRAME_SYNC);
+    if (mIspSubdevice != NULL && mSensorType == SENSOR_TYPE_RAW && false == PlatformData::isDisable3A(mCameraId)) {
+        ret = mIspSubdevice->subscribeEvent(FRAME_SYNC_SOF);
         if (ret < 0) {
-            LOGE("Failed to subscribe to frame sync event!");
-            return UNKNOWN_ERROR;
+            ret = mIspSubdevice->subscribeEvent(FRAME_SYNC_EOF);
+            if (ret < 0) {
+                LOGE("Failed to subscribe to frame sync event!");
+                return UNKNOWN_ERROR;
+            } else {
+                mFrameSyncSource = FRAME_SYNC_EOF;
+                LOG1("@%s Using EOF event", __FUNCTION__);
+            }
+        } else {
+            mFrameSyncSource = FRAME_SYNC_SOF;
+            LOG1("@%s Using SOF event", __FUNCTION__);
         }
-        mFrameSyncEnabled = true;
     }
     mStarted = true;
     return NO_ERROR;
@@ -647,9 +744,9 @@ status_t SensorHW::stop()
 {
     LOG1("@%s", __FUNCTION__);
     Mutex::Autolock lock(mFrameSyncMutex);
-    if (mIspSubdevice != NULL) {
-        mIspSubdevice->unsubscribeEvent(V4L2_EVENT_FRAME_SYNC);
-        mFrameSyncEnabled = false;
+    if (mIspSubdevice != NULL && mFrameSyncSource != FRAME_SYNC_NA) {
+        mIspSubdevice->unsubscribeEvent(mFrameSyncSource);
+        mFrameSyncSource = FRAME_SYNC_NA;
     }
     mStarted = false;
     mDirectExposureIo = true;
@@ -695,7 +792,7 @@ void SensorHW::getMotorData(sensorPrivateData *sensor_data)
     sensor_data->data = NULL;
     sensor_data->size = 0;
     // First call with size = 0 will return motor private data size.
-    rc = mDevice->xioctl(ATOMISP_IOC_G_MOTOR_PRIV_INT_DATA, &motorPrivateData);
+    rc = pxioctl(mDevice, ATOMISP_IOC_G_MOTOR_PRIV_INT_DATA, &motorPrivateData);
     LOG2("%s IOCTL ATOMISP_IOC_G_MOTOR_PRIV_INT_DATA to get motor private data size ret: %d\n", __FUNCTION__, rc);
     if (rc != 0 || motorPrivateData.size == 0) {
         LOGD("Failed to get motor private data size. Error: %d", rc);
@@ -709,7 +806,7 @@ void SensorHW::getMotorData(sensorPrivateData *sensor_data)
     }
 
     // Second call with correct size will return motor private data.
-    rc = mDevice->xioctl(ATOMISP_IOC_G_MOTOR_PRIV_INT_DATA, &motorPrivateData);
+    rc = pxioctl(mDevice, ATOMISP_IOC_G_MOTOR_PRIV_INT_DATA, &motorPrivateData);
     LOG2("%s IOCTL ATOMISP_IOC_G_MOTOR_PRIV_INT_DATA to get motor private data ret: %d\n", __FUNCTION__, rc);
 
     if (rc != 0 || motorPrivateData.size == 0) {
@@ -749,7 +846,7 @@ void SensorHW::getSensorData(sensorPrivateData *sensor_data)
             return;
         }
         // First call with size = 0 will return OTP data size.
-        rc = mDevice->xioctl(ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA, &otpdata);
+        rc = pxioctl(mDevice, ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA, &otpdata);
         LOG2("%s IOCTL ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA to get OTP data size ret: %d\n", __FUNCTION__, rc);
         if (rc != 0 || otpdata.size == 0) {
             LOGD("Failed to get OTP size. Error: %d", rc);
@@ -763,7 +860,7 @@ void SensorHW::getSensorData(sensorPrivateData *sensor_data)
         }
 
         // Second call with correct size will return OTP data.
-        rc = mDevice->xioctl(ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA, &otpdata);
+        rc = pxioctl(mDevice, ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA, &otpdata);
         LOG2("%s IOCTL ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA to get OTP data ret: %d\n", __FUNCTION__, rc);
 
         if (rc != 0 || otpdata.size == 0) {
@@ -839,6 +936,12 @@ int SensorHW::getIso(int * iso)
     return mDevice->getControl(V4L2_CID_ISO_SENSITIVITY, iso);
 }
 
+int SensorHW::setIsoMode(int mode)
+{
+    LOG2("@%s: ISO: %d", __FUNCTION__, mode);
+    return mDevice->setControl(V4L2_CID_ISO_SENSITIVITY_AUTO, mode, "iso mode");
+}
+
 int SensorHW::setAeMeteringMode(v4l2_exposure_metering mode)
 {
     LOG2("@%s: %d", __FUNCTION__, mode);
@@ -858,7 +961,7 @@ int SensorHW::setAeFlickerMode(v4l2_power_line_frequency mode)
                                     mode, "light frequency");
 }
 
-int SensorHW::setAfMode(v4l2_auto_focus_range mode)
+int SensorHW::setAfMode(int mode)
 {
     LOG2("@%s: %d", __FUNCTION__, mode);
     if (!PlatformData::isFixedFocusCamera(mCameraId))
@@ -867,7 +970,7 @@ int SensorHW::setAfMode(v4l2_auto_focus_range mode)
         return -1;
 }
 
-int SensorHW::getAfMode(v4l2_auto_focus_range * mode)
+int SensorHW::getAfMode(int *mode)
 {
     LOG2("@%s", __FUNCTION__);
     if (!PlatformData::isFixedFocusCamera(mCameraId))
@@ -885,6 +988,13 @@ int SensorHW::setAfEnabled(bool enable)
         return -1;
 }
 
+int SensorHW::setAfWindows(const CameraWindow *windows, int numWindows)
+{
+    LOG1("@%s", __FUNCTION__);
+    // Not supported
+    return -1;
+}
+
 int SensorHW::set3ALock(int aaaLock)
 {
     LOG2("@%s", __FUNCTION__);
@@ -898,13 +1008,14 @@ int SensorHW::get3ALock(int * aaaLock)
 }
 
 
-int SensorHW::setAeFlashMode(v4l2_flash_led_mode mode)
+int SensorHW::setAeFlashMode(int mode)
 {
     LOG2("@%s: %d", __FUNCTION__, mode);
-    return mDevice->setControl(V4L2_CID_FLASH_LED_MODE, mode, "Flash mode");
+    int ctl = V4L2_CID_FLASH_LED_MODE;
+    return mDevice->setControl(ctl, mode, "Flash mode");
 }
 
-int SensorHW::getAeFlashMode(v4l2_flash_led_mode * mode)
+int SensorHW::getAeFlashMode(int *mode)
 {
     LOG2("@%s", __FUNCTION__);
     return mDevice->getControl(V4L2_CID_FLASH_LED_MODE, (int*)mode);
@@ -914,7 +1025,7 @@ int SensorHW::getModeInfo(struct atomisp_sensor_mode_data *mode_data)
 {
     LOG2("@%s", __FUNCTION__);
     int ret;
-    ret = mDevice->xioctl(ATOMISP_IOC_G_SENSOR_MODE_DATA, mode_data);
+    ret = pxioctl(mDevice, ATOMISP_IOC_G_SENSOR_MODE_DATA, mode_data);
     LOG2("%s IOCTL ATOMISP_IOC_G_SENSOR_MODE_DATA ret: %d\n", __FUNCTION__, ret);
     return ret;
 }
@@ -922,7 +1033,7 @@ int SensorHW::getModeInfo(struct atomisp_sensor_mode_data *mode_data)
 int SensorHW::setSensorExposure(struct atomisp_exposure *exposure)
 {
     int ret;
-    ret = mDevice->xioctl(ATOMISP_IOC_S_EXPOSURE, exposure);
+    ret = pxioctl(mDevice, ATOMISP_IOC_S_EXPOSURE, exposure);
     LOG2("%s IOCTL ATOMISP_IOC_S_EXPOSURE ret: %d, gain A:%d D:%d, itg C:%d F:%d\n", __FUNCTION__, ret, exposure->gain[0], exposure->gain[1], exposure->integration_time[0], exposure->integration_time[1]);
     return ret;
 }
@@ -971,6 +1082,37 @@ const char * SensorHW::getSensorName(void)
 }
 
 /**
+ *  Set sensor flip
+ *
+ * This function should be called before starting the steam
+ */
+status_t SensorHW::applySensorFlip(void)
+{
+    int sensorFlip = PlatformData::sensorFlipping(mCameraId);
+    LOG1("@%s image flip :%x", __FUNCTION__, sensorFlip);
+
+    if (sensorFlip == PlatformData::SENSOR_FLIP_NA
+        || sensorFlip == PlatformData::SENSOR_FLIP_OFF)
+        return NO_ERROR;
+
+    // open sensor sub device for ioctl
+    if (openSubdevices() != NO_ERROR) {
+        LOGE("Error in opening sensor device for applying sensor flip");
+        return NO_INIT;
+    }
+
+    if (mSensorSubdevice->setControl(V4L2_CID_VFLIP,
+        (sensorFlip & PlatformData::SENSOR_FLIP_V) ? 1 : 0, "vertical image flip"))
+        return UNKNOWN_ERROR;
+
+    if (mSensorSubdevice->setControl(V4L2_CID_HFLIP,
+        (sensorFlip & PlatformData::SENSOR_FLIP_H) ? 1 : 0, "horizontal image flip"))
+        return UNKNOWN_ERROR;
+
+    return NO_ERROR;
+}
+
+/**
  * Set sensor framerate
  *
  * This function shall be called only before starting the stream and
@@ -992,7 +1134,7 @@ status_t SensorHW::setFramerate(int fps)
     subdevFrameInterval.pad = 0;
     subdevFrameInterval.interval.numerator = 1;
     subdevFrameInterval.interval.denominator = fps;
-    ret = mSensorSubdevice->xioctl(VIDIOC_SUBDEV_S_FRAME_INTERVAL, &subdevFrameInterval);
+    ret = pxioctl(mSensorSubdevice, VIDIOC_SUBDEV_S_FRAME_INTERVAL, &subdevFrameInterval);
     if (ret < 0){
         LOGE("Failed to set framerate to sensor subdevice");
         return UNKNOWN_ERROR;
@@ -1020,7 +1162,7 @@ float SensorHW::getFramerate() const
         struct v4l2_subdev_frame_interval subdevFrameInterval;
         CLEAR(subdevFrameInterval);
         subdevFrameInterval.pad = 0;
-        ret = mSensorSubdevice->xioctl(VIDIOC_SUBDEV_G_FRAME_INTERVAL, &subdevFrameInterval);
+        ret = pxioctl(mSensorSubdevice, VIDIOC_SUBDEV_G_FRAME_INTERVAL, &subdevFrameInterval);
         if (ret >= 0 && subdevFrameInterval.interval.numerator != 0) {
             LOG1("Using framerate from sensor subdevice");
             return ((float) subdevFrameInterval.interval.denominator) / subdevFrameInterval.interval.numerator;
@@ -1038,7 +1180,29 @@ float SensorHW::getFramerate() const
     return fps;
 }
 
+void SensorHW::getFrameSizes(Vector<v4l2_subdev_frame_size_enum> &sizes)
+{
+    LOG2("@%s", __FUNCTION__);
 
+    struct v4l2_subdev_frame_size_enum fsize;
+    int ret = 0;
+
+    CLEAR(fsize);
+    fsize.index = 0;
+
+    // ioctl() will return non-zero value, when enumerating out of range
+    while (ret == 0) {
+        ret = mSensorSubdevice->xioctl(VIDIOC_SUBDEV_ENUM_FRAME_SIZE, &fsize);
+
+        if (ret == 0) {
+            sizes.push(fsize);
+            ++fsize.index;
+        }
+    }
+
+    if (fsize.index == 0 && ret != 0)
+        LOGW("unable to get enumerated frame sizes");
+}
 
 /**
  * polls and dequeues frame synchronization events into IAtomIspObserver::Message
@@ -1085,7 +1249,7 @@ status_t SensorHW::observe(IAtomIspObserver::Message *msg)
     ts = TIMEVAL2USECS(&msg->data.event.timestamp);
     LOG2("-- FrameSync@%lldus --", ts);
     mFrameSyncMutex.lock();
-    if (mCssVersion != ATOMISP_CSS_VERSION_15) {
+    if (mFrameSyncSource == FRAME_SYNC_EOF) {
         // In CSS20, the buffered sensor mode and the event being close to
         // ~MIPI EOF means that we are at vbi when receiving the event here.
         // We delay sending the FrameSync event based on estimated active item vbi.
@@ -1095,9 +1259,6 @@ status_t SensorHW::observe(IAtomIspObserver::Message *msg)
         //       of CSS20 here. As update for this particular event has not yet
         //       happened, the active item is one more recent than at previous
         //       frame sync. Hereby, mActiveItemIndex-1.
-        // TODO: once CSS2.0 provides option for disabling buffered sensor mode,
-        //       this info should be used as the condition here. The information
-        //       should become available by the fact that we can subscribe to SOF.
         unsigned int vbiOffset = vbiIntervalForItem(mActiveItemIndex-1);
         LOG2("FrameSync: delaying over %dus timeout, active item index %d", vbiOffset, mActiveItemIndex);
         ts = ts + vbiOffset;
@@ -1110,6 +1271,8 @@ status_t SensorHW::observe(IAtomIspObserver::Message *msg)
         mFrameSyncMutex.lock();
     }
     processExposureHistory(ts);
+    // update mLatestExpId within lock
+    mLatestExpId = event.u.frame_sync.frame_sequence;
     mFrameSyncMutex.unlock();
     mFrameSyncCondition.signal();
 
@@ -1129,9 +1292,9 @@ unsigned int SensorHW::getExposureDelay()
 status_t SensorHW::initializeExposureFilter()
 {
     LOG1("@%s", __FUNCTION__);
-    int gainLag = PlatformData::getSensorGainLag();
-    int exposureLag = PlatformData::getSensorExposureLag();
-    bool useExposureSync = PlatformData::synchronizeExposure();
+    int gainLag = PlatformData::getSensorGainLag(mCameraId);
+    int exposureLag = PlatformData::getSensorExposureLag(mCameraId);
+    bool useExposureSync = PlatformData::synchronizeExposure(mCameraId);
     unsigned int gainDelay = 0;
 
     LOG1("Exposure synchronization config read, gain lag %d, exposure lag %d, synchronize %s",
@@ -1172,6 +1335,54 @@ status_t SensorHW::initializeExposureFilter()
 inline void SensorHW::processGainDelay(struct atomisp_exposure *exposure)
 {
     exposure->gain[0] = mGainDelayFilter->enqueue(exposure->gain[0]);
+}
+
+/**
+ * Implements IHWSensorControl::setExposureGroup()
+ */
+int SensorHW::setExposureGroup(struct atomisp_exposure exposures[], int depth)
+{
+    int i, numItemNotApplied = 0;
+    struct exposure_history_item *item = NULL;
+
+    LOG2("@%s", __FUNCTION__);
+    if (!exposures)
+        return -1;
+
+    Mutex::Autolock lock(mFrameSyncMutex);
+    // cover the items which have not been applied
+    for (i = 0; i < (int)mExposureHistory->getDepth(); i++) {
+        item = mExposureHistory->peek(i);
+        if (!item || item->applied)
+            break;
+        numItemNotApplied++;
+    }
+
+    LOG2("@%s numItemNotApplied:%d", __FUNCTION__, numItemNotApplied);
+    // insert group
+    for (i = 0 ; i < depth ; i++) {
+        if (numItemNotApplied) {
+            item = mExposureHistory->peek(numItemNotApplied - 1);
+            if (item == NULL) {
+                LOGE("Has item that has not been applied but peek NULL");
+                continue;
+            }
+            item->exposure = exposures[i];
+            numItemNotApplied--;
+        } else {
+            processGainDelay(&exposures[i]);
+            item = produceExposureHistory(&exposures[i], 0);
+            mActiveItemIndex++;
+        }
+    }
+
+    LOG1("@%s depth:%d mActiveItemIndex:%d, current exp id:%d",
+            __FUNCTION__, depth, mActiveItemIndex, mLatestExpId);
+
+    // For EOF event, current exposure id is N, It's the SOF of N+1.
+    // Next exposure will be set from N+2, so setupLag is 2
+    int setupLag = (mFrameSyncSource == FRAME_SYNC_EOF) ? 2 : 1;
+    return (mLatestExpId + mExposureLag + setupLag) % EXP_ID_MAX;
 }
 
 /**
@@ -1523,17 +1734,13 @@ nsecs_t SensorHW::getFrameTimestamp(nsecs_t event_ts)
     for (unsigned int i = 0; i < mExposureHistory->getCount(); i++) {
         receivedItem = mExposureHistory->peek(i);
         if (receivedItem && receivedItem->received) {
-            if (mCssVersion != ATOMISP_CSS_VERSION_15) {
+            if (mFrameSyncSource == FRAME_SYNC_EOF) {
                 //NOTE: In CSS2.0 where FrameSync is delayed from EOF event to
                 //      reprecent the next SOF and Sensor Buffered Mode
                 //      increases the latency of events, we consider that
                 //      receiving ISP events for frame during its vbi is
                 //      impossible.
                 //      Using full frame interval comparison
-                //TODO: once CSS2.0 provides option for disabling
-                //      buffered sensor mode, this info should be used as
-                //      the condition here. The information should become
-                //      available by the fact that we can subscribe to SOF.
                 itgInterval = frameIntervalForItem(i);
             } else {
                 itgInterval = frameIntervalForItem(i) - vbiIntervalForItem(i);

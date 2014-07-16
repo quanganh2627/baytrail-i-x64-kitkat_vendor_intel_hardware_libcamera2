@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2011 The Android Open Source Project
+ * Copyright (c) 2012-2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +26,7 @@
 #include "EXIFMaker.h"
 #include "JpegHwEncoder.h"
 #include "ScalerService.h"
+#include "IAtomIspObserver.h"
 
 namespace android {
 
@@ -32,13 +34,15 @@ class Callbacks;
 class CallbacksThread;
 class ICallbackPicture;
 
-class PictureThread : public Thread {
+class PictureThread : public Thread
+                     ,public IAtomIspObserver {
 
 // constructor destructor
 public:
     PictureThread(I3AControls *aaaControls, sp<ScalerService> scaler,
             sp<CallbacksThread> callbacksThread, Callbacks *callbacks,
-            ICallbackPicture *pictureDone);
+            ICallbackPicture *pictureDone,
+            int cameraId);
     virtual ~PictureThread();
 
 // prevent copy constructor and assignment operator
@@ -60,16 +64,21 @@ public:
       bool saveMirrored;                     /*!< whether to do mirroring */
       int cameraOrientation;                 /*!< camera sensor orientation */
       int currentOrientation;                /*!< Current orientation of the device */
+      ia_face_state faceState;
 
       void free(I3AControls* aaaControls);
     };
 
+// IAtomIspObserver overrides
+public:
+    virtual bool atomIspNotify(IAtomIspObserver::Message *msg, const ObserverState state);
+
 // public methods
 public:
 
-    status_t encode(MetaData &metaData, AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf = NULL);
+    status_t encode(MetaData &metaData, AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf = NULL, bool dataHasBeenFlushed = true);
 
-    void getDefaultParameters(CameraParameters *params);
+    void getDefaultParameters(CameraParameters *params, int cameraId);
     status_t initialize(const CameraParameters &params, int zoomRatio);
     status_t allocSnapshotBuffers(const AtomBuffer& formatDescriptor,
                                 int sharedBuffersNum,
@@ -81,6 +90,7 @@ public:
                                   Vector<AtomBuffer> *bufs,
                                   bool registerToScaler);
 
+    void setMakerNote(atomisp_makernote_info makerNote);
 
     status_t wait(); // wait to finish queued messages (sync)
     status_t flushBuffers();
@@ -103,6 +113,8 @@ private:
         MESSAGE_ID_WAIT,
         MESSAGE_ID_FLUSH,
         MESSAGE_ID_INITIALIZE,
+        MESSAGE_ID_SET_MAKERNOTE,
+        MESSAGE_ID_CAPTURE,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -119,10 +131,19 @@ private:
         bool registerToScaler;      /*!< whether to register buffers to scaler */
     };
 
+    struct MessageCapture {
+        AtomBuffer captureBuf; /*!< can be metadata or jpeg */
+    };
+
     struct MessageEncode {
         AtomBuffer snapshotBuf;
         AtomBuffer postviewBuf;
         MetaData metaData;
+        bool dataHasBeenFlushed;
+    };
+
+    struct MessageSetMakernote {
+        atomisp_makernote_info makerNote;
     };
 
     struct MessageParam {
@@ -137,6 +158,8 @@ private:
         MessageEncode encode;
         MessageAllocBufs alloc;
         MessageParam param;
+        MessageCapture capture;
+        MessageSetMakernote maker;
     };
 
     // message id and message data
@@ -156,12 +179,14 @@ private:
     status_t handleMessageWait();
     status_t handleMessageFlush();
     status_t handleMessageInitialize(MessageParam *msg);
+    status_t handleMessageCapture(MessageCapture *msg);
+    status_t handleMessageSetMakernote(MessageSetMakernote *msg);
 
     // main message function
     status_t waitForAndExecuteMessage();
 
     void setupExifWithMetaData(const MetaData &metaData);
-    status_t encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, AtomBuffer *destBuf);
+    status_t encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, AtomBuffer *destBuf, bool dataHasBeenFlushed);
 
     status_t allocateInputBuffers(AtomBuffer& formatDescriptor, int numBufs, bool registerToScaler);
     void     freeInputBuffers();
@@ -177,6 +202,10 @@ private:
     void     encodeExif(AtomBuffer *thumBuf);
     status_t doSwEncode(AtomBuffer *mainBuf, AtomBuffer* destBuf);
     status_t scaleMainPic(AtomBuffer *mainBuf);
+
+    uint32_t getJpegDataSize(const void* framePtr) const;
+    void setupExifWithNv12Meta(AtomBuffer *mainBuf);
+    status_t assembleJpeg(AtomBuffer *mainBuf, AtomBuffer *mainBuf2);
 
 // inherited from Thread
 private:
@@ -197,6 +226,10 @@ private:
     AtomBuffer      mScaledPic; /*!< Temporary local buffer where we scale the main
                                      picture (snapshot) in case is of a different
                                      resolution than the image requested by the client */
+    AtomBuffer      mFirstPartBuf;
+
+    List<AtomBuffer> mCapturePostViewBufList;
+    Mutex            mCapturePostViewBufListLock; // protect mCapturePostViewBufList
 
     /*
      * The resolution below is set up during initialize in case the receiving buffer
@@ -230,6 +263,9 @@ private:
     I3AControls* m3AControls;
     // for flushing buffers
     ICallbackPicture *mPictureDoneCallback;
+    int mCameraId;
+
+    atomisp_makernote_info mMakerInfo;
 }; // class PictureThread
 
 }; // namespace android

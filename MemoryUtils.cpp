@@ -25,6 +25,17 @@
 namespace android {
     namespace MemoryUtils {
 
+    void flushMemory(char *startAddr, int size)
+    {
+        static int cacheLineSize = PlatformData::cacheLineSize();
+        char *endAddr = startAddr + size;
+
+        endAddr = (char *)ALIGN_WIDTH((unsigned long)endAddr, cacheLineSize);
+
+        for(; startAddr < endAddr; startAddr += cacheLineSize)
+            asm volatile("clflush %0" : "+m" (*startAddr));
+    }
+
     status_t allocateGraphicBuffer(AtomBuffer &aBuff, const AtomBuffer &formatDescriptor)
     {
         LOG1("@%s", __FUNCTION__);

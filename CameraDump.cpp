@@ -99,8 +99,6 @@ void CameraDump::setDumpDataFlag(void)
             LOGE("Invalid camera.hal.debug property integer value.");
             return ;
         }
-        // TODO: when the test stage finishes and formal API done, this debug interface could be removed
-        PlatformData::useExtendedCamera((DumpProp & CAMERA_DEBUG_USE_EXTENDED_CAMERA) ? true : false);
 
         if (DumpProp & CAMERA_DEBUG_DUMP_RAW)
             sRawDataFormat = RAW_BAYER;
@@ -258,7 +256,7 @@ int CameraDump::dumpImage2File(camera_delay_dumpImage_T *aDumpImage, const char 
         raw_info.raw_image.bayer_order = ia_aiq_bayer_order_grbg;
         raw_info.raw_image.data_format_bpp = 16;
         raw_info.raw_image.data_bpp = 10;
-        raw_info.raw_image.width_cols = bytesToPixels(V4L2_PIX_FMT_SBGGR10, bpl);
+        raw_info.raw_image.width_cols = width;
         raw_info.raw_image.height_lines = height;
         raw_info.header_size_bytes = 0;
         raw_info.footer_size_bytes = 0;
@@ -266,7 +264,7 @@ int CameraDump::dumpImage2File(camera_delay_dumpImage_T *aDumpImage, const char 
         raw_info.extra_bytes_right = 0;
         raw_info.extra_lines_top = 0;
         raw_info.extra_cols_left = 0;
-        raw_info.extra_cols_right = 0;
+        raw_info.extra_cols_right = bytesToPixels(V4L2_PIX_FMT_SBGGR10, bpl) - width;
         raw_info.extra_lines_bottom = 0;
         raw_info.byte_order_xor = 0;
         raw_info.spatial_sampling = 0;
@@ -433,6 +431,51 @@ void CameraDump::set3AControls(I3AControls *aaaControls)
 {
     LOG1("@%s", __FUNCTION__);
     m3AControls = aaaControls;
+}
+
+// set AtomISP object
+//
+// CameraDump needs custom access to interface of AtomISP
+void CameraDump::setAtomISP(AtomISP *atomISP)
+{
+    LOG1("@%s", __FUNCTION__);
+    mISP = atomISP;
+}
+
+/**
+ * Dumps current makernote into file
+ *
+ * This is custom-made for use case with file injection and
+ * file name is set according to file name of file injection.
+ */
+void CameraDump::dumpMkn2File()
+{
+    LOG1("@%s", __FUNCTION__);
+    FILE *fp;
+    size_t size;
+    String8 fileName;
+
+    if (!m3AControls || !mISP) {
+        LOGW("Cannot file dump the makernote!");
+        return;
+    }
+
+    //get binary of makernote and store
+    ia_binary_data *aaaMkNote = m3AControls->get3aMakerNote(ia_mkn_trg_section_2);
+    if(aaaMkNote) {
+        fileName = mISP->getFileInjectionFileName();
+        fileName += ".mkn";
+        LOG2("filename:%s",  fileName.string());
+        fp = fopen (fileName.string(), "w+");
+        if (fp == NULL) {
+            LOGE("open file %s failed %s", fileName.string(), strerror(errno));
+            m3AControls->put3aMakerNote(aaaMkNote);
+            return;
+        }
+        if ((size = fwrite(aaaMkNote->data, aaaMkNote->size, 1, fp)) < (size_t)aaaMkNote->size)
+            LOGW("Makernote not fully written to %s: %d, %d", fileName.string(), aaaMkNote->size, size);
+        fclose (fp);
+    }
 }
 
 }; // namespace android

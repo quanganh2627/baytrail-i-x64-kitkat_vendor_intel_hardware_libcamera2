@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012 The Android Open Source Project
+ * Copyright (c) 2012-2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,6 +27,8 @@
 #define RESOLUTION_13MP_HEIGHT  3104
 #define RESOLUTION_8MP_WIDTH    3264
 #define RESOLUTION_8MP_HEIGHT   2448
+#define RESOLUTION_6MP_WIDTH    3264
+#define RESOLUTION_6MP_HEIGHT   1836
 #define RESOLUTION_5MP_WIDTH    2560
 #define RESOLUTION_5MP_HEIGHT   1920
 #define RESOLUTION_3MP_WIDTH    2048
@@ -95,7 +98,6 @@ class PlatformData {
 
  private:
     static PlatformBase* mInstance;
-    static int mActiveCameraId;
 
     /**
      * Get access to the platform singleton.
@@ -134,8 +136,8 @@ class PlatformData {
 
  public:
 
-    static AiqConf AiqConfig;
-    static HalConf HalConfig;
+    static AiqConf AiqConfig[MAX_CAMERAS];
+    static HalConf HalConfig[MAX_CAMERAS];
 
     enum SensorFlip {
         SENSOR_FLIP_NA     = -1,   // Support Not-Available
@@ -145,24 +147,29 @@ class PlatformData {
     };
 
     /**
-     * Sets the ID of active camera
+     * set the intelligent mode
+     * the intelligent mode is running windowless mode with raw8 data out from ISP
      *
-     * This function should be called every time an instance of CameraHAL
-     * is created with given cameraId
+     * if the val is true, the intelligent mode is using
      *
-     * \param cameraId identifier passed to android.hardware.Camera.open()
      */
-    static void setActiveCameraId(int cameraId);
+    static void setIntelligentMode(int cameraId, bool val);
 
     /**
-     * Frees the ID of active camera
+     * get the intelligent mode
      *
-     * This function should be called every time an instance of CameraHAL
-     * using the given Id is terminated
+     * if the intelligent mode is running, this function will return true.
      *
-     * \param cameraId identifier passed to android.hardware.Camera.open()
      */
-    static void freeActiveCameraId(int cameraId);
+    static bool getIntelligentMode(int cameraId);
+
+    /**
+     * to check if the 3A is needed to be disabled
+     *
+     * if the camera should disable 3A, this function will return true.
+     * /param cameraId identifier passed to android.hardware.Camera.open()
+     */
+    static bool isDisable3A(int cameraId);
 
     /**
      * Number of cameras
@@ -220,6 +227,35 @@ class PlatformData {
     static bool supportsContinuousCapture(int cameraId);
 
     /**
+     * Whether platform can support burst capture in offlie mode
+     *
+     * \return true if supported
+     */
+    static bool supportsOfflineBurst(void);
+
+    /**
+     * Whether platform support continuous Jpeg mode capture with
+     * external ISP
+     *
+     * \return true if supported
+     */
+    static bool supportsContinuousJpegCapture(int cameraId);
+
+    /**
+     * Whether platform can support bracket capture in offlie mode
+     *
+     * \return true if supported
+     */
+    static bool supportsOfflineBracket(void);
+
+    /**
+     * Whether platform can support HDR capture in offlie mode
+     *
+     * \return true if supported
+     */
+
+    static bool supportsOfflineHdr(void);
+    /**
      * What's the maximum supported size of the RAW ringbuffer
      * for continuous capture maintained by the ISP.
      *
@@ -258,12 +294,33 @@ class PlatformData {
     static const char* preferredPreviewSizeForVideo(int cameraId);
 
     /**
+     * Returns string describing default preview size
+     *
+     * \return string following getParameter value notation
+     */
+    static const char* defaultPreviewSize(int cameraId);
+
+    /**
+     * Returns string describing default video size
+     *
+     * \return string following getParameter value notation
+     */
+    static const char* defaultVideoSize(int cameraId);
+
+    /**
      * Whether the camera supports Digital Video Stabilization or not
      *
      * \param cameraId identifier passed to android.hardware.Camera.open()
      * \return true if it is supported
      */
     static bool supportsDVS(int cameraId);
+
+    /**
+     * Whether the sensor supports Narrow Gamma or not
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return true if it is supported
+     */
+    static bool supportsNarrowGamma(int cameraId);
 
     /**
      * Returns the supported burst capture's fps list for the platform
@@ -688,6 +745,20 @@ class PlatformData {
     static const char* supportedRecordingFramerates(int cameraId);
 
     /**
+     * Whether the full resolution SDV is supported?
+     * \return true if full resolution SDV is supported
+     */
+    static bool isFullResSdvSupported(int cameraId);
+
+    /**
+     * supported SDV sizes in difference aspect ratio
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the value of the supported SDV sizes as a string.
+     */
+    static const char* supportedSdvSizes(int cameraId);
+
+    /**
      * Focus mode supported value
      *
      * \param cameraId identifier passed to android.hardware.Camera.open()
@@ -702,6 +773,14 @@ class PlatformData {
      * \return the value of the focus default value as a string.
      */
     static const char* defaultFocusMode(int cameraId);
+
+    /**
+     * \brief Number of supported focus areas
+     *
+     * this is the maximum amount of AF areas the camera supports for a given sensor/3A
+     * configuration
+     */
+    static size_t getMaxNumFocusAreas(int cameraId);
 
     /**
      * Whether the raw camera's default focus mode is "fixed".
@@ -810,6 +889,31 @@ class PlatformData {
     static const char* supportedSnapshotSizes(int cameraId);
 
     /**
+     * Returns Jpeg compression quality default value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return quality, The range is 1 to 100, with 100 being the best.
+     *         -1 on error (invalid cameraId)
+     */
+    static int defaultJpegQuality(int cameraId);
+
+    /**
+     * Returns EXIF thumbnail compression quality default value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return quality, The range is 1 to 100, with 100 being the best.
+     *         -1 on error (invalid cameraId)
+     */
+    static int defaultJpegThumbnailQuality(int cameraId);
+
+    /**
+     * Returns the cpu cache line size
+     *
+     * \return int value with cache line size
+     */
+    static int cacheLineSize();
+
+    /**
      * Returns the name of the product
      * This is meant to be used in the EXIF metadata
      *
@@ -848,16 +952,6 @@ class PlatformData {
     static bool renderPreviewViaOverlay(int cameraId);
 
     /**
-     * Returns whether the resolution is supported by VFPP
-     *
-     * \param cameraId identifier passed to android.hardware.Camera.open()
-     * \param width of resolution
-     * \param height of resolution
-     * \return true if resolution is supported by VFPP, false if not
-     */
-    static bool resolutionSupportedByVFPP(int cameraId, int width, int height);
-
-    /**
      * Returns whether the snapshot resolution has ZSL support
      *
      * \param cameraId identifier passed to android.hardware.Camera.open()
@@ -893,9 +987,11 @@ class PlatformData {
 
     /**
      * Returns the max zoom factor
+     *
+     * \param cameraId identifier passed from android.hardware.Camera.open()
      * \return the max zoom factor
      */
-    static int getMaxZoomFactor(void);
+    static int getMaxZoomFactor(int cameraId);
 
     /**
      * Whether snapshot in video is supported?
@@ -955,9 +1051,10 @@ class PlatformData {
     /**
      * Returns the preview format with V4l2 definition
      *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
      * \return the preview format, V4L2_PIX_FMT_NV12 or V4L2_PIX_FMT_YVU420
     */
-    static int getPreviewPixelFormat(void);
+    static int getPreviewPixelFormat(int cameraId);
 
     /**
      * Returns the board name
@@ -976,23 +1073,26 @@ class PlatformData {
     /**
      * Returns frame latency for analog gain applying
      *
+     * \param cameraId identifier passed from android.hardware.Camera.open()
      * \return the frame latency for analog gain applying
     */
-    static int getSensorGainLag(void);
+    static int getSensorGainLag(int cameraId);
 
     /**
      * Returns frame latency for exposure applying
      *
+     * \param cameraId identifier passed from android.hardware.Camera.open()
      * \return the frame latency for exposure applying
     */
-    static int getSensorExposureLag(void);
+    static int getSensorExposureLag(int cameraId);
 
     /**
      * Returns whether to use frame synchronization for exposure applying
      *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
      * \return true if synchronisation needed
     */
-    static bool synchronizeExposure(void);
+    static bool synchronizeExposure(int cameraId);
 
     /**
      * Used Ultra Low Light implementation
@@ -1020,19 +1120,65 @@ class PlatformData {
     static float horizontalFOV(int cameraId, int width, int height);
 
     /**
-     * Returns EV shift factor
+     * Retrns focal length of depth mode
      *
-     * \return float EV shift factor
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return int focal length
      */
-    static float matchEVShiftFactor(int cameraId);
+    static int defaultDepthFocalLength(int cameraId);
+
+    /**
+     * Whether Postview output is supported?
+     *
+     * \return true if supported
+     */
+    static bool supportsPostviewOutput(int cameraId);
+
+    /**
+     * Whether ISP supported continuous capture mode setting ?
+     *
+     * \return true if supported
+     */
+    static bool ispSupportContinuousCaptureMode(int cameraId);
+
+    /**
+     * Whether color-bar preview is supported?
+     *
+     * \return true if supported
+     */
+    static bool supportsColorBarPreview(int cameraId);
+
+    /**
+     * This value is configured by product. When continuous ISP timeout count
+     * reach the max ISP timeout count, Camera HAL will try to recover preview.
+     *
+     * \return max ISP timeout count
+     */
+    static int getMaxISPTimeoutCount(void);
+
+    /**
+     * Retrns max number of preview buffer queue size for depth sensor
+     *
+     * \param cameraId identifier passed from android.hardware.Camera.open()
+     * \return int max number of preview buffer queue
+     */
+    static int getMaxDepthPreviewBufferQueueSize(int cameraId);
 
     /**
      * supported DVS sizes
      *
      * \param cameraId identifier passed to android.hardware.Camera.open()
-     * \return the value of the supported dvs sizes as a string.
+     * return the value of the supported dvs sizes as a string.
      */
     static const char* supportedDvsSizes(int cameraId);
+
+    /**
+     * supported sensor metadata
+     *
+     * \param cameraId identifier passed from android.hardware.Camera.open()
+     * \return true if supported sensor metadata. Return false, if don't supported.
+     */
+    static bool supportedSensorMetadata(int cameraId);
 
     /**
      * Whether the graphic is GEN.
@@ -1053,10 +1199,36 @@ class PlatformData {
     static int faceCallbackDivider();
 
     /**
+     * \brief To check if HAL Video Stabilization-specific code paths are to be
+     * enabled
+     *
+     * HAL VS allows customers to integrate their own VS algorithm. It requires
+     * special preview-to-video flow in the HAL.
+     */
+    static bool useHALVS(int cameraId);
+
+    /**
      * get the number of CPU cores
      * \return the number of CPU cores
      */
     static unsigned int getNumOfCPUCores();
+
+    /**
+     * \brief Get the number of warm-up frames for the still image capture:
+     *
+     * Some sensors (or ISP) may need warm-up skips in image capture. For example
+     * some SoC sensors need initial capture frame skips in order to have their 3A (or 2A)
+     * algorithms to converge before the actual good capture frame
+     *
+     * \return The number of warm-up frames needed for the platform
+     */
+    static int getNumOfCaptureWarmUpFrames(int cameraId);
+
+    /**
+     * check if we use multi streams for SoC sensor
+     * \return true or false
+     */
+    static bool useMultiStreamsForSoC(int cameraId);
 
     /**
      * set true to use the extended camera
@@ -1064,11 +1236,28 @@ class PlatformData {
      */
     static void useExtendedCamera(bool val);
 
+    static bool isExtendedCameras(void);
     /**
      * it will check if the current cameraId camera is the extended camera
      * \return true or false
      */
     static bool isExtendedCamera(int cameraId);
+
+    /**
+     * Whether extended camera is supported?
+     *
+     * \return true if supported
+     */
+    static bool supportExtendedCamera(void);
+
+    /**
+     * Intelligent mode supported value
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the supported list for intelligent mode
+     */
+    static const char* supportedIntelligentMode(int cameraId);
+
 };
 
 /**
@@ -1084,26 +1273,31 @@ class PlatformBase {
     friend class PlatformData;
 
 public:
-    PlatformBase() {    //default
-        mUseExtendedCamera = false;
-        mHasExtendedCamera = false;
-        mExtendedCameraId = -1;
-        mExtendedCameraIndex = -1;
-        mPanoramaMaxSnapshotCount = 10;
-        mFileInject = false;
-        mSupportVideoSnapshot = true;
-        mMaxZoomFactor = 64;
-        mNumRecordingBuffers = 9;
-        mNumPreviewBuffers = 6;
-        mMaxContinuousRawRingBuffer = 0;
-        mShutterLagCompensationMs = 40;
-        mSupportDualVideo = false;
-        mSupportPreviewLimitation = true;
-        mSensorGainLag = 2;
-        mSensorExposureLag = 2;
-        mUseIntelULL = false;
-        mFaceCallbackDivider = 1;
-   };
+    PlatformBase()  //default
+        :mUseExtendedCamera(false)
+        ,mHasExtendedCamera(false)
+        ,mExtendedCameraId(-1)
+        ,mExtendedCameraIndex(-1)
+        ,mFileInject(false)
+        ,mSupportVideoSnapshot(true)
+        ,mSupportsOfflineBurst(false)
+        ,mSupportsOfflineBracket(false)
+        ,mSupportsOfflineHdr(false)
+        ,mMaxContinuousRawRingBuffer(0)
+        ,mShutterLagCompensationMs(40)
+        ,mPanoramaMaxSnapshotCount(10)
+        ,mMaxZoomFactor(64)
+        ,mNumRecordingBuffers(9)
+        ,mNumPreviewBuffers(6)
+        ,mSupportDualVideo(false)
+        ,mSupportPreviewLimitation(true)
+        ,mSensorGainLag(2)
+        ,mSensorExposureLag(2)
+        ,mUseIntelULL(false)
+        ,mFaceCallbackDivider(1)
+        ,mCacheLineSize(64)
+        ,mMaxISPTimeoutCount(60)
+    {}
 
 protected:
 
@@ -1121,10 +1315,14 @@ protected:
             orientation = 90;
             flipping = PlatformData::SENSOR_FLIP_NA;
             dvs = true;
+            narrowGamma = false;
             supportedSnapshotSizes = "320x240,640x480,1024x768,1280x720,1920x1080,2048x1536,2560x1920,3264x1836,3264x2448";
+            defaultJpegQuality = 80;
+            defaultJpegThumbnailQuality = 50;
             mPreviewViaOverlay = false;
             overlayRelativeRotation = 90;
             continuousCapture = false;
+            continuousJpegCapture = false;
             //burst
             supportedBurstFPS = "1,3,5,7,15";
             supportedBurstLength = "1,3,5,10";
@@ -1216,6 +1414,10 @@ protected:
             supportedPreviewFPSRange = "(10500,30304),(11000,30304),(11500,30304)";
             defaultPreviewFPSRange = "10500,30304";
             supportedVideoSizes = "176x144,320x240,352x288,640x480,720x480,720x576,1280x720,1920x1080";
+            defaultPreviewSize = "640x480";
+            defaultVideoSize = "1920x1080";
+            //full resolution SDV
+            supportedSdvSizes = "";
             // Leaving this empty. NOTE: values need to be given in derived classes.
             supportedPreviewSizes = "";
             supportedPreviewUpdateModes = "standard,continuous,during-capture,windowless";
@@ -1237,6 +1439,7 @@ protected:
                 ,CameraParameters::FOCUS_MODE_CONTINUOUS_VIDEO
                 ,CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
             defaultFocusMode.appendFormat("%s", CameraParameters::FOCUS_MODE_AUTO);
+            maxNumFocusAreas = 0;
             defaultHdr = "off";
             supportedHdr = "on,off";
             defaultUltraLowLight = "off";
@@ -1251,15 +1454,30 @@ protected:
             supportedPanorama = "on,off";
             defaultSceneDetection = "off";
             supportedSceneDetection = "on,off";
+            supportedIntelligentMode = "false";
             synchronizeExposure = false;
             maxNumYUVBufferForBurst = 10;
             maxNumYUVBufferForBracket = 10;
+            useHALVS = false;
             // FOV
             verticalFOV = "";
             horizontalFOV = "";
-            // DVS
+            //DVS
             supportedDvsSizes = "640x480,720x480,720x576,1280x720,1920x1080";
+            captureWarmUpFrames = 0;
+
+            mIntelligentMode = false;
+            supportedSensorMetadata = false;
+
+            disable3A = false;
+
+            useMultiStreamsForSoC = false;
             mPreviewFourcc = V4L2_PIX_FMT_NV12;
+            defaultDepthFocalLength = 0;
+            maxDepthPreviewBufferQueueSize = 0;
+            mSupportsPostviewOutput = true;
+            mISPSupportContinuousCaptureMode = true;
+            mSupportsColorBarPreview = false;
         }
 
         String8 sensorName;
@@ -1269,12 +1487,13 @@ protected:
         int orientation;
         int flipping;
         bool dvs;
+        bool narrowGamma;
         String8 supportedSnapshotSizes;
+        int defaultJpegQuality;
+        int defaultJpegThumbnailQuality;
         bool mPreviewViaOverlay;
         int overlayRelativeRotation;  /*<! Relative rotation between the native scan order of the
                                            camera and the display attached to the overlay */
-        // VFPP limited resolutions (sensor blanking time dependent
-        Vector<Size> mVFPPLimitedResolutions; // preview resolutions with VFPP limitations
         Vector<Size> mZSLUnsupportedSnapshotResolutions; // snapshot resolutions not supported by ZSL
 
         // snapshot resolutions not supported when continuous
@@ -1282,6 +1501,7 @@ protected:
         Vector<Size> mCVFUnsupportedSnapshotResolutions;
 
         bool continuousCapture;
+        bool continuousJpegCapture;
         // burst
         String8 supportedBurstFPS; // TODO: it will be removed in the future
         String8 supportedBurstLength;
@@ -1345,17 +1565,22 @@ protected:
         String8 defaultPreviewUpdateMode;
         String8 supportedVideoSizes;
         String8 mVideoPreviewSizePref;
+        String8 defaultPreviewSize;
+        String8 defaultVideoSize;
         // For high speed recording, slow motion playback
         bool hasSlowMotion;
         String8 supportedHighSpeedResolutionFps;
         String8 supportedRecordingFramerates;
         // For max Dvs resolution in high speed mode
         String8 maxHighSpeedDvsResolution;
+        // full resolution SDV
+        String8 supportedSdvSizes;
         // Flash support
         bool hasFlash;
         // focus modes
         String8 supportedFocusModes;
         String8 defaultFocusMode;
+        size_t maxNumFocusAreas;
         // INTEL Extras
         String8 defaultHdr;
         String8 supportedHdr;
@@ -1371,12 +1596,17 @@ protected:
         String8 supportedPanorama;
         String8 defaultSceneDetection;
         String8 supportedSceneDetection;
+        String8 supportedIntelligentMode;
 
         // SensorSyncManager
         // TODO: implement more control for how to synchronize, e.g. into
         //       which event and how (per sensor specific implementations
         //       available)
         bool synchronizeExposure;
+
+        // For enabling the HAL video stabilization buffer flow
+        // code paths
+        bool useHALVS;
 
         /**
          * For max number of snapshot buffers.
@@ -1394,7 +1624,44 @@ protected:
         String8 horizontalFOV;
         //DVS
         String8 supportedDvsSizes;
+
+        // For defining amount of needed warm-up frames, when skipping frames
+        // at image capture. For example, some SoC sensors need some frames to
+        // be skipped in order for the SoC sensor's 3A (or 2A) to converge.
+        int captureWarmUpFrames;
+
+        // to store the intelligent mode
+        // if it's true, the 3A should be disabled
+        bool mIntelligentMode;
+
+        // sensor meta data
+        bool supportedSensorMetadata;
+
+        // in some test purpose, we need to disable 3A.
+        // if this is needed, please make the disable3A to true
+        bool disable3A;
+
+        /**
+         * if the sensor is SoC, this variable is valuable
+         * if the FW could provide more than one stream, the useMultiStreamsForSoC should be set to true
+         * for example, the FW could provide all four streams for SDV case
+         */
+        bool useMultiStreamsForSoC;
+
+        // the preview format setting for seperate sensors
         int mPreviewFourcc;
+
+        int defaultDepthFocalLength;
+        int maxDepthPreviewBufferQueueSize;
+
+        // Postview output support
+        bool mSupportsPostviewOutput;
+
+        // Isp support continuous capture mode setting.
+        bool mISPSupportContinuousCaptureMode;
+
+        // Color-bar preview support.
+        bool mSupportsColorBarPreview;
     };
 
     // note: Android NDK does not yet support C++11 and
@@ -1411,6 +1678,9 @@ protected:
 
     bool mFileInject;
     bool mSupportVideoSnapshot;
+    bool mSupportsOfflineBurst;
+    bool mSupportsOfflineBracket;
+    bool mSupportsOfflineHdr;
 
     int mMaxContinuousRawRingBuffer;
     int mShutterLagCompensationMs;
@@ -1457,8 +1727,13 @@ protected:
     // Used for reducing the frequency of face callbacks
     int mFaceCallbackDivider;
 
+    // cpu cache line size
+    int mCacheLineSize;
+
+    // Max ISP timeout count
+    int mMaxISPTimeoutCount;
 private:
-    static status_t getSensorNames(Vector<String8>& sensorNames);
+    static status_t getSensorInfo(Vector<SensorNameAndPort>& sensorInfo);
 };
 
 } /* namespace android */

@@ -96,8 +96,8 @@ enum MeteringMode
 /* ISO control mode setting */
 enum IsoMode {
     CAM_AE_ISO_MODE_NOT_SET = -1,
-    CAM_AE_ISO_MODE_AUTO,   /* Automatic */
-    CAM_AE_ISO_MODE_MANUAL  /* Manual */
+    CAM_AE_ISO_MODE_MANUAL, /* Manual */
+    CAM_AE_ISO_MODE_AUTO    /* Automatic */
 };
 
 enum AfMode
@@ -108,7 +108,8 @@ enum AfMode
     CAM_AF_MODE_INFINITY,
     CAM_AF_MODE_FIXED,
     CAM_AF_MODE_MANUAL,
-    CAM_AF_MODE_CONTINUOUS
+    CAM_AF_MODE_CONTINUOUS,
+    CAM_AF_MODE_CONTINUOUS_VIDEO
 };
 
 struct SensorAeConfig
@@ -198,9 +199,10 @@ public:
     virtual status_t setAfMode(AfMode mode) = 0;
     virtual AfMode getAfMode() = 0;
     virtual status_t setAfEnabled(bool en) = 0;
-    virtual status_t setAeWindow(const CameraWindow *window) = 0;
-    virtual status_t setAfWindows(const CameraWindow *windows, size_t numWindows) = 0;
+    virtual status_t setAeWindow(CameraWindow *window, const AAAWindowInfo *convWindow = NULL) = 0;
+    virtual status_t setAfWindows(CameraWindow *windows, size_t numWindows, const AAAWindowInfo *convWindow = NULL) = 0;
     virtual status_t setAeFlickerMode(FlickerMode mode) = 0;
+    virtual status_t setUllEnabled(bool enabled) = 0;
 
     // Saturation, Sharpness, Contrast
     virtual status_t setSaturation(char saturation) = 0;
@@ -214,7 +216,9 @@ public:
     virtual status_t setManualFocusIncrement(int step) = 0;
     virtual status_t initAfBracketing(int stops, AFBracketingMode mode) = 0;
     virtual status_t initAeBracketing() = 0;
+    virtual status_t deinitAeBracketing() = 0;
     virtual status_t applyEv(float bias) = 0;
+    virtual int      applyEvGroup(float values[], int depth, SensorAeConfig aeConfig[]) = 0;
     virtual status_t getExposureInfo(SensorAeConfig& sensorAeConfig) = 0;
     virtual size_t   getAeMaxNumWindows() = 0;
     virtual size_t   getAfMaxNumWindows() = 0;
@@ -237,6 +241,7 @@ public:
     virtual void setPublicAeMode(AeMode mode) = 0;
     virtual AeMode getPublicAeMode() = 0;
     virtual AfStatus getCAFStatus() = 0;
+    virtual void setFaceDetection(bool enabled) = 0;
     virtual status_t setFaces(const ia_face_state& faceState) = 0;
     virtual status_t setFlash(int numFrames) = 0;
     virtual status_t getGBCEResults(ia_aiq_gbce_results *gbce_results) = 0;
@@ -244,11 +249,11 @@ public:
     virtual bool getAeUllTrigger() = 0;
 
     virtual status_t switchModeAndRate(AtomMode mode, float fps) = 0;
-    virtual status_t apply3AProcess(bool read_stats, struct timeval *frame_timestamp) = 0;
+    virtual status_t apply3AProcess(bool read_stats, struct timeval *frame_timestamp, int orientation) = 0;
     virtual status_t startStillAf() = 0;
     virtual status_t stopStillAf() = 0;
     virtual AfStatus isStillAfComplete() = 0;
-    virtual status_t applyPreFlashProcess(FlashStage stage, struct timeval captureTimestamp) = 0;
+    virtual status_t applyPreFlashProcess(FlashStage stage, struct timeval captureTimestamp, int orientation) = 0;
 
     // Makernote
     virtual ia_binary_data *get3aMakerNote(ia_mkn_trg mode) = 0;
@@ -258,6 +263,7 @@ public:
                                      ia_mkn_dnid mkn_name_id,
                                      const void *record,
                                      unsigned short record_size) = 0;
+    virtual void setManualFocusParameters(ia_aiq_manual_focus_parameters focusParameters) = 0;
 };
 
 }

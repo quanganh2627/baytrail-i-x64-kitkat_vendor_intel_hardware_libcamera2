@@ -209,6 +209,17 @@ void copyYV12ToYV12(int width, int height, int srcBpl, int dstBpl, void *src, vo
     }
 }
 
+// copy NV21 to NV21 (Y plane, VU interleaved) in case of different bpl length
+void copyNV21ToNV21(int width, int height, int srcBpl, int dstBpl, char *src, char *dst)
+{
+    int copyHeight = height * 3 / 2;
+    while (copyHeight--) {
+        memcpy(dst, src, width);
+        src += srcBpl;
+        dst += dstBpl;
+    }
+}
+
 // covert NV12 (Y plane, interlaced UV bytes) to
 // NV21 (Y plane, interlaced VU bytes) and trim bpl to real width
 void trimConvertNV12ToNV21(int width, int height, int srcBpl, void *src, void *dst)
@@ -414,7 +425,7 @@ void NV12ToP411Separate(int width, int height, void *srcY, void *srcUV, void *ds
     p = q = 0;
     for (i = 0; i < height / 2; i++) {
         for (j = 0; j < width; j++) {
-            if (j % 2 == 0) {
+            if ((j & 1) == 0) { // (j & 1) is equivalent to (j % 2) but optimized
                 pdstU[p]= (psrcUV[i * width + j] & 0xFF) ;
                 p++;
            } else {
@@ -425,10 +436,43 @@ void NV12ToP411Separate(int width, int height, void *srcY, void *srcUV, void *ds
     }
 }
 
+// P411's Y, U, V are separated. But the NV21's U and V are interleaved.
+void NV21ToP411Separate(int width, int height, void *srcY, void *srcUV, void *dst)
+{
+    int i, j, p, q;
+    unsigned char *pdstU, *pdstV;
+    unsigned char *psrcUV;
+
+    // copy Y data
+    memcpy(dst, srcY, width * height);
+    // copy U data and V data
+    psrcUV = (unsigned char *)srcUV;
+    pdstU = (unsigned char *)dst + width * height;
+    pdstV = pdstU + width * height / 4;
+    p = q = 0;
+    for (i = 0; i < height / 2; i++) {
+        for (j = 0; j < width; j++) {
+            if ((j & 1) == 0) { // (j & 1) is equivalent to (j % 2) but optimized
+                pdstV[p]= (psrcUV[i * width + j] & 0xFF) ;
+                p++;
+           } else {
+                pdstU[q]= (psrcUV[i * width + j] & 0xFF);
+                q++;
+            }
+        }
+    }
+}
+
 // P411's Y, U, V are seperated. But the NV12's U and V are interleaved.
 void NV12ToP411(int width, int height, void *src, void *dst)
 {
     NV12ToP411Separate(width, height, src, (void *)((unsigned char *)src + width * height), dst);
+}
+
+// P411's Y, U, V are seperated. But the NV21's U and V are interleaved.
+void NV21ToP411(int width, int height, void *src, void *dst)
+{
+    NV21ToP411Separate(width, height, src, (void *)((unsigned char *)src + width * height), dst);
 }
 
 // Re-pad YUV420 format image, the format can be YV12, YU12 or YUV420 planar.
@@ -636,6 +680,10 @@ int V4L2Format(const char *cameraParamsFormat)
     len = strlen(CameraParameters::PIXEL_FORMAT_JPEG);
     if (strncmp(cameraParamsFormat, CameraParameters::PIXEL_FORMAT_JPEG, len) == 0)
         return V4L2_PIX_FMT_JPEG;
+
+    len = strlen(CameraParameters::PIXEL_FORMAT_YUV422I);
+    if (strncmp(cameraParamsFormat, CameraParameters::PIXEL_FORMAT_YUV422I, len) == 0)
+        return V4L2_PIX_FMT_YUYV;
 
     LOGE("invalid format %s", cameraParamsFormat);
     return 0;

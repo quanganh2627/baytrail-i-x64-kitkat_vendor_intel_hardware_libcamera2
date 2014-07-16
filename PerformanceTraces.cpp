@@ -14,12 +14,11 @@
  * limitations under the License.
  */
 
-#include <utils/Timers.h>
-
 #define LOG_TAG "Atom_PerformanceTraces"
-#include "LogHelper.h"
 
+#include <fcntl.h>
 #include <time.h>
+#include <utils/Timers.h>
 #include "PerformanceTraces.h"
 
 namespace android {
@@ -98,6 +97,7 @@ static PerformanceTimer gSwitchCameras;
 static PerformanceTimer gAAAProfiler;
 static PerformanceTimer gPnPBreakdown;
 static PerformanceTimer gHDRShot2Preview;
+static PerformanceTimer gIOBreakdown;
 
 static int gFaceLockFrame = -1;
 static bool gHDRCalled = false;
@@ -105,6 +105,20 @@ static bool gSwitchCamerasCalled = false;
 static bool gSwitchCamerasOriginalVideoMode = false;
 static bool gSwitchCamerasVideoMode = false;
 static int gSwitchCamerasOriginalCameraId = 0;
+
+const int MEM_DATA_LEN = 192;
+const char FLUSH_CTRL[2] = {0x0A, 0x0};
+const char DBG_CTRL[3] = {0x34,0x0A,0x0};
+const char* MEM_DBG ="/data/dbgopt";
+const char* MEM_PIPE = "/sys/kernel/debug/tracing/trace_pipe";
+const char* MEM_PIPE_FLUSH = "/sys/kernel/debug/tracing/trace";
+
+bool IOBreakdown::mMemInfoEnabled = false;
+int IOBreakdown::mPipeFD = -1;
+int IOBreakdown::mDbgFD = -1;
+int IOBreakdown::mPipeflushFD = -1;
+Mutex IOBreakdown::mMemMutex;
+
 /**
  * Reset the flags that enable the different performance traces
  * This is needed during HAL open so that we can turn off the performance
@@ -508,6 +522,141 @@ void HDRShot2Preview::stop(void)
         gHDRShot2Preview.stop();
     }
 }
+
+/**
+ * To indicate the performance and memory for every IOCTL call.
+ *
+ * @arg func, the function name which called it.
+ * @arg note, a string printed with IOCTL information.
+ */
+IOBreakdown::IOBreakdown(const char *func, const char *note):
+ mFuncName(func)
+,mNote(note)
+{
+    if (gIOBreakdown.isRunning()) {
+        gIOBreakdown.timeUs();
+        gIOBreakdown.lastTimeUs();
+    }
+}
+
+IOBreakdown::~IOBreakdown()
+{
+    char memData[MEM_DATA_LEN]={0};
+    if (!mNote)
+        mNote = "";
+    if (mMemInfoEnabled) {
+        mMemMutex.lock();
+
+        if (mDbgFD < 0) {
+            LOGD("dgbopt isn't opened.");
+        } else {
+            ::write(mDbgFD, DBG_CTRL, 3);
+            if (mPipeFD < 0) {
+                LOGD("trace_pipe isn't opened.");
+            } else {
+                int n;
+                do {
+                    n = ::read(mPipeFD, memData, MEM_DATA_LEN - 1);
+                }while (n<=0);
+                LOGD("memory <%s,%d>:%s", mNote, n, memData);
+            }
+        }
+        mMemMutex.unlock();
+    }
+
+    LOGD("IOBreakdown-step %s:%s, Time: %lld us, Diff: %lld us",
+             mFuncName, mNote, gIOBreakdown.timeUs(), gIOBreakdown.lastTimeUs());
+}
+
+/**
+ * Enable more detailed breakdown analysis that shows  how long
+ * intermediate steps consumed
+ */
+void IOBreakdown::enableBD(bool set)
+{
+    gIOBreakdown.mRequested = set;
+}
+
+/**
+ * Enable more detailed memory analysis that shows how much memory
+ * intermediate steps consumed
+ */
+void IOBreakdown::enableMemInfo(bool set)
+{
+    mMemInfoEnabled = set;
+}
+
+/**
+ * Start the log breakdown performance tracer.
+ */
+void IOBreakdown::start(void)
+{
+    struct stat st;
+
+    if (gIOBreakdown.isRequested()) {
+        gIOBreakdown.formattedTrace("IOBreakdown", __FUNCTION__);
+        gIOBreakdown.start();
+    }
+
+    if (mMemInfoEnabled) {
+        if (stat (MEM_DBG, &st) == -1) {
+            LOGE("Error stat MEM_DBG: %s", strerror(errno));
+            return ;
+        }
+
+        if (stat (MEM_PIPE, &st) == -1) {
+            LOGE("Error stat MEM_PIPE: %s", strerror(errno));
+            return ;
+        }
+
+        if (stat (MEM_PIPE_FLUSH, &st) == -1) {
+            LOGE("Error stat MEM_PIPE_FLUSH: %s", strerror(errno));
+            return ;
+        }
+
+        if ((mDbgFD = ::open(MEM_DBG, O_WRONLY))<0) {
+            LOGD("Fail to open dbgopt:%s", strerror(errno));
+        } else if ((mPipeFD = ::open(MEM_PIPE, O_RDONLY))<0) {
+            LOGD("Fail to open trace_pipe:%s", strerror(errno));
+        } else if ((mPipeflushFD = ::open(MEM_PIPE_FLUSH, O_WRONLY))<0) {
+            LOGD("Fail to open trace_pipe_flush:%s", strerror(errno));
+        }
+
+        if (mPipeflushFD >= 0) {
+            ::write(mPipeflushFD, FLUSH_CTRL, 2);
+            if (::close(mPipeflushFD) < 0)
+                LOGE("Close trace_pipe_flush error!");
+
+            mPipeflushFD = -1;
+        }
+    }
+}
+
+/**
+ * Stop the performance tracer.
+ */
+void IOBreakdown::stop(void)
+{
+    if (gIOBreakdown.isRunning()) {
+        gIOBreakdown.formattedTrace("IOBreakdown", __FUNCTION__);
+        gIOBreakdown.stop();
+    }
+
+    if (mMemInfoEnabled) {
+        if(mPipeFD >= 0)
+            if (::close(mPipeFD) < 0)
+                LOGE("Close trace_pipe error!");
+
+        if(mDbgFD >= 0)
+            if (::close(mDbgFD) < 0)
+                LOGE("Close dbgopt error!");
+
+        mPipeFD = -1;
+        mDbgFD = -1;
+        mMemInfoEnabled = false;
+    }
+}
+
 
 #else // LIBCAMERA_RD_FEATURES
 void reset(void) {}

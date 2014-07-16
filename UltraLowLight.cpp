@@ -22,6 +22,7 @@
 #include "CameraDump.h"
 #include "LogHelper.h"
 #include "PlatformData.h"
+#include "MemoryUtils.h"
 
 #include "morpho_image_stabilizer3.h"
 
@@ -52,7 +53,7 @@ struct UltraLowLight::MorphoULL {
     MorphoULL(): workingBuffer(NULL) {};
 };
 
-UltraLowLight::UltraLowLight(Callbacks *callbacks) : mMorphoCtrl(NULL),
+UltraLowLight::UltraLowLight(Callbacks *callbacks, sp<WarperService> warperService) : mMorphoCtrl(NULL),
                                  mIntelUllCfg(NULL),
                                  mCallbacks(callbacks),
                                  mState(ULL_STATE_NULL),
@@ -62,7 +63,10 @@ UltraLowLight::UltraLowLight(Callbacks *callbacks) : mMorphoCtrl(NULL),
                                  mCurrentPreset(0),
                                  mUserMode(ULL_OFF),
                                  mTrigger(false),
-                                 mUseIntelULL(PlatformData::useIntelULL())
+                                 mUseIntelULL(PlatformData::useIntelULL()),
+                                 mWarper(warperService),
+                                 mZoomFactor(0),
+                                 mCopyBuffsAllocated(false)
 {
     if (mUseIntelULL) {
         mState = ULL_STATE_UNINIT;
@@ -86,13 +90,20 @@ UltraLowLight::~UltraLowLight()
         delete mMorphoCtrl;
         mMorphoCtrl = NULL;
     }
+
+    if (mCopyBuffsAllocated) {
+        MemoryUtils::freeAtomBuffer(mSnapshotCopy);
+        MemoryUtils::freeAtomBuffer(mPostviewCopy);
+    }
 }
 
 void UltraLowLight::setMode(ULLMode aMode) {
 
     mUserMode = aMode;
-    if (mUserMode == ULL_ON)
+    if (mUserMode == ULL_ON) {
         mTrigger = true;
+        if (!PlatformData::isGraphicGen()) mWarper->updateStatus(true);
+    }
 }
 
 /**
@@ -231,9 +242,6 @@ status_t UltraLowLight::addInputFrame(AtomBuffer *snap, AtomBuffer *pv)
     }
 
     mInputBuffers.push(*snap);
-
-    // Store the postview here, although no processing done with it yet.
-    // This is to make more uniform buffer flow with the snapshot buffs.
     mPostviewBuffs.push(*pv);
 
     if (mInputBuffers.size() == maxBufs) {
@@ -256,8 +264,10 @@ status_t UltraLowLight::addSnapshotMetadata(PictureThread::MetaData &metadata, i
     mSnapMetadata = metadata;
 
     if (mUseIntelULL) {
-        LOG1("Passing exposure parameters to Intel ULL");
+        LOG1("Passing configuration parameters to Intel ULL");
         mIntelUllCfg->exposure = exposure;
+        // set alligment and warping to be done inside ia_cp_ull_compose (on CPU)
+        mIntelUllCfg->imreg_fallback = NULL;
     }
 
     return NO_ERROR;
@@ -325,7 +335,6 @@ status_t UltraLowLight::getInputBuffers(Vector<AtomBuffer> *inputs)
 
 /**
  * returns the postview buffers given as input with addInputFrame()
- * NOTE: no processing done for the postviews at the moment
  */
 status_t UltraLowLight::getPostviewBuffers(Vector<AtomBuffer> *postviews)
 {
@@ -334,9 +343,13 @@ status_t UltraLowLight::getPostviewBuffers(Vector<AtomBuffer> *postviews)
         return BAD_VALUE;
     }
 
-    // No need to iterate, like in getInputBuffers(), as
-    // we don't need to alter buffer status (at the moment).
-    *postviews = mPostviewBuffs;
+    Vector<AtomBuffer>::iterator it = mPostviewBuffs.begin();
+
+    for (;it != mPostviewBuffs.end(); ++it) {
+        it->status = FRAME_STATUS_OK;
+        postviews->push(*it);
+    }
+
     mPostviewBuffs.clear();
 
     return NO_ERROR;
@@ -452,7 +465,10 @@ status_t UltraLowLight::initIntelULL(int w, int h, ia_binary_data *aiqb_data)
         return NO_MEMORY;
     }
 
-    err = ia_cp_ull_init(w, h, aiqb_data);
+    // set image registration to be done inside ia_cp_ull_compose()
+    mIntelUllCfg->imreg_fallback = NULL;
+
+    err = ia_cp_ull_init(w, h, aiqb_data, ia_cp_tgt_ia);
     if (err != ia_err_none) {
         LOGE("@%s: failed to initialize ULL capture", __FUNCTION__);
         return ia_error_to_status_t(err);
@@ -551,16 +567,42 @@ status_t UltraLowLight::processIntelULL()
     status_t ret = NO_ERROR;
 
     ia_frame out, out_pv;
-    ia_frame * input = new ia_frame[mInputBuffers.size()];
-    if (input == NULL) {
-        LOGE("Input ia_frame sequence allocation failed.");
+    ia_frame * input    = new ia_frame[mInputBuffers.size()];
+    ia_frame * postview = new ia_frame[mInputBuffers.size()];
+    if (input == NULL || postview == NULL) {
+        LOGE("ia_frame sequence allocation failed.");
         return NO_MEMORY;
+    }
+
+    bool genGraphicUsed = PlatformData::isGraphicGen();
+
+    if (!genGraphicUsed) {
+        mIntelUllCfg->imreg_fallback = new int[mInputBuffers.size()];
+        if (mIntelUllCfg->imreg_fallback == NULL) {
+            LOGE("imreg_fallback array allocation failed.");
+            return NO_MEMORY;
+        }
     }
 
     int i = 0;
     Vector<AtomBuffer>::const_iterator end = mInputBuffers.end();
     for (Vector<AtomBuffer>::const_iterator iter = mInputBuffers.begin(); iter != end; ++iter) {
-        AtomToIaFrameBuffer(iter, &input[i++]);
+        AtomToIaFrameBuffer(iter, &input[i]);
+
+        if (!genGraphicUsed) {
+            mIntelUllCfg->imreg_fallback[i] = 0;
+            if (i != 0) {
+                ret = gpuImageRegistration((AtomBuffer*) &mInputBuffers[0], (AtomBuffer*) &mInputBuffers[i], &(mIntelUllCfg->imreg_fallback[i]));
+                if (ret != NO_ERROR) {
+                    LOGE("GPU image registration failed.");
+                    delete[] mIntelUllCfg->imreg_fallback;
+                    mIntelUllCfg->imreg_fallback = NULL;
+                    return ret;
+                }
+            }
+        }
+
+        i++;
         if (gLogLevel & CAMERA_DEBUG_ULL_DUMP) {
             String8 yuvName("/data/ull_yuv_dump_");
             yuvName.appendFormat("id_%d_%d.yuv",mULLCounter,i);
@@ -568,16 +610,22 @@ status_t UltraLowLight::processIntelULL()
         }
     }
 
+    i = 0;
+    end = mPostviewBuffs.end();
+    for (Vector<AtomBuffer>::const_iterator iter = mPostviewBuffs.begin(); iter != end; ++iter) {
+        AtomToIaFrameBuffer(iter, &postview[i]);
+        i++;
+    }
+
     mOutputBuffer = mInputBuffers[0];
     mOutputPostView = mPostviewBuffs[0];
     AtomToIaFrameBuffer(&mOutputBuffer, &out);
     AtomToIaFrameBuffer(&mOutputPostView, &out_pv);
-    // Intel ull does not process postview buffer
-    // set postview buffer status to FRAME_STATUS_SKIPPED to indicate it's not ULL processed
-    mOutputPostView.status = FRAME_STATUS_SKIPPED;
+
+    mIntelUllCfg->zoom_factor = mZoomFactor;
 
     LOG1("Intel ULL processing...");
-    ia_err error = ia_cp_ull_compose(&out, &out_pv, input, input, mInputBuffers.size(), mIntelUllCfg);
+    ia_err error = ia_cp_ull_compose(&out, &out_pv, input, postview, mInputBuffers.size(), mIntelUllCfg);
     if (error != ia_err_none) {
         LOGE("Intel ULL failed with error status %d", error);
         ret = ia_error_to_status_t(error);
@@ -599,7 +647,16 @@ status_t UltraLowLight::processIntelULL()
     if (input != NULL) {
         delete[] input;
         input = NULL;
+    }
 
+    if (postview != NULL) {
+        delete[] postview;
+        postview = NULL;
+    }
+
+    if (mIntelUllCfg->imreg_fallback != NULL) {
+        delete[] mIntelUllCfg->imreg_fallback;
+        mIntelUllCfg->imreg_fallback = NULL;
     }
 
     return ret;
@@ -821,8 +878,10 @@ bool UltraLowLight::updateTrigger(bool trigger)
     change = mTrigger == trigger ? false:true;
     mTrigger = trigger;
 
-    if (change)
+    if (change) {
         LOG1("New trigger: %s", mTrigger?"true":"false");
+        if (!PlatformData::isGraphicGen() && mUserMode != ULL_ON) mWarper->updateStatus(mTrigger);
+    }
 
     return change;
 }
@@ -849,5 +908,98 @@ UltraLowLight::State UltraLowLight::getState()
     return mState;
 }
 
+status_t UltraLowLight::gpuImageRegistration(AtomBuffer *target, AtomBuffer *source, int *imregFallback) {
+
+    status_t status = NO_ERROR;
+
+    ia_frame target_ia, source_ia;
+    AtomToIaFrameBuffer(target, &target_ia);
+    AtomToIaFrameBuffer(source, &source_ia);
+
+    ia_cp_me_cfg cfg;
+    cfg.pyr_depth = 4;
+    cfg.model = ia_cp_me_projective;
+    ia_cp_me_result result;
+    ia_cp_global_me(&target_ia, &source_ia, &cfg, &result);
+
+    // warping on the GPU
+    if (!result.fallback) {
+        double projective[PROJ_MTRX_DIM][PROJ_MTRX_DIM];
+        for (int i = 0; i < PROJ_MTRX_DIM; i++) {
+            for (int j = 0; j < PROJ_MTRX_DIM; j++) {
+                projective[i][j] = result.transform[i][j];
+                LOG1("projective[%d][%d] %f", i, j, projective[i][j]);
+            }
+        }
+        status = mWarper->warpBackFrame(source, projective);
+        if (status != NO_ERROR) {
+            LOGE("GPU warping failed.");
+            return status;
+        }
+    }
+    else {
+        *imregFallback = 1;
+    }
+
+    return NO_ERROR;
+}
+
+void UltraLowLight::setZoomFactor(unsigned int zoom)
+{
+    LOG1("@%s :zoomFactor=%d", __FUNCTION__, zoom);
+    mZoomFactor = zoom;
+}
+
+void UltraLowLight::allocateCopyBuffers(AtomBuffer snapshotDescr, AtomBuffer postviewDescr)
+{
+    LOG1("@%s :copyBuffersAllocated=%d", __FUNCTION__, mCopyBuffsAllocated);
+    if (!mCopyBuffsAllocated) {
+        mSnapshotCopy = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_SNAPSHOT);
+        MemoryUtils::allocateAtomBuffer(mSnapshotCopy, snapshotDescr, mCallbacks);
+
+        mPostviewCopy = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
+        MemoryUtils::allocateAtomBuffer(mPostviewCopy, postviewDescr, mCallbacks);
+
+        mCopyBuffsAllocated = true;
+    }
+}
+
+AtomBuffer* UltraLowLight::getSnapshotCopyZoom(AtomBuffer *snapshotBuff)
+{
+    ia_err error;
+    ia_frame tmpFrame;
+
+    LOG1("@%s", __FUNCTION__);
+
+    if (mCopyBuffsAllocated) {
+        memcpy(mSnapshotCopy.dataPtr, snapshotBuff->dataPtr, snapshotBuff->size);
+        AtomToIaFrameBuffer(&mSnapshotCopy, &tmpFrame);
+        error = ia_cp_zoom_frame(&tmpFrame, mZoomFactor);
+        if (error != ia_err_none) {
+            LOGE("Zoom snapshot frame failed %d", error);
+        }
+    }
+
+    return &mSnapshotCopy;
+}
+
+AtomBuffer* UltraLowLight::getPostviewCopyZoom(AtomBuffer *postviewBuff)
+{
+    ia_err error;
+    ia_frame tmpFrame;
+
+    LOG1("@%s", __FUNCTION__);
+
+    if (mCopyBuffsAllocated) {
+        memcpy(mPostviewCopy.dataPtr, postviewBuff->dataPtr, postviewBuff->size);
+        AtomToIaFrameBuffer(&mPostviewCopy, &tmpFrame);
+        error = ia_cp_zoom_frame(&tmpFrame, mZoomFactor);
+        if (error != ia_err_none) {
+            LOGE("Zoom postview frame failed %d", error);
+        }
+    }
+
+    return &mPostviewCopy;
+}
 #endif // ENABLE_INTEL_EXTRAS
 } //namespace android

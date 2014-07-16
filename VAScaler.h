@@ -38,14 +38,13 @@
 #include <ui/GraphicBuffer.h>
 #include "IHWScaler.h"
 #include "VideoVPPBase.h"
+#include "AtomCommon.h"
 
 #define MAX_NUM_BUFFER_STORE 32
 #define BufferID int
 #define NO_ZOOM  1.0
 
 #define HAL_PIXEL_FORMAT_NV12 HAL_PIXEL_FORMAT_YUV420PackedSemiPlanar_INTEL
-
-#define ALIGN_WIDTH(x, a) (((x) + ((a)-1)) & ~((a)-1))
 
 namespace android {
 

@@ -25,6 +25,7 @@
 #include "PlatformData.h"
 #include <system/camera.h>
 #include "AtomCP.h"
+#include "JpegCapture.h"
 
 namespace android {
 
@@ -47,6 +48,8 @@ PostProcThread::PostProcThread(ICallbackPostProc *postProcDone, PanoramaThread *
     ,mCameraOrientation(0)
     ,mIsBackCamera(false)
     ,mCameraId(cameraId)
+    ,mAutoLowLightReporting(false)
+    ,mLastLowLightValue(false)
 {
     LOG1("@%s", __FUNCTION__);
 
@@ -100,7 +103,10 @@ void PostProcThread::getDefaultParameters(CameraParameters *params, CameraParame
         return;
     }
     // Set maximum number of detectable faces
-    params->set(CameraParameters::KEY_MAX_NUM_DETECTED_FACES_HW, MAX_FACES_DETECTABLE);
+    if (PlatformData::supportsContinuousJpegCapture(cameraId))
+        params->set(CameraParameters::KEY_MAX_NUM_DETECTED_FACES_HW, NV12_META_MAX_FACE_COUNT);
+    else
+        params->set(CameraParameters::KEY_MAX_NUM_DETECTED_FACES_HW, MAX_FACES_DETECTABLE);
     intel_params->set(IntelCameraParameters::KEY_SMILE_SHUTTER_THRESHOLD, STRINGIFY(SMILE_THRESHOLD));
     intel_params->set(IntelCameraParameters::KEY_BLINK_SHUTTER_THRESHOLD, STRINGIFY(BLINK_THRESHOLD));
     intel_params->set(IntelCameraParameters::KEY_SUPPORTED_SMILE_SHUTTER, PlatformData::supportedSmileShutter(cameraId));
@@ -138,7 +144,8 @@ void PostProcThread::previewBufferCallback(AtomBuffer *buff, ICallbackPreview::C
         return;
     }
 
-    if (mFaceDetectionRunning || mPanoramaThread->getState() == PANORAMA_DETECTING_OVERLAP) {
+    if (mAutoLowLightReporting || mFaceDetectionRunning ||
+        mPanoramaThread->getState() == PANORAMA_DETECTING_OVERLAP) {
         if (sendFrame(buff) < 0) {
            buff->owner->returnBuffer(buff);
         }
@@ -157,7 +164,7 @@ status_t PostProcThread::handleMessageStartFaceDetection()
     if (mSmartShutter.smartRunning && mSmartShutter.blinkRunning)
         mFaceDetector->setBlinkThreshold(mSmartShutter.blinkThreshold);
 
-    mRotation = SensorThread::getInstance(this->getCameraID())->registerOrientationListener(this);
+    mRotation = SensorThread::getInstance()->registerOrientationListener(this);
 
     // Reset the face detection state:
     mLastReportedNumberOfFaces = 0;
@@ -190,7 +197,7 @@ status_t PostProcThread::handleMessageStopFaceDetection()
         mFaceDetectionRunning = false;
         status = mFaceDetector->clearFacesDetected();
 
-        SensorThread::getInstance(this->getCameraID())->unRegisterOrientationListener(this);
+        SensorThread::getInstance()->unRegisterOrientationListener(this);
     }
 
     mMessageQueue.reply(MESSAGE_ID_STOP_FACE_DETECTION, status);
@@ -530,7 +537,7 @@ status_t PostProcThread::handleExit()
     status_t status = NO_ERROR;
 
     if (mFaceDetectionRunning) {
-        SensorThread::getInstance(this->getCameraID())->unRegisterOrientationListener(this);
+        SensorThread::getInstance()->unRegisterOrientationListener(this);
     }
 
     mThreadRunning = false;
@@ -590,6 +597,22 @@ int PostProcThread::sendFrame(AtomBuffer *img)
         return 0;
     else
         return -1;
+}
+
+void PostProcThread::setAutoLowLightReporting(bool value)
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_SET_AUTO_LOW_LIGHT;
+    msg.data.config.value = value ? 1 : 0;
+    mMessageQueue.send(&msg);
+}
+
+status_t PostProcThread::handleMessageSetAutoLowLight(MessageConfig &msg)
+{
+    LOG1("@%s", __FUNCTION__);
+    mAutoLowLightReporting = (msg.value == 1);
+    return OK;
 }
 
 bool PostProcThread::threadLoop()
@@ -677,6 +700,9 @@ status_t PostProcThread::waitForAndExecuteMessage()
         case MESSAGE_ID_SET_ROTATION:
             status = handleMessageSetRotation(msg.data.config);
             break;
+        case MESSAGE_ID_SET_AUTO_LOW_LIGHT:
+            status = handleMessageSetAutoLowLight(msg.data.config);
+            break;
         default:
             status = INVALID_OPERATION;
             break;
@@ -705,7 +731,7 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
     LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    if (mFaceDetectionRunning) {
+    if (mFaceDetectionRunning && !PlatformData::supportsContinuousJpegCapture(mCameraId)) {
         LOG2("%s: Face detection executing", __FUNCTION__);
         int num_faces;
         bool smile = false;
@@ -755,7 +781,7 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
         }
 
         camera_face_t faces[num_faces];
-        camera_frame_metadata_t face_metadata;
+        extended_frame_metadata_t extended_face_metadata;
 
         ia_face_state faceState;
         faceState.faces = new ia_face[num_faces];
@@ -764,8 +790,8 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
             return NO_MEMORY;
         }
 
-        face_metadata.number_of_faces = mFaceDetector->getFaces(faces, frameData.width, frameData.height);
-        face_metadata.faces = faces;
+        extended_face_metadata.number_of_faces = mFaceDetector->getFaces(faces, frameData.width, frameData.height);
+        extended_face_metadata.faces = faces;
         mFaceDetector->getFaceState(&faceState, frameData.width, frameData.height, mZoomRatio);
 
         // Find recognized faces from the data (ID is positive), and pick the first one:
@@ -787,20 +813,23 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
         }
 
         // Swap also the face in face metadata going to the application to match the swapped faceState info
-        if (face_metadata.number_of_faces > 0 && faceForFocusInd > 0) {
-            camera_face_t faceMetaTmp = face_metadata.faces[0];
-            face_metadata.faces[0] = face_metadata.faces[faceForFocusInd];
-            face_metadata.faces[faceForFocusInd] = faceMetaTmp;
+        if (extended_face_metadata.number_of_faces > 0 && faceForFocusInd > 0) {
+            camera_face_t faceMetaTmp = extended_face_metadata.faces[0];
+            extended_face_metadata.faces[0] = extended_face_metadata.faces[faceForFocusInd];
+            extended_face_metadata.faces[faceForFocusInd] = faceMetaTmp;
         }
 
         // pass face info to the callback listener (to be used for 3A)
-        if (face_metadata.number_of_faces > 0 || mLastReportedNumberOfFaces != 0) {
-            mLastReportedNumberOfFaces = face_metadata.number_of_faces;
+        if (extended_face_metadata.number_of_faces > 0 || mLastReportedNumberOfFaces != 0) {
+            mLastReportedNumberOfFaces = extended_face_metadata.number_of_faces;
             mPostProcDoneCallback->facesDetected(&faceState);
         }
 
+        // TODO passing real auto LLS information from 3A results
+        extended_face_metadata.needLLS = false;
+
         // .. and towards the application
-        mpListener->facesDetected(&face_metadata);
+        mpListener->facesDetected(&extended_face_metadata);
 
         delete[] faceState.faces;
         faceState.faces = NULL;
@@ -823,7 +852,11 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
                 mSmartShutter.captureForced = false;
             }
         }
+    } else if ((mFaceDetectionRunning || mAutoLowLightReporting) &&
+               PlatformData::supportsContinuousJpegCapture(mCameraId)) {
+        status = handleExtIspFaceDetection(frame.img.auxBuf);
     }
+
     // panorama detection, running synchronously
     if (mPanoramaThread->getState() == PANORAMA_DETECTING_OVERLAP) {
         mPanoramaThread->sendFrame(frame.img);
@@ -835,6 +868,72 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
     }
 
     return status;
+}
+
+status_t PostProcThread::handleExtIspFaceDetection(AtomBuffer *auxBuf)
+{
+    if (auxBuf == NULL) {
+        LOGE("No metadata buffer. FD bailing out.");
+        return UNKNOWN_ERROR;
+    }
+
+    unsigned char *nv12meta = ((unsigned char*)auxBuf->dataPtr) + NV12_META_START;
+    uint16_t numFaces = 0;
+    if (mFaceDetectionRunning) {
+        uint16_t fdState = getU16fromFrame(nv12meta, NV12_META_FD_ONOFF_ADDR);
+        if (fdState != 1) {
+            LOGW("Face detection is OFF in metadata, despite mFaceDetectionRunning being true. FD bailing out.");
+            return UNKNOWN_ERROR;
+        }
+
+        numFaces = getU16fromFrame(nv12meta, NV12_META_FD_COUNT_ADDR);
+        if (numFaces > NV12_META_MAX_FACE_COUNT) {
+            LOGE("Face count bigger than 16 in metadata, considering metadata corrupted. FD bailing out.");
+            return UNKNOWN_ERROR;
+        }
+    }
+
+    camera_face_t faces[numFaces];
+    extended_frame_metadata_t extended_face_metadata;
+    extended_face_metadata.faces = faces;
+    extended_face_metadata.number_of_faces = numFaces;
+
+    for (int i = 0, addr = 0; i < numFaces; i++) {
+        // unsupported fields
+        faces[i].id = 0;
+        faces[i].left_eye[0]  = faces[i].left_eye[1]  = -2000;
+        faces[i].right_eye[0] = faces[i].right_eye[1] = -2000;
+        faces[i].mouth[0]     = faces[i].mouth[1]     = -2000;
+
+        // supported fields
+        faces[i].rect[0] = (int16_t) getU16fromFrame(nv12meta, NV12_META_FIRST_FACE_ADDR + addr);
+        addr += 2;
+        faces[i].rect[1] = (int16_t) getU16fromFrame(nv12meta, NV12_META_FIRST_FACE_ADDR + addr);
+        addr += 2;
+        faces[i].rect[2] = (int16_t) getU16fromFrame(nv12meta, NV12_META_FIRST_FACE_ADDR + addr);
+        addr += 2;
+        faces[i].rect[3] = (int16_t) getU16fromFrame(nv12meta, NV12_META_FIRST_FACE_ADDR + addr);
+        addr += 2;
+        faces[i].score   = (int16_t) getU16fromFrame(nv12meta, NV12_META_FIRST_FACE_ADDR + addr) + 1; /* android valid range is 1 to 100. ext isp provides 0 to 99 */
+        addr += 2;
+        // skip the angle
+        addr += 2;
+    }
+
+    // get the needLLS
+    extended_face_metadata.needLLS = getU16fromFrame(nv12meta, NV12_META_NEED_LLS_ADDR);
+
+    // handle low light status internally ...
+    if (mAutoLowLightReporting &&
+        mLastLowLightValue != extended_face_metadata.needLLS) {
+        mPostProcDoneCallback->lowLightDetected(extended_face_metadata.needLLS);
+        mLastLowLightValue = extended_face_metadata.needLLS;
+    }
+
+    // ...and send face info towards the application
+    mpListener->facesDetected(&extended_face_metadata);
+
+    return OK;
 }
 
 void PostProcThread::orientationChanged(int orientation)

@@ -30,7 +30,7 @@ public:
     unsigned int getDepth() { return depth; };
     int enqueue(X& val);
     X* peek(unsigned int index);
-    int dequeue(X *val);
+    int dequeue(X *val = NULL);
     void reset();
     unsigned int getCount();
 };
@@ -72,7 +72,7 @@ template <class X> X* AtomFifo<X>::peek(unsigned int index)
     return &(buffer[(eqIdx + depth - 1 - index) % depth]);
 }
 
-template <class X> int AtomFifo<X>::dequeue(X *val = NULL)
+template <class X> int AtomFifo<X>::dequeue(X *val)
 {
     if (count == 0)
         return -1;  // empty !

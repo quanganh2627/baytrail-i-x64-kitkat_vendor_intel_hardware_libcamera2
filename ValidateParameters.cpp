@@ -19,12 +19,13 @@
 #include "ValidateParameters.h"
 #include "AtomCommon.h"
 #include "LogHelper.h"
+#include "PlatformData.h"
 
 #include <stdlib.h>
 
 namespace android {
 
-static bool validateSize(int width, int height, Vector<Size> &supportedSizes)
+static bool validateSize(int width, int height, Vector<Size> &supportedSizes, bool onlyWarning)
 {
     if (width < 0 || height < 0)
         return false;
@@ -33,7 +34,52 @@ static bool validateSize(int width, int height, Vector<Size> &supportedSizes)
         if (width == it->width && height == it->height)
             return true;
 
-    LOGW("WARNING: The Size %dx%d is not fully supported. Some issues might occur!", width, height);
+    if (onlyWarning) {
+        LOGW("WARNING: The Size %dx%d is not fully supported. Some issues might occur!", width, height);
+        return true;
+    } else {
+        LOGE("Invalid size %dx%d is not in supported list.", width, height);
+        return false;
+    }
+}
+
+/**
+ * Validate that given parameter value is allowed boolean string
+ * ("true","false" or not set) and true value is only set, when
+ * isSupported() is true.
+ *
+ * \param paramName [in] name of parameter to validate
+ * \param paramSupportedName [in] isSupported parameter name
+ * \param params [in] camera parameters set
+ *
+ *  \return true if parameter value is valid, else false
+ **/
+static bool validateBoolParameter(const char* paramName, const char* paramSupportedName, const CameraParameters *params)
+{
+    LOG2("@%s", __FUNCTION__);
+
+    if (paramName == NULL || paramSupportedName == NULL || params == NULL) {
+        LOGE("%s: Invalid argument!",  __FUNCTION__);
+        return false;
+    }
+
+    const char* value = params->get(paramName);
+
+    // allow not set (it mean false value)
+    if (value == NULL)  {
+        return true;
+    }
+
+    if (strcmp(value, CameraParameters::TRUE) != 0  && strcmp(value, CameraParameters::FALSE) != 0) {
+        LOGE("Bad value(%s) for %s. Not bool value.", value,  paramName);
+        return false;
+    }
+
+    if (isParameterSet(paramName, *params) && !isParameterSet(paramSupportedName, *params)) {
+        LOGE("bad value for %s, is set, but not supported", paramName);
+        return false;
+    }
+
     return true;
 }
 
@@ -85,16 +131,172 @@ bool validateString(const char* value,  const char* supportList)
     return false;
 }
 
-status_t validateParameters(const CameraParameters *params)
+static bool isParamsEqual(const char *oldParam, const char *newParam)
 {
-    LOG1("@%s: params = %p", __FUNCTION__, params);
+    // same if both are null
+    if (oldParam == NULL && newParam == NULL) {
+        return true;
+    }
+
+    // different if one is null
+    if (oldParam == NULL || newParam == NULL) {
+        return false;
+    }
+
+    // both set, so compare strings
+    return (strcmp(oldParam,newParam) == 0);
+}
+
+/**
+ * Validate read-only prarameters
+ *
+ * This function check that values of given parameters are same in old and
+ * new parameters sets.
+ *
+ * \param oldParams    is pointer to old parameters
+ * \param params       is pointer new parameters
+ * \param ...          is NULL terminated list of parameters to validate
+ *
+ * \return true if no change, false if if some of parameter is changed
+ */
+static bool validateReadOnlyParameters(const CameraParameters *oldParams, const CameraParameters *params, ...)
+{
+    LOG2("@%s", __FUNCTION__);
+
+    va_list arguments;
+    const char* name = NULL;
+
+    va_start(arguments, params);
+    name = va_arg(arguments, const char*);
+
+    while (name != NULL) {
+        if(!isParamsEqual(oldParams->get(name), params->get(name))) {
+              va_end(arguments);
+              LOGE("change of read-only parameter %s", name);
+              return false;
+        }
+        name = va_arg(arguments, const char*);
+    }
+
+    va_end(arguments);
+    return true;
+}
+
+status_t validateParameters(const CameraParameters *oldParams, const CameraParameters *params, int cameraId)
+{
+    LOG1("@%s: oldparams= %p, params = %p", __FUNCTION__, oldParams, params);
+
+    bool sizeErrorOnlyWarning(true);
+    if (PlatformData::supportsContinuousJpegCapture(cameraId)) {
+        sizeErrorOnlyWarning = false;
+    }
+
+    // READ-ONLY PARAMETERS
+    if (!validateReadOnlyParameters(oldParams, params,
+                                    // Google Parameters
+                                    CameraParameters::KEY_SUPPORTED_PREVIEW_SIZES,
+                                    CameraParameters::KEY_SUPPORTED_PREVIEW_FPS_RANGE,
+                                    CameraParameters::KEY_SUPPORTED_PREVIEW_FORMATS,
+                                    CameraParameters::KEY_SUPPORTED_PREVIEW_FRAME_RATES,
+                                    CameraParameters::KEY_SUPPORTED_PICTURE_SIZES,
+                                    CameraParameters::KEY_SUPPORTED_PICTURE_FORMATS,
+                                    CameraParameters::KEY_SUPPORTED_JPEG_THUMBNAIL_SIZES,
+                                    CameraParameters::KEY_SUPPORTED_WHITE_BALANCE,
+                                    CameraParameters::KEY_SUPPORTED_EFFECTS,
+                                    CameraParameters::KEY_SUPPORTED_SCENE_MODES,
+                                    CameraParameters::KEY_MAX_NUM_FOCUS_AREAS,
+                                    CameraParameters::KEY_AUTO_EXPOSURE_LOCK_SUPPORTED,
+                                    CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK_SUPPORTED,
+                                    CameraParameters::KEY_MAX_ZOOM,
+                                    CameraParameters::KEY_ZOOM_RATIOS,
+                                    CameraParameters::KEY_ZOOM_SUPPORTED,
+                                    CameraParameters::KEY_SMOOTH_ZOOM_SUPPORTED,
+                                    CameraParameters::KEY_SUPPORTED_VIDEO_SIZES,
+                                    CameraParameters::KEY_MAX_NUM_DETECTED_FACES_HW,
+                                    CameraParameters::KEY_MAX_NUM_DETECTED_FACES_SW,
+                                    CameraParameters::KEY_VIDEO_SNAPSHOT_SUPPORTED,
+                                    CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED,
+                                    // Intel Parameters
+                                    IntelCameraParameters::KEY_SUPPORTED_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT,
+                                    IntelCameraParameters::KEY_SUPPORTED_MULTI_ACCESS_COLOR_CORRECTIONS,
+                                    IntelCameraParameters::KEY_SUPPORTED_AE_MODES,
+                                    IntelCameraParameters::KEY_SUPPORTED_SHUTTER,
+                                    IntelCameraParameters::KEY_SUPPORTED_APERTURE,
+                                    IntelCameraParameters::KEY_SUPPORTED_AF_LOCK_MODES,
+                                    IntelCameraParameters::KEY_SUPPORTED_BACK_LIGHTING_CORRECTION_MODES,
+                                    IntelCameraParameters::KEY_SUPPORTED_AF_METERING_MODES,
+                                    IntelCameraParameters::KEY_SUPPORTED_BURST_LENGTH,
+                                    IntelCameraParameters::KEY_SUPPORTED_BURST_FPS,
+                                    IntelCameraParameters::KEY_SUPPORTED_BURST_SPEED,
+                                    IntelCameraParameters::KEY_SUPPORTED_PREVIEW_UPDATE_MODE,
+                                    IntelCameraParameters::KEY_SUPPORTED_RAW_DATA_FORMATS,
+                                    IntelCameraParameters::KEY_SUPPORTED_CAPTURE_BRACKET,
+                                    IntelCameraParameters::KEY_SUPPORTED_ROTATION_MODES,
+                                    IntelCameraParameters::KEY_SUPPORTED_HDR_IMAGING,
+                                    IntelCameraParameters::KEY_SUPPORTED_HDR_SAVE_ORIGINAL,
+                                    IntelCameraParameters::KEY_SUPPORTED_SMILE_SHUTTER,
+                                    IntelCameraParameters::KEY_SUPPORTED_BLINK_SHUTTER,
+                                    IntelCameraParameters::KEY_SUPPORTED_FACE_DETECTION,
+                                    IntelCameraParameters::KEY_SUPPORTED_FACE_RECOGNITION,
+                                    IntelCameraParameters::KEY_SUPPORTED_SCENE_DETECTION,
+                                    IntelCameraParameters::KEY_SUPPORTED_PANORAMA,
+                                    IntelCameraParameters::KEY_SUPPORTED_PANORAMA_LIVE_PREVIEW_SIZES,
+                                    IntelCameraParameters::KEY_PANORAMA_MAX_SNAPSHOT_COUNT,
+                                    IntelCameraParameters::KEY_HW_OVERLAY_RENDERING_SUPPORTED,
+                                    IntelCameraParameters::KEY_SUPPORTED_SLOW_MOTION_RATE,
+                                    IntelCameraParameters::KEY_SUPPORTED_RECORDING_FRAME_RATES,
+                                    IntelCameraParameters::KEY_SUPPORTED_HIGH_SPEED_RESOLUTION_FPS,
+                                    IntelCameraParameters::KEY_DUAL_VIDEO_SUPPORTED,
+                                    IntelCameraParameters::KEY_SUPPORTED_DUAL_CAMERA_MODE,
+                                    IntelCameraParameters::KEY_SUPPORTED_BURST_START_INDEX,
+                                    IntelCameraParameters::KEY_MAX_BURST_LENGTH_WITH_NEGATIVE_START_INDEX,
+                                    IntelCameraParameters::KEY_SUPPORTED_CONTRAST_MODES,
+                                    IntelCameraParameters::KEY_SUPPORTED_SATURATION_MODES,
+                                    IntelCameraParameters::KEY_SUPPORTED_SHARPNESS_MODES,
+                                    IntelCameraParameters::KEY_SUPPORTED_ULL,
+                                    IntelCameraParameters::KEY_SDV_SUPPORTED,
+                                    IntelCameraParameters::KEY_SUPPORTED_SAVE_MIRRORED,
+                                    IntelCameraParameters::KEY_SUPPORTED_GPS_IMG_DIRECTION_REF,
+                                    NULL)) {
+        LOGE("change of read-only parameters");
+        return BAD_VALUE;
+    }
+
+    // scene mode change overdrive some read-only parameters in process parameters, so we check
+    // those only if scene mode is not changed.
+    if(isParamsEqual(oldParams->get(CameraParameters::KEY_SCENE_MODE), params->get(CameraParameters::KEY_SCENE_MODE))) {
+        if (!validateReadOnlyParameters(oldParams, params,
+                                        // Google Parameters
+                                        CameraParameters::KEY_SUPPORTED_FOCUS_MODES,
+                                        CameraParameters::KEY_SUPPORTED_ANTIBANDING,
+                                        CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION,
+                                        CameraParameters::KEY_MIN_EXPOSURE_COMPENSATION,
+                                        CameraParameters::KEY_EXPOSURE_COMPENSATION_STEP,
+                                        // Intel Parameters
+                                        IntelCameraParameters::KEY_SUPPORTED_ISO,
+                                        IntelCameraParameters::KEY_SUPPORTED_AWB_MAPPING_MODES,
+                                        IntelCameraParameters::KEY_SUPPORTED_AE_METERING_MODES,
+                                        IntelCameraParameters::KEY_SUPPORTED_XNR,
+                                        IntelCameraParameters::KEY_SUPPORTED_ANR,
+                                        NULL)) {
+            LOGE("change of read-only parameters");
+            return BAD_VALUE;
+        }
+    }
 
     // PREVIEW
     int width, height;
     Vector<Size> supportedSizes;
     params->getSupportedPreviewSizes(supportedSizes);
+    if (PlatformData::supportsContinuousJpegCapture(cameraId)) {
+        // for ext-isp, we add the 6MP resolution so that application can set
+        // that for panorama. It is not a public supported resolution for any
+        // other use case (capable of only 15fps).
+        Size size6mp(RESOLUTION_6MP_WIDTH, RESOLUTION_6MP_HEIGHT);
+        supportedSizes.add(size6mp);
+    }
     params->getPreviewSize(&width, &height);
-    if (!validateSize(width, height, supportedSizes)) {
+    if (!validateSize(width, height, supportedSizes, sizeErrorOnlyWarning)) {
         LOGE("bad preview size");
         return BAD_VALUE;
     }
@@ -115,7 +317,7 @@ status_t validateParameters(const CameraParameters *params)
     params->getVideoSize(&width, &height);
     supportedSizes.clear();
     params->getSupportedVideoSizes(supportedSizes);
-    if (!validateSize(width, height, supportedSizes)) {
+    if (!validateSize(width, height, supportedSizes, sizeErrorOnlyWarning)) {
         LOGE("bad video size %dx%d", width, height);
         return BAD_VALUE;
     }
@@ -132,9 +334,13 @@ status_t validateParameters(const CameraParameters *params)
     params->getPictureSize(&width, &height);
     supportedSizes.clear();
     params->getSupportedPictureSizes(supportedSizes);
-    if (!validateSize(width, height, supportedSizes)) {
-        LOGE("bad picture size");
-        return BAD_VALUE;
+    if (width == 0 && height == 0) {
+        LOG2("@%s: snapshot size auto select HACK in use", __FUNCTION__);
+    } else {
+        if (!validateSize(width, height, supportedSizes, sizeErrorOnlyWarning)) {
+            LOGE("bad picture size");
+            return BAD_VALUE;
+        }
     }
 
     // JPEG QUALITY
@@ -165,7 +371,7 @@ status_t validateParameters(const CameraParameters *params)
                 break;
             ++thumbnailSizes;
         }
-        if (!validateSize(thumbWidth, thumbHeight, supportedSizes)) {
+        if (!validateSize(thumbWidth, thumbHeight, supportedSizes, sizeErrorOnlyWarning)) {
             LOGE("bad thumbnail size: (%d,%d)", thumbWidth, thumbHeight);
             return BAD_VALUE;
         }
@@ -332,10 +538,47 @@ status_t validateParameters(const CameraParameters *params)
         return BAD_VALUE;
     }
 
-    //DVS
-    if(isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION, *params)
-       && !isParameterSet(CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED, *params)) {
-        LOGE("bad value for DVS, DVS not support");
+    // AUTO EXPOSURE LOCK
+    if (!validateBoolParameter(CameraParameters::KEY_AUTO_EXPOSURE_LOCK,CameraParameters::KEY_AUTO_EXPOSURE_LOCK_SUPPORTED, params)) {
+        LOGE("bad value for auto exporsure lock");
+        return BAD_VALUE;
+    }
+
+    // AUTO WHITEBALANCE LOCK
+    if (!validateBoolParameter(CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK, CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK_SUPPORTED, params)) {
+        LOGE("bad value for auto whitebalance lock");
+        return BAD_VALUE;
+    }
+
+    // DVS (VIDEO STABILIZATION)
+    if (!validateBoolParameter(CameraParameters::KEY_VIDEO_STABILIZATION, CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED, params)) {
+        LOGE("bad value for DVS");
+        return BAD_VALUE;
+    }
+
+    // SDV (still during video)
+    if (!validateBoolParameter(IntelCameraParameters::KEY_SDV, IntelCameraParameters::KEY_SDV_SUPPORTED, params)) {
+        LOGE("bad value for SDV");
+        return BAD_VALUE;
+    }
+
+    // Dual video
+    if (!validateBoolParameter(IntelCameraParameters::KEY_DUAL_VIDEO, IntelCameraParameters::KEY_DUAL_VIDEO_SUPPORTED, params)) {
+        LOGE("bad value for dual video");
+        return BAD_VALUE;
+    }
+
+    // Dual Camera Mode
+    const char* dualCameraMode = params->get(IntelCameraParameters::KEY_DUAL_CAMERA_MODE);
+    const char* dualCameraModes = params->get(IntelCameraParameters::KEY_SUPPORTED_DUAL_CAMERA_MODE);
+    if (!validateString(dualCameraMode, dualCameraModes)) {
+        LOGE("bad value for dual camera mode: %s", dualCameraMode);
+        return BAD_VALUE;
+    }
+
+    // continuous shooting
+    if (!validateBoolParameter(IntelCameraParameters::KEY_CONTINUOUS_SHOOTING, IntelCameraParameters::KEY_CONTINUOUS_SHOOTING_SUPPORTED, params)) {
+        LOGE("bad value for continuous shooting");
         return BAD_VALUE;
     }
 
@@ -356,16 +599,30 @@ status_t validateParameters(const CameraParameters *params)
     }
 
     // SHARPNESS
-    const char* sharpnessmode = params->get(IntelCameraParameters::KEY_SHARPNESS_MODE);
-    const char* sharpnessmodes = params->get(IntelCameraParameters::KEY_SUPPORTED_SHARPNESS_MODES);
-    if (!validateString(sharpnessmode, sharpnessmodes)) {
-        LOGE("bad sharpness mode: %s", sharpnessmode);
+    const char* sharpnessMode = params->get(IntelCameraParameters::KEY_SHARPNESS_MODE);
+    const char* sharpnessModes = params->get(IntelCameraParameters::KEY_SUPPORTED_SHARPNESS_MODES);
+    if (!validateString(sharpnessMode, sharpnessModes)) {
+        LOGE("bad sharpness mode: %s", sharpnessMode);
+        return BAD_VALUE;
+    }
+
+    // intelligent mode
+    const char* intelligentMode = params->get(IntelCameraParameters::KEY_INTELLIGENT_MODE);
+    const char* intelligentModes = params->get(IntelCameraParameters::KEY_SUPPORTED_INTELLIGENT_MODE);
+    if (!validateString(intelligentMode, intelligentModes)) {
+        LOGE("bad intelligent mode: %s", intelligentMode);
+        return BAD_VALUE;
+    }
+
+    // color-bar mode
+    const char* colorbarMode = params->get(IntelCameraParameters::KEY_COLORBAR);
+    const char* colorbarModes = params->get(IntelCameraParameters::KEY_SUPPORTED_COLORBAR);
+    if (!validateString(colorbarMode, colorbarModes)) {
+        LOGE("bad colorbar mode: %s", colorbarMode);
         return BAD_VALUE;
     }
 
     return NO_ERROR;
 }
 
-
-
-}
+};

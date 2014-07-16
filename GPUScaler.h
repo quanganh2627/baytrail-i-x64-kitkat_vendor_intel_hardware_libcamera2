@@ -41,7 +41,7 @@ class GPUScaler :
 
 // constructor destructor
 public:
-    GPUScaler();
+    GPUScaler(int cameraId);
     ~GPUScaler();
 
 // public methods
@@ -93,6 +93,7 @@ private:
 
 // private data
 private:
+    int mCameraId;
     EGLDisplay mDisplay; // EGL display connection
     EGLContext mContext; // EGL context
     EGLSurface mSurface; // EGL surface

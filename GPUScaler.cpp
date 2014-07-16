@@ -49,7 +49,8 @@
 
 namespace android {
 
-GPUScaler::GPUScaler() :
+GPUScaler::GPUScaler(int cameraId) :
+        mCameraId(cameraId),
         mDisplay(EGL_NO_DISPLAY),
         mContext(EGL_NO_CONTEXT),
         mSurface(EGL_NO_SURFACE),
@@ -284,7 +285,7 @@ int GPUScaler::addOutputBuffer(buffer_handle_t *pBufHandle, int width, int heigh
         // increase the strong ref count. eglDestroyImageKHR will respectively decrease
         // the ref count, resulting in destruction.
         mGraphicBuffer[bufferId] = new GraphicBuffer(width, height,
-                getGFXHALPixelFormatFromV4L2Format(PlatformData::getPreviewPixelFormat()),
+                getGFXHALPixelFormatFromV4L2Format(PlatformData::getPreviewPixelFormat(mCameraId)),
                 GraphicBuffer::USAGE_HW_RENDER | GraphicBuffer::USAGE_SW_READ_OFTEN | GraphicBuffer::USAGE_HW_TEXTURE,
                 bytesToPixels(V4L2_PIX_FMT_NV12, bpl), (native_handle_t *)*pBufHandle, 0);
         mEglClientBuffer[bufferId] = (mGraphicBuffer[bufferId])->getNativeBuffer();
@@ -388,7 +389,7 @@ int GPUScaler::addInputBuffer(buffer_handle_t *pBufHandle, int width, int height
     // increase the strong ref count. eglDestroyImageKHR will respectively decrease
     // the ref count, resulting in destruction.
     GraphicBuffer *graphicBuffer = new GraphicBuffer(width, height,
-            getGFXHALPixelFormatFromV4L2Format(PlatformData::getPreviewPixelFormat()),
+            getGFXHALPixelFormatFromV4L2Format(PlatformData::getPreviewPixelFormat(mCameraId)),
             GraphicBuffer::USAGE_HW_RENDER | GraphicBuffer::USAGE_SW_WRITE_OFTEN | GraphicBuffer::USAGE_HW_TEXTURE,
             bytesToPixels(V4L2_PIX_FMT_NV12, bpl), (native_handle_t *)*pBufHandle, 0);
 

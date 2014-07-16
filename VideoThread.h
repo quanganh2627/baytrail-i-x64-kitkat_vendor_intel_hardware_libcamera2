@@ -22,6 +22,8 @@
 #include <camera/CameraParameters.h>
 #include "MessageQueue.h"
 #include "AtomCommon.h"
+#include "ICameraHwControls.h"
+#include "PreviewThread.h"
 
 #ifdef GRAPHIC_IS_GEN
 #include <VideoVPPBase.h>
@@ -31,12 +33,16 @@
 namespace android {
 
 class CallbacksThread;
+class AtomISP;
 
-class VideoThread : public Thread {
+class VideoThread :
+    public Thread,
+    public IAtomIspObserver,
+    public ICallbackPreview {
 
 // constructor destructor
 public:
-    VideoThread(sp<CallbacksThread> callbacksThread);
+    VideoThread(AtomISP *atomIsp, sp<CallbacksThread> callbacksThread);
     virtual ~VideoThread();
 
 // prevent copy constructor and assignment operator
@@ -44,17 +50,31 @@ private:
     VideoThread(const VideoThread& other);
     VideoThread& operator=(const VideoThread& other);
 
+// ICallbackPreview overrides
+public:
+    virtual void previewBufferCallback(AtomBuffer *memory, ICallbackPreview::CallbackType t);
+    virtual int getCameraID();
+
+// IAtomIspObserver overrides
+public:
+    virtual bool atomIspNotify(IAtomIspObserver::Message *msg, const ObserverState state);
+
 // Thread overrides
 public:
     status_t requestExitAndWait();
 
 // public methods
 public:
-
-    status_t video(AtomBuffer *buff);
+    status_t startRecording(); // sync call
+    status_t stopRecording(); // sync call
     status_t flushBuffers();
     status_t setSlowMotionRate(int rate);
     void getDefaultParameters(CameraParameters *intel_params, int cameraId);
+    // return recording frame to driver (asynchronous)
+    status_t releaseRecordingFrame(void *buff);
+    status_t getVideoSnapshot(AtomBuffer &buff);
+    status_t putVideoSnapshot(AtomBuffer *buff);
+    status_t setRecordingMirror(bool mirror, int recOrientation, int camOrientation);
 
 // private types
 private:
@@ -63,9 +83,14 @@ private:
     enum MessageId {
 
         MESSAGE_ID_EXIT = 0,            // call requestExitAndWait
-        MESSAGE_ID_VIDEO,
+        MESSAGE_ID_START_RECORDING,
+        MESSAGE_ID_STOP_RECORDING,
         MESSAGE_ID_FLUSH,
         MESSAGE_ID_SET_SLOWMOTION_RATE,
+        MESSAGE_ID_PUSH_FRAME,
+        MESSAGE_ID_HAL_VIDEO_STABILIZATION,
+        MESSAGE_ID_RELEASE_RECORDING_FRAME,
+        MESSAGE_ID_DEQUEUE_RECORDING,
 
         // max number of messages
         MESSAGE_ID_MAX
@@ -74,9 +99,16 @@ private:
     //
     // message data structures
     //
+    struct MessageReleaseRecordingFrame {
+        void *buff;
+    };
 
-    struct MessageVideo {
-        AtomBuffer buff;
+    struct MessagePushFrame {
+        AtomBuffer *buf;
+    };
+
+    struct MessageDequeueRecording {
+        bool skipFrame;
     };
 
     struct MessageSetSlowMotionRate {
@@ -85,10 +117,14 @@ private:
 
     // union of all message data
     union MessageData {
-
-        // MESSAGE_ID_VIDEO
-        MessageVideo video;
+        // MESSAGE_ID_SET_SLOWMOTION_RATE,
         MessageSetSlowMotionRate setSlowMotionRate;
+        // MESSAGE_ID_RELEASE_RECORDING_FRAME
+        MessageReleaseRecordingFrame releaseRecordingFrame;
+        // MESSAGE_ID_PUSH_FRAME
+        MessagePushFrame pushFrame;
+        // MESSAGE_ID_DEQUEUE_RECORDING
+        MessageDequeueRecording   dequeueRecording;
     };
 
     // message id and message data
@@ -97,14 +133,29 @@ private:
         MessageData data;
     };
 
+    enum VideoState {
+        STATE_IDLE,
+        STATE_PREVIEW,
+        STATE_RECORDING
+    };
+
 // private methods
 private:
 
     // thread message execution functions
+    status_t handleMessageStartRecording();
+    status_t handleMessageStopRecording();
     status_t handleMessageExit();
-    status_t handleMessageVideo(MessageVideo *msg);
     status_t handleMessageFlush();
     status_t handleMessageSetSlowMotionRate(MessageSetSlowMotionRate* msg);
+    status_t handleMessageReleaseRecordingFrame(MessageReleaseRecordingFrame *msg);
+    status_t handleMessageDequeueRecording(MessageDequeueRecording *msg);
+    status_t handleMessagePushFrame(MessagePushFrame *msg);
+    AtomBuffer* findVideoSnapshotBuffer(int index);
+    AtomBuffer* findRecordingBuffer(void *findMe);
+    AtomBuffer* findRecordingBuffer(int index);
+    status_t processVideoBuffer(AtomBuffer &buff);
+    void reset();
 
     // main message function
     status_t waitForAndExecuteMessage();
@@ -118,14 +169,25 @@ private:
 // private data
 private:
 
+    AtomISP *mIsp;
     MessageQueue<Message, MessageId> mMessageQueue;
     bool mThreadRunning;
+    Mutex mLock;
+    Condition mFrameCondition;
     sp<CallbacksThread> mCallbacksThread;
     int mSlowMotionRate;
     nsecs_t mFirstFrameTimestamp;
 #if GRAPHIC_IS_GEN //only availble with Gen GPU
     VideoVPPBase *mVpp;
 #endif
+    Vector<AtomBuffer> mSnapshotBuffers; /*!< buffers reserved from stream for videosnapshot */
+    Vector<AtomBuffer> mRecordingBuffers; /*!< buffers reserverd from stream for video encoding */
+    VideoState mState;
+    bool mMirror;
+    bool mHALVideoStabilization;
+    int mRecOrientation;
+    int mCamOrientation;
+    int mCameraId;
 
 }; // class VideoThread
 

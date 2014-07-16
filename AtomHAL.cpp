@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2011 The Android Open Source Project
+ * Copyright (c) 2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -390,12 +391,12 @@ static int ATOM_OpenCameraHardware(const hw_module_t* module, const char* name,
     }
 
     int cameraId = atoi(name);
-    if(cameraId < 0 || cameraId > 1 || atom_cam[cameraId].is_used)
+    if(cameraId < 0 || cameraId >= MAX_HAL_INSTANCES || atom_cam[cameraId].is_used)
         return -EINVAL;
     atom_cam[cameraId].camera_id = cameraId;
     CpfStore cpf(cameraId);
-    PlatformData::AiqConfig = cpf.AiqConfig;
-    PlatformData::HalConfig = cpf.HalConfig;
+    PlatformData::AiqConfig[cameraId] = cpf.AiqConfig;
+    PlatformData::HalConfig[cameraId] = cpf.HalConfig;
 
     int status = openCameraHardware(cameraId);
     if (status != NO_ERROR) {
@@ -441,8 +442,12 @@ static int ATOM_CloseCameraHardware(hw_device_t* device)
 
     free(camera_dev);
 
+    --atom_instances;
+
+    LOGD("%s: Camera close done (open instances after close: %d)", __FUNCTION__, atom_instances);
+
     PERFORMANCE_TRACES_BREAKDOWN_STEP("Close_HAL_Done");
-    atom_instances--;
+    PERFORMANCE_TRACES_IO_STOP();
     return 0;
 }
 
@@ -455,6 +460,11 @@ static int ATOM_GetNumberOfCameras(void)
     LogHelper::setDebugLevel();
 
     int nodes = PlatformData::numberOfCameras();
+
+    // Don't report fileInject device
+    if (PlatformData::supportsFileInject())
+        --nodes;
+
     if (nodes > MAX_CAMERAS)
         nodes = MAX_CAMERAS;
 

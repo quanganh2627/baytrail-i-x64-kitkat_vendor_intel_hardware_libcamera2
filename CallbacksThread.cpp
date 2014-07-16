@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2011 The Android Open Source Project
+ * Copyright (c) 2012-2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,6 +40,7 @@ CallbacksThread::CallbacksThread(Callbacks *callbacks, ICallbackPicture *picture
     ,mFocusActive(false)
     ,mWaitRendering(false)
     ,mLastReportedNumberOfFaces(0)
+    ,mLastReportedNeedLLS(0)
     ,mFaceCbCount(0)
     ,mFaceCbFreqDivider(1)
     ,mPictureDoneCallback(pictureDone)
@@ -103,21 +105,34 @@ status_t CallbacksThread::handleMessagePanoramaSnapshot(MessagePanoramaSnapshot 
 
 status_t CallbacksThread::compressedFrameDone(AtomBuffer* jpegBuf, AtomBuffer* snapshotBuf, AtomBuffer* postviewBuf)
 {
-    LOG1("@%s: ID = %d", __FUNCTION__, jpegBuf->id);
+    LOG1("@%s", __FUNCTION__);
     Message msg;
     msg.id = MESSAGE_ID_JPEG_DATA_READY;
-    msg.data.compressedFrame.jpegBuff.buff = NULL;
-    msg.data.compressedFrame.snapshotBuff.buff = NULL;
-    msg.data.compressedFrame.postviewBuff.buff = NULL;
+
     if (jpegBuf != NULL) {
+        LOG1("@%s: ID = %d", __FUNCTION__, jpegBuf->id);
         msg.data.compressedFrame.jpegBuff = *jpegBuf;
+    } else {
+        msg.data.compressedFrame.jpegBuff = AtomBufferFactory::createAtomBuffer();
+        msg.data.compressedFrame.jpegBuff.id = -1;
     }
+
     if (snapshotBuf != NULL) {
         msg.data.compressedFrame.snapshotBuff = *snapshotBuf;
+    } else {
+        msg.data.compressedFrame.snapshotBuff = AtomBufferFactory::createAtomBuffer();
+        msg.data.compressedFrame.snapshotBuff.status = FRAME_STATUS_SKIPPED;
+        msg.data.compressedFrame.snapshotBuff.id = -1;
     }
+
     if (postviewBuf != NULL) {
         msg.data.compressedFrame.postviewBuff = *postviewBuf;
+    } else {
+        msg.data.compressedFrame.postviewBuff = AtomBufferFactory::createAtomBuffer();
+        msg.data.compressedFrame.postviewBuff.status = FRAME_STATUS_SKIPPED;
+        msg.data.compressedFrame.postviewBuff.id = -1;
     }
+
     return mMessageQueue.send(&msg);
 }
 
@@ -183,6 +198,16 @@ status_t CallbacksThread::lowBattery()
     return mMessageQueue.send(&msg);
 }
 
+status_t CallbacksThread::sendFrameId(int id)
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.data.frameId.id = id;
+    msg.id = MESSAGE_ID_SEND_FRAME_ID;
+
+    return mMessageQueue.send(&msg);
+}
+
 status_t CallbacksThread::rawFrameDone(AtomBuffer* snapshotBuf)
 {
     LOG1("@%s", __FUNCTION__);
@@ -195,6 +220,27 @@ status_t CallbacksThread::rawFrameDone(AtomBuffer* snapshotBuf)
     }
 
     return mMessageQueue.send(&msg);
+}
+
+status_t CallbacksThread::smartStabilizationFrameDone(const AtomBuffer &yuvBuf)
+{
+    LOG1("@%s",__FUNCTION__);
+    status_t status;
+    Message msg;
+    msg.id = MESSAGE_ID_SS_FRAME_DONE;
+    msg.data.smartStabilizationFrame.frame = yuvBuf;
+
+    status = mMessageQueue.send(&msg);
+    return status;
+}
+
+status_t CallbacksThread::handleMessageSSFrameDone(MessageFrame *msg)
+{
+    LOG1("@%s",__FUNCTION__);
+
+    mCallbacks->smartStabilizationFrameDone(&msg->frame);
+
+    return NO_ERROR;
 }
 
 status_t CallbacksThread::postviewFrameDone(AtomBuffer* postviewBuf)
@@ -365,49 +411,58 @@ status_t CallbacksThread::handleMessageSendError(MessageError *msg)
     return NO_ERROR;
 }
 
-void CallbacksThread::facesDetected(camera_frame_metadata_t *face_metadata)
+void CallbacksThread::facesDetected(extended_frame_metadata_t *extended_face_metadata)
 {
-    LOG2("@%s: face_metadata ptr = %p", __FUNCTION__, face_metadata);
+    LOG2("@%s: face_metadata ptr = %p", __FUNCTION__, extended_face_metadata);
+
+    Mutex::Autolock lock(mFaceReportingLock); // protecting member variable accesses during the filtering below
 
     // Null face data -> reset IFaceDetectionListener
-    if (face_metadata == NULL) {
+    if (extended_face_metadata == NULL) {
         mLastReportedNumberOfFaces = 0;
         mFaceCbCount = 0;
         return;
     }
 
-    // Count the callbacks to adjust sending frequency.
-    // We want to do this to relieve the application face indicator rendering load,
-    // as it seems to get heavy when large number of faces are presented.
-    // TODO: Dynamic adjustment of frequency, depending on number of faces
-    ++mFaceCbCount; // Ok to wrap around
+    // needLLS needs to be sent always when it changes, so don't adjust sending frequency, if it changes
+    if (mLastReportedNeedLLS != extended_face_metadata->needLLS) {
+        mLastReportedNeedLLS = extended_face_metadata->needLLS;
+    } else {
+        // Count the callbacks to adjust sending frequency.
+        // We want to do this to relieve the application face indicator rendering load,
+        // as it seems to get heavy when large number of faces are presented.
+        // TODO: Dynamic adjustment of frequency, depending on number of faces
+        ++mFaceCbCount; // Ok to wrap around
 
-    if (face_metadata->number_of_faces > 0 || mLastReportedNumberOfFaces != 0) {
-        mLastReportedNumberOfFaces = face_metadata->number_of_faces;
-        // Not the time to send cb -> do nothing
-        if (!(mFaceCbCount % mFaceCbFreqDivider == 0 || mLastReportedNumberOfFaces == 0)) {
+        if (extended_face_metadata->number_of_faces > 0 || mLastReportedNumberOfFaces != 0) {
+            mLastReportedNumberOfFaces = extended_face_metadata->number_of_faces;
+            // Not the time to send cb -> do nothing
+            if (!(mFaceCbCount % mFaceCbFreqDivider == 0 || mLastReportedNumberOfFaces == 0)) {
+                return;
+            }
+        } else if (extended_face_metadata->number_of_faces == 0 && mLastReportedNumberOfFaces == 0) {
+            // For subsequent zero faces, after the first zero-face cb sent to application
+            // -> do nothing
             return;
         }
-    } else if (face_metadata->number_of_faces == 0 && mLastReportedNumberOfFaces == 0) {
-        // For subsequent zero faces, after the first zero-face cb sent to application
-        // -> do nothing
-        return;
     }
 
     int num_faces;
-    if (face_metadata->number_of_faces > MAX_FACES_DETECTABLE) {
+    if (extended_face_metadata->number_of_faces > MAX_FACES_DETECTABLE) {
         LOGW("@%s: %d faces detected, limiting to %d", __FUNCTION__,
-            face_metadata->number_of_faces, MAX_FACES_DETECTABLE);
+                extended_face_metadata->number_of_faces, MAX_FACES_DETECTABLE);
         num_faces = MAX_FACES_DETECTABLE;
     } else {
-        num_faces = face_metadata->number_of_faces;
+        num_faces = extended_face_metadata->number_of_faces;
     }
 
     if (num_faces > 0)
         PerformanceTraces::FaceLock::stop(num_faces);
 
     mFaceMetadata.number_of_faces = num_faces;
-    memcpy(mFaceMetadata.faces, face_metadata->faces, mFaceMetadata.number_of_faces * sizeof(camera_face_t));
+    mFaceMetadata.needLLS = extended_face_metadata->needLLS;
+    memcpy(mFaceMetadata.faces, extended_face_metadata->faces,
+           mFaceMetadata.number_of_faces * sizeof(camera_face_t));
 
     Message msg;
     msg.id = MESSAGE_ID_FACES;
@@ -528,7 +583,7 @@ status_t CallbacksThread::handleMessageJpegDataReady(MessageCompressed *msg)
 
     mPictureDoneCallback->encodingDone(&snapshotBuf, &postviewBuf);
 
-    if (jpegBuf.dataPtr == NULL && snapshotBuf.dataPtr != NULL && postviewBuf.dataPtr != NULL) {
+    if (jpegBuf.dataPtr == NULL) {
         LOGW("@%s: returning raw frames used in failed encoding", __FUNCTION__);
         mPictureDoneCallback->pictureDone(&snapshotBuf, &postviewBuf);
         return NO_ERROR;
@@ -544,6 +599,7 @@ status_t CallbacksThread::handleMessageJpegDataReady(MessageCompressed *msg)
             CameraDump::dumpAtom2File(&jpegBuf, jpegDumpName.string());
         }
 
+        mPausePreviewCallbacks = true;
         mCallbacks->compressedFrameDone(&jpegBuf);
         if (jpegBuf.buff == NULL) {
             LOGW("CallbacksThread received NULL jpegBuf.buff, which should not happen");
@@ -553,11 +609,8 @@ status_t CallbacksThread::handleMessageJpegDataReady(MessageCompressed *msg)
         }
         mJpegRequested--;
 
-        if ((snapshotBuf.dataPtr != NULL && postviewBuf.dataPtr != NULL)
-            || snapshotBuf.type == ATOM_BUFFER_PANORAMA) {
-            // Return the raw buffers back to ControlThread
-            mPictureDoneCallback->pictureDone(&snapshotBuf, &postviewBuf);
-        }
+        // Return the raw buffers back to ControlThread
+        mPictureDoneCallback->pictureDone(&snapshotBuf, &postviewBuf);
     } else {
         // Insert the buffer on the top
         mBuffers.push(*msg);
@@ -585,15 +638,15 @@ status_t CallbacksThread::handleMessageJpegDataRequest(MessageDataRequest *msg)
         if (msg->rawCallback) {
             mCallbacks->rawFrameDone(&snapshotBuf);
         }
+        mPausePreviewCallbacks = true;
         mCallbacks->compressedFrameDone(&jpegBuf);
 
         LOG1("Releasing jpegBuf.buff %p, dataPtr %p", jpegBuf.buff, jpegBuf.dataPtr);
         MemoryUtils::freeAtomBuffer(jpegBuf);
 
-        if (snapshotBuf.dataPtr != NULL && postviewBuf.dataPtr != NULL) {
-            // Return the raw buffers back to ISP
-            mPictureDoneCallback->pictureDone(&snapshotBuf, &postviewBuf);
-        }
+        // Return the raw buffers back
+        mPictureDoneCallback->pictureDone(&snapshotBuf, &postviewBuf);
+
         mBuffers.removeAt(0);
     } else {
         mJpegRequested++;
@@ -624,6 +677,13 @@ status_t CallbacksThread::handleMessageLowBattery()
     return NO_ERROR;
 }
 
+status_t CallbacksThread::handleMessageSendFrameId(MessageFrameId *msg)
+{
+    LOG1("@%s Done",__FUNCTION__);
+    mCallbacks->sendFrameId(msg->id);
+    return NO_ERROR;
+}
+
 status_t CallbacksThread::handleMessageUllJpegDataRequest(MessageULLSnapshot *msg)
 {
     LOG1("@%s Done",__FUNCTION__);
@@ -639,16 +699,12 @@ status_t CallbacksThread::handleMessageUllJpegDataReady(MessageCompressed *msg)
     AtomBuffer snapshotBuf = msg->snapshotBuff;
     AtomBuffer postviewBuf= msg->postviewBuff;
 
-    mULLRequested--;
+    --mULLRequested;
 
-    if (jpegBuf.dataPtr == NULL && snapshotBuf.dataPtr != NULL && postviewBuf.dataPtr != NULL) {
+    if (jpegBuf.dataPtr == NULL) {
         LOGW("@%s: returning raw frames used in failed encoding", __FUNCTION__);
         mPictureDoneCallback->pictureDone(&snapshotBuf, &postviewBuf);
         return NO_ERROR;
-    } else if (jpegBuf.dataPtr == NULL) {
-        // Should not have NULL buffer here in any case, but checking to make Klockwork happy:
-        LOGW("NULL jpegBuf.dataPtr received in CallbacksThread. Should not happen.");
-        return UNKNOWN_ERROR;
     }
 
     if (gLogLevel & CAMERA_DEBUG_ULL_DUMP) {
@@ -691,15 +747,15 @@ status_t CallbacksThread::handleMessageUllJpegDataReady(MessageCompressed *msg)
     }
 
     /**
-     *  TODO even if postview is NULL we return the buffer anyway.
-     *  at the moment ULL does not process postview. Should we process it as well?
+     *  TODO at the moment ULL does not process postview. Should we process it as well?
      */
+
     if (snapshotBuf.dataPtr != NULL) {
         // Return the raw buffers back to ISP
         LOG1("Returning ULL raw image now");
         snapshotBuf.type = ATOM_BUFFER_SNAPSHOT;  // reset the buffer type
-        mPictureDoneCallback->pictureDone(&snapshotBuf, &postviewBuf);
     }
+    mPictureDoneCallback->pictureDone(&snapshotBuf, &postviewBuf);
 
     return NO_ERROR;
 
@@ -726,8 +782,9 @@ status_t CallbacksThread::handleMessageFlush()
 status_t CallbacksThread::handleMessageFaces(MessageFaces *msg)
 {
     LOG2("@%s", __FUNCTION__);
+    Mutex::Autolock lock(mFaceReportingLock); // the ::facesDetected function may write to the face array, so protect with lock
     if (!mFocusActive)
-        mCallbacks->facesDetected(msg->meta_data);
+        mCallbacks->facesDetected((camera_frame_metadata_t *)&msg->meta_data);
     else
         LOG1("Faces metadata dropped during focusing.");
     return NO_ERROR;
@@ -748,7 +805,12 @@ status_t CallbacksThread::handleMessagePreviewDone(MessageFrame *msg)
 {
     LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
-    mCallbacks->previewFrameDone(&(msg->frame));
+    if (!mPausePreviewCallbacks) {
+        mCallbacks->previewFrameDone(&(msg->frame));
+    } else if (msg->frame.owner != NULL && msg->frame.returnAfterCB) {
+        msg->frame.owner->returnBuffer(&msg->frame);
+    }
+
     return status;
 }
 
@@ -786,6 +848,27 @@ status_t CallbacksThread::handleMessageRawFrameDone(MessageFrame *msg)
         MemoryUtils::freeAtomBuffer(tmpCopy);
     }
 
+    return status;
+}
+
+void CallbacksThread::extispFrame(const AtomBuffer &yuvBuf, int offset, int size)
+{
+    LOG1("@%s",__FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_EXTISP_FRAME;
+    msg.data.extIspFrame.frame = yuvBuf;
+    msg.data.extIspFrame.size = size;
+    msg.data.extIspFrame.offset = offset;
+
+    mMessageQueue.send(&msg);
+}
+
+status_t CallbacksThread::handleMessageExtIspFrame(MessageExtIspFrame *msg)
+{
+    LOG1("@%s",__FUNCTION__);
+    status_t status = NO_ERROR;
+    mCallbacks->extIspFrameDone(&msg->frame, msg->offset, msg->size);
+    msg->frame.owner->returnBuffer(&msg->frame);
     return status;
 }
 
@@ -842,6 +925,21 @@ status_t CallbacksThread::handleMessageAccManagerMetadataBuffer(MessageAccManage
     return status;
 }
 
+void CallbacksThread::resumePreviewCallbacks()
+{
+    LOG1("@%s",__FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_RESUME_PREVIEW_CALLBACKS;
+    mMessageQueue.send(&msg);
+}
+
+status_t CallbacksThread::handleMessageResumePreviewCallbacks()
+{
+    LOG1("@%s",__FUNCTION__);
+    mPausePreviewCallbacks = false;
+    return OK;
+}
+
 status_t CallbacksThread::waitForAndExecuteMessage()
 {
     LOG2("@%s", __FUNCTION__);
@@ -865,6 +963,10 @@ status_t CallbacksThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_CALLBACK_SHUTTER:
             status = handleMessageCallbackShutter();
+            break;
+
+        case MESSAGE_ID_RESUME_PREVIEW_CALLBACKS:
+            status = handleMessageResumePreviewCallbacks();
             break;
 
         case MESSAGE_ID_JPEG_DATA_READY:
@@ -937,8 +1039,16 @@ status_t CallbacksThread::waitForAndExecuteMessage()
             status = handleMessageRawFrameDone(&msg.data.rawFrame);
             break;
 
+        case MESSAGE_ID_SS_FRAME_DONE:
+            status = handleMessageSSFrameDone(&msg.data.smartStabilizationFrame);
+            break;
+
         case MESSAGE_ID_POSTVIEW_FRAME_DONE:
             status = handleMessagePostviewFrameDone(&msg.data.postviewFrame);
+            break;
+
+        case MESSAGE_ID_EXTISP_FRAME:
+            status = handleMessageExtIspFrame(&msg.data.extIspFrame);
             break;
 
         case MESSAGE_ID_ACC_POINTER:
@@ -959,6 +1069,10 @@ status_t CallbacksThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_ACC_METADATA_BUFFER:
             status = handleMessageAccManagerMetadataBuffer(&msg.data.accManager);
+            break;
+
+        case MESSAGE_ID_SEND_FRAME_ID:
+            status = handleMessageSendFrameId(&msg.data.frameId);
             break;
 
         default:

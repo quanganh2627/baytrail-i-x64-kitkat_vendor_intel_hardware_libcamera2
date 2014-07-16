@@ -25,6 +25,7 @@
 #include "PerformanceTraces.h"
 
 int32_t gLogLevel = 0;
+int32_t gPerfLevel = 0;
 int32_t gPowerLevel = 0;
 int32_t gControlLevel = 0;
 
@@ -36,6 +37,7 @@ const char CameraParamsLogger::ValueDelimiter[]  = "=";
 void android::LogHelper::setDebugLevel(void)
 {
     char gLogLevelProp[PROPERTY_VALUE_MAX];
+    char gPerfLevelProp[PROPERTY_VALUE_MAX];
     char gPowerLevelProp[PROPERTY_VALUE_MAX];
     char gControlLevelProp[PROPERTY_VALUE_MAX];
     PerformanceTraces::reset();
@@ -54,9 +56,21 @@ void android::LogHelper::setDebugLevel(void)
         // to enable both LOG1 and LOG2 traces
         if (gLogLevel & CAMERA_DEBUG_LOG_LEVEL2)
             gLogLevel |= CAMERA_DEBUG_LOG_LEVEL1;
+    }
+
+    //Performance property
+    if (property_get("camera.hal.perf", gPerfLevelProp, NULL)) {
+        gPerfLevel = atoi(gPerfLevelProp);
+        LOGD("Performance level is %d", gPerfLevel);
+
+        // Check that the property value is a valid integer
+        if (gPerfLevel >= INT_MAX || gPerfLevel <= INT_MIN) {
+            LOGE("Invalid camera.hal.perf property integer value: %s",gPerfLevelProp);
+            gPerfLevel = 0;
+        }
 
         // bitmask of tracing categories
-        if (gLogLevel & CAMERA_DEBUG_LOG_PERF_TRACES) {
+        if (gPerfLevel & CAMERA_DEBUG_LOG_PERF_TRACES) {
             PerformanceTraces::Launch2Preview::enable(true);
             PerformanceTraces::Launch2FocusLock::enable(true);
             PerformanceTraces::FaceLock::enable(true);
@@ -65,8 +79,17 @@ void android::LogHelper::setDebugLevel(void)
             PerformanceTraces::SwitchCameras::enable(true);
             PerformanceTraces::HDRShot2Preview::enable(true);
         }
-        if (gLogLevel & CAMERA_DEBUG_LOG_PERF_TRACES_BREAKDOWN) {
+
+        if (gPerfLevel & CAMERA_DEBUG_LOG_PERF_TRACES_BREAKDOWN) {
             PerformanceTraces::PnPBreakdown::enable(true);
+        }
+
+        if (gPerfLevel & CAMERA_DEBUG_LOG_PERF_IO_BREAKDOWN) {
+            PerformanceTraces::IOBreakdown::enableBD(true);
+        }
+
+        if (gPerfLevel & CAMERA_DEBUG_LOG_PERF_IO_MEMORY) {
+            PerformanceTraces::IOBreakdown::enableMemInfo(true);
         }
     }
 

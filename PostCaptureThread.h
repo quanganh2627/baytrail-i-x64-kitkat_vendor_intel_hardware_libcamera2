@@ -54,7 +54,7 @@ class IPostCaptureProcessObserver {
 public:
     IPostCaptureProcessObserver() {}
     virtual ~IPostCaptureProcessObserver() {}
-    virtual void postCaptureProcesssingDone(IPostCaptureProcessItem* item, status_t status, int retries = MAX_MSG_RETRIES) = 0;
+    virtual void postCaptureProcesssingDone(IPostCaptureProcessItem* item, status_t status) = 0;
 };
 
 

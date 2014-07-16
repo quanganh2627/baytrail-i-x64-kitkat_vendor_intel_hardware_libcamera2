@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012 The Android Open Source Project
- * Copyright (c) 2013 Intel Corporation. All Rights Reserved.
+ * Copyright (c) 2013-2014 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@
 
 namespace android {
 
-CameraProfiles::CameraProfiles(const Vector<String8>& sensorNames)
+CameraProfiles::CameraProfiles(const Vector<SensorNameAndPort>& sensorNames)
 {
     LOG2("@%s", __FUNCTION__);
     mCurrentSensor = 0;
@@ -55,6 +55,7 @@ CameraProfiles::CameraProfiles(const Vector<String8>& sensorNames)
 void CameraProfiles::checkField(CameraProfiles *profiles, const char *name, const char **atts)
 {
     LOG2("@%s, name:%s", __func__, name);
+    int attIndex = 0;
 
     if (strcmp(name, "CameraSettings") == 0) {
         profiles->mCurrentDataField = FIELD_INVALID;
@@ -72,9 +73,17 @@ void CameraProfiles::checkField(CameraProfiles *profiles, const char *name, cons
             // Set sensor name if specified
             // XML is always parsed fully, but if sensor name does
             // not match it is discarded in endElement.
+            attIndex = 2;
             if (atts[2] && strcmp(atts[2], "name") == 0) {
                 LOG1("@%s: xmlname = %s, currentSensor = %d", __FUNCTION__, atts[3], profiles->mCurrentSensor);
                 profiles->pCurrentCam->sensorName = atts[3];
+                attIndex = 4;
+            }
+            if (atts[attIndex] && strcmp(atts[attIndex], "extension") == 0) {
+                LOG1("@%s: extension = %s", __FUNCTION__, atts[attIndex+1]);
+                // TODO: generalize for other than "depth".
+                profiles->pCurrentCam->extendedCamera = strcmp(atts[attIndex+1], "depth") == 0;
+                profiles->mCurrentSensorIsExtendedCamera = pCurrentCam->extendedCamera;
             }
         }
         if (0 == profiles->mCurrentSensor) {
@@ -124,6 +133,12 @@ void CameraProfiles::handleCommon(CameraProfiles *profiles, const char *name, co
         PlatformBase::mMaxZoomFactor = atoi(atts[1]);
     } else if (strcmp(name, "supportVideoSnapshot") == 0) {
         PlatformBase::mSupportVideoSnapshot = ((strcmp(atts[1], "true") == 0) ? true : false);
+    } else if (strcmp(name, "supportsOfflineBurst") == 0) {
+        PlatformBase::mSupportsOfflineBurst = ((strcmp(atts[1], "true") == 0) ? true : false);
+    } else if (strcmp(name, "supportsOfflineBracket") == 0) {
+        PlatformBase::mSupportsOfflineBracket = ((strcmp(atts[1], "true") == 0) ? true : false);
+    } else if (strcmp(name, "supportsOfflineHdr") == 0) {
+        PlatformBase::mSupportsOfflineHdr = ((strcmp(atts[1], "true") == 0) ? true : false);
     } else if (strcmp(name, "numRecordingBuffers") == 0) {
         PlatformBase::mNumRecordingBuffers = atoi(atts[1]);
     } else if (strcmp(name, "numPreviewBuffers") == 0) {
@@ -145,6 +160,10 @@ void CameraProfiles::handleCommon(CameraProfiles *profiles, const char *name, co
         PlatformBase::mUseIntelULL = ((strcmp(atts[1], "IntelULL") == 0) ? true : false);
     } else if (strcmp(name, "faceCallbackDivider") == 0) {
         PlatformBase::mFaceCallbackDivider = atoi(atts[1]);
+    } else if (strcmp(name, "cacheLineSize") == 0) {
+        PlatformBase::mCacheLineSize = atoi(atts[1]);
+    } else if (strcmp(name, "maxISPTimeoutCount") == 0) {
+        PlatformBase::mMaxISPTimeoutCount = atoi(atts[1]);
     }
 }
 
@@ -166,12 +185,7 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         return;
     }
 
-    if (strcmp(name, "sensorName") == 0) {
-        pCurrentCam->sensorName = atts[1];
-    } else if (strcmp(name, "extendedCamera") == 0) {
-        pCurrentCam->extendedCamera = ((strcmp(atts[1], "true") == 0) ? true : false);
-        profiles->mCurrentSensorIsExtendedCamera = pCurrentCam->extendedCamera ? true : false;
-     } else if (strcmp(name, "maxEV") == 0) {
+    if (strcmp(name, "maxEV") == 0) {
         pCurrentCam->maxEV = atts[1];
     } else if (strcmp(name, "minEV") == 0) {
         pCurrentCam->minEV = atts[1];
@@ -183,8 +197,12 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         pCurrentCam->supportedPreviewSizes = atts[1];
     } else if (strcmp(name, "supportedVideoSizes") == 0) {
         pCurrentCam->supportedVideoSizes = atts[1];
-    }else if (strcmp(name, "videoPreviewSizePref") == 0) {
+    } else if (strcmp(name, "videoPreviewSizePref") == 0) {
         pCurrentCam->mVideoPreviewSizePref = atts[1];
+    } else if (strcmp(name, "defaultPreviewSize") == 0) {
+        pCurrentCam->defaultPreviewSize = atts[1];
+    } else if (strcmp(name, "defaultVideoSize") == 0) {
+        pCurrentCam->defaultVideoSize = atts[1];
     } else if (strcmp(name, "supportedSceneModes") == 0) {
         pCurrentCam->supportedSceneModes = atts[1];
     } else if (strcmp(name, "defaultSceneMode") == 0) {
@@ -197,6 +215,8 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         pCurrentCam->orientation = atoi(atts[1]);
     } else if (strcmp(name, "dvs") == 0) {
         pCurrentCam->dvs = ((strcmp(atts[1], "true") == 0) ? true : false);
+    } else if (strcmp(name, "narrowGamma") == 0) {
+        pCurrentCam->narrowGamma = ((strcmp(atts[1], "true") == 0) ? true : false);
     } else if (strcmp(name, "flipping") == 0) {
         pCurrentCam->flipping = PlatformData::SENSOR_FLIP_OFF; // reset NA to OFF first
         if (strcmp(atts[0], "value") == 0 && strcmp(atts[1], "SENSOR_FLIP_H") == 0)
@@ -205,8 +225,14 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
             pCurrentCam->flipping |= PlatformData::SENSOR_FLIP_V;
     } else if (strcmp(name, "continuousCapture") == 0) {
         pCurrentCam->continuousCapture = ((strcmp(atts[1], "true") == 0) ? true : false);
+    } else if (strcmp(name, "continuousJpegCapture") == 0) {
+        pCurrentCam->continuousJpegCapture = ((strcmp(atts[1], "true") == 0) ? true : false);
     } else if (strcmp(name, "supportedSnapshotSizes") == 0) {
         pCurrentCam->supportedSnapshotSizes = atts[1];
+    } else if (strcmp(name, "defaultJpegQuality") == 0) {
+        pCurrentCam->defaultJpegQuality = atoi(atts[1]);
+    } else if (strcmp(name, "defaultJpegThumbnailQuality") == 0) {
+        pCurrentCam->defaultJpegThumbnailQuality = atoi(atts[1]);
     } else if (strcmp(name, "defaultBurstLength") == 0) {
         pCurrentCam->defaultBurstLength = atts[1];
     } else if (strcmp(name, "supportedBurstLength") == 0) {
@@ -237,12 +263,12 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         pCurrentCam->defaultFocusMode = atts[1];
     } else if (strcmp(name, "supportedFocusModes") == 0) {
         pCurrentCam->supportedFocusModes = atts[1];
+    } else if (strcmp(name, "maxNumFocusAreas") == 0) {
+        pCurrentCam->maxNumFocusAreas = static_cast<size_t>(atoi(atts[1]));
     } else if (strcmp(name, "supportedBurstFPS") == 0) {
         pCurrentCam->supportedBurstFPS = atts[1];
     } else if (strcmp(name, "previewViaOverlay") == 0) {
         pCurrentCam->mPreviewViaOverlay = ((strcmp(atts[1], "true") == 0) ? true : false);
-    } else if (strcmp(name, "VFPPLimitedResolutionList") == 0) {
-        IntelCameraParameters::parseResolutionList(atts[1], pCurrentCam->mVFPPLimitedResolutions);
     } else if (strcmp(name, "ZSLUnsupportedSnapshotResolutionList") == 0) {
         IntelCameraParameters::parseResolutionList(atts[1], pCurrentCam->mZSLUnsupportedSnapshotResolutions);
     } else if (strcmp(name, "CVFUnsupportedSnapshotResolutionList") == 0) {
@@ -313,6 +339,10 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         pCurrentCam->supportedHighSpeedResolutionFps = atts[1];
     } else if (strcmp(name, "maxHighSpeedDvsResolution") == 0) {
         pCurrentCam->maxHighSpeedDvsResolution = atts[1];
+    } else if (strcmp(name, "useHALVideoStabilization") == 0) {
+        pCurrentCam->useHALVS = (strcmp(atts[1], "true") == 0) ? true : false;
+    } else if (strcmp(name, "supportedSdvSizes") == 0) {
+        pCurrentCam->supportedSdvSizes = atts[1];
     } else if (strcmp(name, "supportedAeLock") == 0) {
         pCurrentCam->supportedAeLock = atts[1];
     } else if (strcmp(name, "supportedAwbLock") == 0) {
@@ -327,6 +357,8 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         pCurrentCam->verticalFOV = atts[1];
     } else if (strcmp(name, "horizontalFOV") == 0) {
         pCurrentCam->horizontalFOV = atts[1];
+    } else if (strcmp(name, "captureWarmUpFrames") == 0) {
+        pCurrentCam->captureWarmUpFrames = atoi(atts[1]);
     } else if (strcmp(name, "previewFormat") == 0) {
         if (strcmp(atts[1], "V4L2_PIX_FMT_YVU420") == 0)
             pCurrentCam->mPreviewFourcc = V4L2_PIX_FMT_YVU420;
@@ -334,10 +366,30 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
             pCurrentCam->mPreviewFourcc = V4L2_PIX_FMT_YUYV;
         else if (strcmp(atts[1], "V4L2_PIX_FMT_UYVY") == 0)
             pCurrentCam->mPreviewFourcc = V4L2_PIX_FMT_UYVY;
+        else if (strcmp(atts[1], "V4L2_PIX_FMT_NV21") == 0)
+            pCurrentCam->mPreviewFourcc = V4L2_PIX_FMT_NV21;
         else
             pCurrentCam->mPreviewFourcc = V4L2_PIX_FMT_NV12;
+    } else if (strcmp(name, "useMultiStreamsForSoC") == 0) {
+        pCurrentCam->useMultiStreamsForSoC = ((strcmp(atts[1], "true") == 0) ? true : false);
+    } else if (strcmp(name, "supportedSensorMetadata") == 0) {
+        pCurrentCam->supportedSensorMetadata = ((strcmp(atts[1], "true") == 0) ? true : false);
     } else if (strcmp(name, "supportedDvsSizes") == 0) {
         pCurrentCam->supportedDvsSizes = atts[1];
+    } else if (strcmp(name, "supportedIntelligentMode") == 0) {
+        pCurrentCam->supportedIntelligentMode = atts[1];
+    } else if (strcmp(name, "disable3A") == 0) {
+        pCurrentCam->disable3A = ((strcmp(atts[1], "true") == 0) ? true : false);
+    } else if (strcmp(name, "defaultDepthFocalLength") == 0) {
+        pCurrentCam->defaultDepthFocalLength = atoi(atts[1]);
+    } else if (strcmp(name, "maxDepthPreviewBufferQueueSize") == 0) {
+        pCurrentCam->maxDepthPreviewBufferQueueSize = atoi(atts[1]);
+    } else if (strcmp(name, "supportsPostviewOutput") == 0) {
+        pCurrentCam->mSupportsPostviewOutput = ((strcmp(atts[1], "true") == 0) ? true : false);
+    } else if (strcmp(name, "ispSupportContinuousCaptureMode") == 0) {
+        pCurrentCam->mISPSupportContinuousCaptureMode = ((strcmp(atts[1], "true") == 0) ? true : false);
+    } else if (strcmp(name, "supportsColorBarPreview") == 0) {
+        pCurrentCam->mSupportsColorBarPreview = ((strcmp(atts[1], "true") == 0) ? true : false);
     }
 }
 
@@ -454,12 +506,9 @@ void CameraProfiles::endElement(void *userData, const char *name)
         profiles->mCurrentDataField = FIELD_INVALID;
         if (profiles->pCurrentCam) {
             // There may be multiple entries in xml.
-            // 1. Use first entry that matches sensor name from driver.
+            // 1. Use first entry that matches sensor name(s) from driver.
             // 2. Default to unnamed entry, if no match found.
             bool useEntry = true;
-            String8 sensorName;
-            if (profiles->mSensorNames.size() > profiles->mCurrentSensor)
-                sensorName = profiles->mSensorNames[profiles->mCurrentSensor];
 
             // mCameras must be in order, and so does the XML file.
             // So for example, it is not possible to add CameraId N
@@ -471,12 +520,15 @@ void CameraProfiles::endElement(void *userData, const char *name)
             }
 
             // If name attribute was non-empty, it must match exactly.
+            // Loop through all sensors where CameraId == IspPort
             if (useEntry && !profiles->pCurrentCam->sensorName.isEmpty()) {
-                if (profiles->pCurrentCam->sensorName != sensorName) {
-                    LOG1("@%s: skip camera id %d for %s, not supported in HW (%s)",
-                        __FUNCTION__, profiles->mCurrentSensor,
-                        profiles->pCurrentCam->sensorName.string(), sensorName.string());
-                    useEntry = false;
+                useEntry = false;
+                for (unsigned int i = 0; i < profiles->mSensorNames.size(); ++i) {
+                    if (profiles->mCurrentSensor == profiles->mSensorNames[i].ispPort &&
+                        profiles->pCurrentCam->sensorName == profiles->mSensorNames[i].name) {
+                        useEntry = true;
+                        continue;
+                    }
                 }
             }
 
@@ -484,30 +536,27 @@ void CameraProfiles::endElement(void *userData, const char *name)
             if (useEntry && profiles->mCameras.size() > profiles->mCurrentSensor) {
                 // Always replace an unnamed entry.
                 // Otherwise replace only if name matches.
-                if (sensorName.isEmpty() ||
-                    profiles->pCurrentCam->sensorName == sensorName) {
-                    LOG1("@%s: cameraId %d already exists, replace with %s",
-                        __FUNCTION__, profiles->mCurrentSensor,
-                       profiles->pCurrentCam->sensorName.string());
-                    profiles->mCameras.removeAt(profiles->mCurrentSensor);
-                } else {
-                    useEntry = false;
-                }
+                // TODO for clean up later.
             }
+
             if (useEntry) {
                 LOG1("@%s: Add camera id %d (%s)",
                     __FUNCTION__, profiles->mCurrentSensor,
                     profiles->pCurrentCam->sensorName.string());
-                profiles->mCameras.insertAt(*(profiles->pCurrentCam), profiles->mCurrentSensor);
+
+                // Extended camera is pushed at the end always.
+                if (profiles->mCurrentSensorIsExtendedCamera) {
+                    profiles->mCameras.push(*(profiles->pCurrentCam));
+                    profiles->mHasExtendedCamera = true;
+                    profiles->mExtendedCameraIndex = profiles->mCameras.size() - 1;
+                    profiles->mExtendedCameraId = profiles->mCurrentSensor;
+                    LOG1("@%s: Extended camera index = %d", __FUNCTION__, profiles->mCameras.size() - 1);
+                } else {
+                    profiles->mCameras.insertAt(*(profiles->pCurrentCam), profiles->mCurrentSensor);
+                }
             }
             delete profiles->pCurrentCam;
             profiles->pCurrentCam = NULL;
-
-            if (profiles->mCurrentSensorIsExtendedCamera) {
-                profiles->mHasExtendedCamera = true;
-                profiles->mExtendedCameraIndex = profiles->mCameras.size() - 1;
-                profiles->mExtendedCameraId = profiles->mCurrentSensor;
-            }
             profiles->mCurrentSensorIsExtendedCamera = false;
         }
     }
@@ -593,6 +642,8 @@ void CameraProfiles::dump(void)
         LOGD("line%d, in DeviceData, pcam->sensorType:%d ", __LINE__, mCameras[i].sensorType);
         LOGD("line%d, in DeviceData, pcam->dvs:%d ", __LINE__, mCameras[i].dvs);
         LOGD("line%d, in DeviceData, pcam->supportedSnapshotSizes:%s ", __LINE__, mCameras[i].supportedSnapshotSizes.string());
+        LOGD("line%d, in DeviceData, pcam->defaultJpegQuality:%d ", __LINE__, mCameras[i].defaultJpegQuality);
+        LOGD("line%d, in DeviceData, pcam->defaultJpegThumbnailQuality:%d ", __LINE__, mCameras[i].defaultJpegThumbnailQuality);
         LOGD("line%d, in DeviceData, pcam->flipping:%d ", __LINE__, mCameras[i].flipping);
         LOGD("line%d, in DeviceData, pcam->continuousCapture:%d ", __LINE__, mCameras[i].continuousCapture);
         LOGD("line%d, in DeviceData, pcam->mPreviewViaOverlay:%d ", __LINE__, mCameras[i].mPreviewViaOverlay);
@@ -628,6 +679,8 @@ void CameraProfiles::dump(void)
         LOGD("line%d, in DeviceData, pcam->maxNumYUVBufferForBurst:%d ", __LINE__, mCameras[i].maxNumYUVBufferForBurst);
         LOGD("line%d, in DeviceData, pcam->maxNumYUVBufferForBracket:%d ", __LINE__, mCameras[i].maxNumYUVBufferForBracket);
         LOGD("line%d, in DeviceData, pcam->maxHighSpeedDvsResolution:%s ",__LINE__, mCameras[i].maxHighSpeedDvsResolution.string());
+        LOGD("line%d, in DeviceData, pcam->supportedSdvSizes:%s ",__LINE__, mCameras[i].supportedSdvSizes.string());
+        LOGD("line%d, in DeviceData, pcam->supportedIntelligentMode:%s ",__LINE__, mCameras[i].supportedIntelligentMode.string());
     }
 
     LOGD("line%d, in DeviceData, for common settings ", __LINE__);
@@ -637,6 +690,9 @@ void CameraProfiles::dump(void)
     LOGD("line%d, in DeviceData, mManufacturerName:%s ", __LINE__, mManufacturerName.string());
     LOGD("line%d, in DeviceData, mMaxZoomFactor:%d ", __LINE__, mMaxZoomFactor);
     LOGD("line%d, in DeviceData, mSupportVideoSnapshot:%d ", __LINE__, mSupportVideoSnapshot);
+    LOGD("line%d, in DeviceData, mSupportsOfflineBurst:%d ", __LINE__, mSupportsOfflineBurst);
+    LOGD("line%d, in DeviceData, mSupportsOfflineBracket:%d ", __LINE__, mSupportsOfflineBracket);
+    LOGD("line%d, in DeviceData, mSupportsOfflineHdr:%d ", __LINE__, mSupportsOfflineHdr);
     LOGD("line%d, in DeviceData, mNumRecordingBuffers:%d ", __LINE__, mNumRecordingBuffers);
     LOGD("line%d, in DeviceData, mNumPreviewBuffers:%d ", __LINE__, mNumPreviewBuffers);
     LOGD("line%d, in DeviceData, mMaxContinuousRawRingBuffer:%d ", __LINE__, mMaxContinuousRawRingBuffer);

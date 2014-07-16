@@ -20,14 +20,11 @@
 
 namespace android {
 
-#define SYSFS_THERMAL_THROTTLE_NOTIFY   "/sys/fps_throttle/notify"
-#define SYSFS_THERMAL_THROTTLE_HANDSHAKE  "/sys/fps_throttle/handshake"
-#define DEFAULT_FPS_PERCENT 100
-#define ATTR_LEN 16
-#define THERMAL_THROTTLE_POLL_TIMEOUT 500
+const char ThermalThrottleThread::SYSFS_THERMAL_THROTTLE_NOTIFY[] = "/sys/fps_throttle/notify";
+const char ThermalThrottleThread::SYSFS_THERMAL_THROTTLE_HANDSHAKE[] = "/sys/fps_throttle/handshake";
 
 ThermalThrottleThread::ThermalThrottleThread(IHWSensorControl *SensorControl) :
-    Thread(true) // callbacks may call into java
+    Thread(true)
     ,mMessageQueue("ThermalThrottleThread", MESSAGE_ID_MAX)
     ,mThreadRunning(false)
     ,mSensorCI(SensorControl)
@@ -60,6 +57,7 @@ status_t ThermalThrottleThread::openThermalThrottle()
     if ((mHandshakeFd = ::open(SYSFS_THERMAL_THROTTLE_HANDSHAKE, O_WRONLY)) < 0)
     {
         LOGW("Unable to open handshake %s", strerror(errno));
+        ::close(mNotifyFd);
         status = UNKNOWN_ERROR;
     }
 
@@ -203,7 +201,7 @@ status_t ThermalThrottleThread::handleMessageExit()
     if (mMonitoring) {
         //Disable fps throttle.
         memset(attrData, 0, ATTR_LEN);
-        sprintf(attrData, "%d", FPS_THROTTLE_DISABLE);
+        sprintf(attrData, "%d", FPS_THROTTLE_DISABLED);
         ::write(mHandshakeFd, attrData, 2);
 
         closeThermalThrottle();
@@ -251,7 +249,7 @@ status_t ThermalThrottleThread::handleMessageStartMonitoring()
     }
 
     memset(attrData, 0, ATTR_LEN);
-    sprintf(attrData, "%d", FPS_THROTTLE_ENABLE);
+    sprintf(attrData, "%d", FPS_THROTTLE_ENABLED);
     count = ::write(mHandshakeFd, attrData, 1);
 
     monitorNotify();
@@ -268,7 +266,7 @@ status_t ThermalThrottleThread::handleMessageStopMonitoring()
         return INVALID_OPERATION;
 
     memset(attrData, 0, ATTR_LEN);
-    sprintf(attrData, "%d", FPS_THROTTLE_DISABLE);
+    sprintf(attrData, "%d", FPS_THROTTLE_DISABLED);
     ::write(mHandshakeFd, attrData, 1);
 
     status = closeThermalThrottle();

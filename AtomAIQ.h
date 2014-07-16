@@ -41,6 +41,7 @@ class I3AControls;
 namespace android {
 
 #define MAX_NUM_AF_WINDOW       9
+const unsigned int NUM_EXPOSURES = 1;
 
 typedef struct {
     struct atomisp_parm               isp_params;
@@ -66,8 +67,9 @@ typedef struct {
 typedef struct {
     ia_aiq_ae_results                 results;
     ia_aiq_hist_weight_grid           weight_grid;
-    ia_aiq_exposure_parameters        exposure;
-    ia_aiq_exposure_sensor_parameters sensor_exposure;
+    ia_aiq_exposure_parameters        exposures[NUM_EXPOSURES];
+    ia_aiq_exposure_sensor_parameters sensor_exposures[NUM_EXPOSURES];
+    ia_aiq_ae_exposure_result         exposure_result_array[NUM_EXPOSURES];
     ia_aiq_flash_parameters           flash;
 } stored_ae_results;
 
@@ -167,7 +169,8 @@ public:
                            unsigned int maxStatsWidth,
                            unsigned int maxStatsHeight,
                            ia_cmc_t *cmc,
-                           ia_mkn *mkn) = 0;
+                           ia_mkn *mkn,
+                           int cameraId) = 0;
 
     /*!
      * \brief Converts ISP HW specific statistics to IA_AIQ generic format.
@@ -228,7 +231,7 @@ private:
     bool changeSensorMode(void);
 
     //staticstics
-    status_t getStatistics(const struct timeval *frame_timestamp);
+    status_t getStatistics(const struct timeval *frame_timestamp, int orientation);
     struct atomisp_3a_statistics * allocateStatistics(int grid_size);
     void freeStatistics(struct atomisp_3a_statistics *stats);
     bool needStatistics();
@@ -259,10 +262,11 @@ private:
     void setAfMeteringMode(ia_aiq_af_metering_mode mode);
     status_t moveFocusDriveToPos(long position);
     void afUpdateTimestamp(void);
-
+    status_t setAfWindow(const CameraWindow *window);
 
     //AE
     void resetAECParams();
+    void setAeOperationModeAutoOrUll();
     status_t runAeMain();
     bool getAeResults();
     bool getAeFlashResults();
@@ -306,7 +310,7 @@ private:
     AtomAIQ& operator=(const AtomAIQ& other);
 
 public:
-    AtomAIQ(HWControlGroup &hwcg);
+    AtomAIQ(HWControlGroup &hwcg, int cameraId);
     ~AtomAIQ();
 
     virtual SensorType getType() { return SENSOR_TYPE_RAW; }
@@ -322,9 +326,9 @@ public:
 
     // Getters and Setters
     virtual status_t getAiqConfig(ia_binary_data *cpfData);
-    status_t setAeWindow(const CameraWindow *window);
-    status_t setAfWindow(const CameraWindow *window);
+    virtual status_t setAeWindow(CameraWindow *window, const AAAWindowInfo *convWindow = NULL);
     status_t setAeFlickerMode(FlickerMode mode);
+    status_t setUllEnabled(bool enabled);
     status_t setAfEnabled(bool en) { return 0; }
     status_t setAeSceneMode(SceneMode mode);
     SceneMode getAeSceneMode();
@@ -361,12 +365,13 @@ public:
     // not to be run in ControlThread
     size_t   getAeMaxNumWindows() { return 1; }
     size_t   getAfMaxNumWindows() { return MAX_NUM_AF_WINDOW; }
-    status_t setAfWindows(const CameraWindow *windows, size_t numWindows);
+    virtual status_t setAfWindows(CameraWindow *windows, size_t numWindows, const AAAWindowInfo *convWindow = NULL);
     status_t getExposureInfo(SensorAeConfig& sensorAeConfig);
     status_t getAeManualBrightness(float *ret);
     status_t setManualFocus(int focus, bool applyNow);
     status_t setManualFocusIncrement(int step);
     status_t applyEv(float bias);
+    int      applyEvGroup(float biases[], int depth, SensorAeConfig aeResults[]);
     status_t setEv(float bias);
     status_t getEv(float *ret);
 
@@ -377,6 +382,7 @@ public:
     status_t setSmartSceneDetection(bool en);
     bool     getSmartSceneDetection();
     status_t getSmartSceneMode(String8 &sceneMode, bool &sceneHdr);
+    virtual void setFaceDetection(bool enabled) { return; /* No-op in Intel AIQ */ }
     status_t setFaces(const ia_face_state& faceState);
 
     status_t getGridWindow(AAAWindowInfo& window);
@@ -384,17 +390,19 @@ public:
     //Bracketing
     status_t initAfBracketing(int stop, AFBracketingMode mode);
     virtual status_t initAeBracketing();
+    virtual status_t deinitAeBracketing();
 
     // Flash control
     virtual status_t setFlash(int numFrames);
 
     // ISP processing functions
-    status_t apply3AProcess(bool read_stats, struct timeval *frame_timestamp);
+    status_t apply3AProcess(bool read_stats, struct timeval *frame_timestamp, int orientation);
 
     status_t startStillAf();
     status_t stopStillAf();
     AfStatus isStillAfComplete();
-    status_t applyPreFlashProcess(FlashStage stage, struct timeval captureTimestamp);
+
+    status_t applyPreFlashProcess(FlashStage stage, struct timeval captureTimestamp, int orientation);
 
     // Makernote
     ia_binary_data *get3aMakerNote(ia_mkn_trg mode);
@@ -410,12 +418,18 @@ public:
     status_t setSharpness(char sharpness);
     status_t setContrast(char contrast);
 
+    // set manual focus length
+    void setManualFocusParameters(ia_aiq_manual_focus_parameters focusParameters);
+
 // private members
 private:
     IHWIspControl *mISP;
+    struct atomisp_parameters mAicOutStruct;
     ia_env mPrintFunctions;
 
     aaa_state m3aState;
+    const ia_aiq_rgbs_grid* mRgbsGridArray[NUM_EXPOSURES];
+    const ia_aiq_af_grid* mAfGridArray[NUM_EXPOSURES];
 
     //STATISTICS
     ia_aiq_statistics_input_params mStatisticsInputParameters;
@@ -442,6 +456,7 @@ private:
     ae_state mAeState;
     stored_ae_results mPreAssistLightAeResults;
     ia_coordinate mAeCoord;
+    bool mUllEnabled;
 
     //AE bracketing
     ia_aiq_ae_input_params mAeBracketingInputParameters;
@@ -460,6 +475,8 @@ private:
     ia_aiq_gbce_results *mGBCEResults;
     bool mGBCEDefault;
 
+    //PA
+    ia_aiq_pa_results *mPaResults;
 
     //ISP
     ispInputParameters mIspInputParams;
@@ -477,6 +494,9 @@ private:
 
     IIaIspAdaptor *mISPAdaptor;
 
+    bool mFileInjection; // Note: AtomAIQ contains custom logic when file injection is enabled
+
+    int mCameraId;
 }; // class AtomAIQ
 
 
@@ -494,7 +514,8 @@ public:
                  unsigned int maxStatsWidth,
                  unsigned int maxStatsHeight,
                  ia_cmc_t *cmc,
-                 ia_mkn *mkn);
+                 ia_mkn *mkn,
+                 int cameraId);
 
     ia_err convertIspStatistics(void *statistics,
                                 ia_aiq_rgbs_grid **outRgbsGrid,
@@ -522,7 +543,8 @@ public:
                  unsigned int maxStatsWidth,
                  unsigned int maxStatsHeight,
                  ia_cmc_t *cmc,
-                 ia_mkn *mkn);
+                 ia_mkn *mkn,
+                 int cameraId);
 
     ia_err convertIspStatistics(void *statistics,
                                 ia_aiq_rgbs_grid **outRgbsGrid,
