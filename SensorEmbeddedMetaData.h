@@ -74,7 +74,7 @@ private:
     static const int MAX_FRAME_COUNT = 255;
     static const int MIN_FRAME_COUNT = 0;
     static const int FRAME_COUNT_MAX_GAP = 2;
-    static const int INIT_FRAME_COUNT = 2;
+    static const int INIT_FRAME_COUNT = 1;
 
     struct SbsSensorsFrameCount {
         int index;
@@ -107,6 +107,8 @@ private:
     status_t storeDecodedMetaData();
 
     status_t decodeSbsSensorsEmbeddedMetaData();
+
+    bool getSbsSensorInitFrameCount(int index, int lastIndex, int &count);
 };
 
 } /* namespace android */

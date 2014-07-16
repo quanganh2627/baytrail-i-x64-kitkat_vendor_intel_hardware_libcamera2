@@ -437,12 +437,8 @@ status_t SensorEmbeddedMetaData::decodeSbsSensorsEmbeddedMetaData()
     }
 
     // Below is workarond for Kevlar special.
-    if (mSensorMetaDataConfigFlag & MISC_PARAMETERS_EXIST) {
+    if ((mSensorMetaDataConfigFlag & MISC_PARAMETERS_EXIST) && PlatformData::isExtendedCamera(mCameraId)){
         int index = mSbsSensorsFrameCount.index;
-        int arraySize = MAX_FRAME_COUNT_ARRAY_SIZE;
-        int gap = FRAME_COUNT_MAX_GAP;
-        int init = INIT_FRAME_COUNT;
-        int max = MAX_FRAME_COUNT;
 
         if ((mEmbeddedMetaDecoderHandler->decoded_data).misc_parameters_p) {
             mSbsSensorsFrameCount.firstFrameCount[index]
@@ -472,31 +468,27 @@ status_t SensorEmbeddedMetaData::decodeSbsSensorsEmbeddedMetaData()
                 mSbsSensorsFrameCount.firstFrameCount[index] = mSbsSensorsFrameCount.secondFrameCount[index];
             }
 
-            if ((!mSbsSensorsFrameCount.hasInit) && (mSbsSensorsFrameCount.firstFrameCount[index]
-                    != mSbsSensorsFrameCount.secondFrameCount[index]
-                || (mSbsSensorsFrameCount.firstFrameCount[(index+arraySize-1) % arraySize] >= 0
-                    && (mSbsSensorsFrameCount.firstFrameCount[index]
-                        > (mSbsSensorsFrameCount.firstFrameCount[(index+arraySize-1) % arraySize] + gap)))
-                || (mSbsSensorsFrameCount.secondFrameCount[(index+arraySize-1) % arraySize] >= 0
-                    && (mSbsSensorsFrameCount.secondFrameCount[index]
-                        > (mSbsSensorsFrameCount.secondFrameCount[(index+arraySize-1) % arraySize] + gap))))) {
-                // reinitialize frame counter
-                (mEmbeddedMetaDecoderHandler->decoded_data).misc_parameters_p->frame_counter = init;
-                mSbsSensorsFrameCount.hasInit = true;
+            if (!mSbsSensorsFrameCount.hasInit) {
+                int lastIndex = (index+MAX_FRAME_COUNT_ARRAY_SIZE-1) % MAX_FRAME_COUNT_ARRAY_SIZE;
+                int count = 0;
+                if (getSbsSensorInitFrameCount(index, lastIndex, count)) {
+                    // reinitialize frame counter
+                    (mEmbeddedMetaDecoderHandler->decoded_data).misc_parameters_p->frame_counter = count;
+                    LOGI("count = %d, first = %d, second = %d", count, mSbsSensorsFrameCount.firstFrameCount[index], mSbsSensorsFrameCount.secondFrameCount[index]);
+                    mSbsSensorsFrameCount.hasInit = true;
+                }
             } else {
-                if ((!mSbsSensorsFrameCount.hasDelta)
-                    && ((mSbsSensorsFrameCount.firstFrameCount[(index+arraySize-1) % arraySize] >= 0
-                        && mSbsSensorsFrameCount.firstFrameCount[(index+arraySize-1) % arraySize]
-                            != mSbsSensorsFrameCount.secondFrameCount[(index+arraySize-1) % arraySize])
-                      || (mSbsSensorsFrameCount.firstFrameCount[(index+arraySize-2) % arraySize] >= 0
-                        && (mSbsSensorsFrameCount.firstFrameCount[(index+arraySize-1) % arraySize]
-                            > (mSbsSensorsFrameCount.firstFrameCount[(index+arraySize-2) % arraySize] + gap)))
-                      || (mSbsSensorsFrameCount.secondFrameCount[(index+arraySize-2) % arraySize] >= 0
-                        &&(mSbsSensorsFrameCount.secondFrameCount[(index+arraySize-1) % arraySize]
-                            > (mSbsSensorsFrameCount.secondFrameCount[(index+arraySize-2) % arraySize] + gap))))) {
-                    // calculate the delta between real frame count and recalculated frame count
-                    mSbsSensorsFrameCount.delta = mSbsSensorsFrameCount.firstFrameCount[index] - (init + 1);
-                    mSbsSensorsFrameCount.hasDelta = true;
+                if (mSbsSensorsFrameCount.hasInit && !mSbsSensorsFrameCount.hasDelta) {
+                    int lastIndex = (index+MAX_FRAME_COUNT_ARRAY_SIZE-1) % MAX_FRAME_COUNT_ARRAY_SIZE;
+                    int preIndex = (index+MAX_FRAME_COUNT_ARRAY_SIZE-2) % MAX_FRAME_COUNT_ARRAY_SIZE;
+                    int count = 0;
+
+                    if (getSbsSensorInitFrameCount(lastIndex, preIndex, count)) {
+                        // calculate the delta between real frame count and recalculated frame count
+                        mSbsSensorsFrameCount.delta = mSbsSensorsFrameCount.firstFrameCount[index] - (count + 1);
+                        LOGI("delta = %d, frame count = %d", mSbsSensorsFrameCount.delta, mSbsSensorsFrameCount.firstFrameCount[index]);
+                        mSbsSensorsFrameCount.hasDelta = true;
+                    }
                 }
 
                 // recalculate frame count
@@ -505,7 +497,7 @@ status_t SensorEmbeddedMetaData::decodeSbsSensorsEmbeddedMetaData()
                         = mSbsSensorsFrameCount.firstFrameCount[index] - mSbsSensorsFrameCount.delta;
                 else {
                     (mEmbeddedMetaDecoderHandler->decoded_data).misc_parameters_p->frame_counter
-                        = mSbsSensorsFrameCount.firstFrameCount[index] + max + 1 - mSbsSensorsFrameCount.delta;
+                        = mSbsSensorsFrameCount.firstFrameCount[index] + MAX_FRAME_COUNT + 1 - mSbsSensorsFrameCount.delta;
                 }
             }
 
@@ -514,11 +506,31 @@ status_t SensorEmbeddedMetaData::decodeSbsSensorsEmbeddedMetaData()
                 , mSbsSensorsFrameCount.delta
                 , (mEmbeddedMetaDecoderHandler->decoded_data).misc_parameters_p->frame_counter);
             ++mSbsSensorsFrameCount.index;
-            mSbsSensorsFrameCount.index %= arraySize;
+            mSbsSensorsFrameCount.index %= MAX_FRAME_COUNT_ARRAY_SIZE;
         }
     }
     return ret;
 }
+
+bool SensorEmbeddedMetaData::getSbsSensorInitFrameCount(int index, int lastIndex, int &count)
+{
+    if (mSbsSensorsFrameCount.firstFrameCount[index] != mSbsSensorsFrameCount.secondFrameCount[index]) {
+        // After doing many tests, the initial frame should be INIT_FRAME_COUNT + 1 for depth sync.
+        count = INIT_FRAME_COUNT + 1;
+        return true;
+    } else if (mSbsSensorsFrameCount.firstFrameCount[lastIndex] >= 0
+        && (mSbsSensorsFrameCount.firstFrameCount[index] > mSbsSensorsFrameCount.firstFrameCount[lastIndex] + FRAME_COUNT_MAX_GAP)) {
+        count = INIT_FRAME_COUNT;
+        return true;
+    } else if (mSbsSensorsFrameCount.secondFrameCount[lastIndex] >= 0
+        && (mSbsSensorsFrameCount.secondFrameCount[index] > mSbsSensorsFrameCount.secondFrameCount[lastIndex] + FRAME_COUNT_MAX_GAP)) {
+        count = INIT_FRAME_COUNT;
+        return true;
+    }
+
+    return false;
+}
+
 
 } /* namespace android */
 
