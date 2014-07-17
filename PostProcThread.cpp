@@ -782,15 +782,8 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
             mFaceDetector->faceRecognize(&frameData);
         }
 
-        // NOTE: facesToCb and extended_face_metadata ownership will be passed to
-        // CallbacksThread, which will take these into message queue and delete when necessary.
-        camera_face_t *facesToCbPtr = new camera_face_t[num_faces];
-        extended_frame_metadata_t *extended_face_metadata = new extended_frame_metadata_t;
-
-        if (facesToCbPtr == NULL || extended_face_metadata == NULL) {
-            LOGE("Error allocating memory for face CB data");
-            return NO_MEMORY;
-        }
+        camera_face_t faces[num_faces];
+        extended_frame_metadata_t extended_face_metadata;
 
         ia_face_state faceState;
         faceState.faces = new ia_face[num_faces];
@@ -799,8 +792,8 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
             return NO_MEMORY;
         }
 
-        extended_face_metadata->number_of_faces = mFaceDetector->getFaces(facesToCbPtr, frameData.width, frameData.height);
-        extended_face_metadata->faces = facesToCbPtr;
+        extended_face_metadata.number_of_faces = mFaceDetector->getFaces(faces, frameData.width, frameData.height);
+        extended_face_metadata.faces = faces;
         mFaceDetector->getFaceState(&faceState, frameData.width, frameData.height, mZoomRatio);
 
         // Find recognized faces from the data (ID is positive), and pick the first one:
@@ -822,23 +815,23 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
         }
 
         // Swap also the face in face metadata going to the application to match the swapped faceState info
-        if (extended_face_metadata->number_of_faces > 0 && faceForFocusInd > 0) {
-            camera_face_t faceMetaTmp = extended_face_metadata->faces[0];
-            extended_face_metadata->faces[0] = extended_face_metadata->faces[faceForFocusInd];
-            extended_face_metadata->faces[faceForFocusInd] = faceMetaTmp;
+        if (extended_face_metadata.number_of_faces > 0 && faceForFocusInd > 0) {
+            camera_face_t faceMetaTmp = extended_face_metadata.faces[0];
+            extended_face_metadata.faces[0] = extended_face_metadata.faces[faceForFocusInd];
+            extended_face_metadata.faces[faceForFocusInd] = faceMetaTmp;
         }
 
         // pass face info to the callback listener (to be used for 3A)
-        if (extended_face_metadata->number_of_faces > 0 || mLastReportedNumberOfFaces != 0) {
-            mLastReportedNumberOfFaces = extended_face_metadata->number_of_faces;
+        if (extended_face_metadata.number_of_faces > 0 || mLastReportedNumberOfFaces != 0) {
+            mLastReportedNumberOfFaces = extended_face_metadata.number_of_faces;
             mPostProcDoneCallback->facesDetected(&faceState);
         }
 
         // TODO passing real auto LLS information from 3A results
-        extended_face_metadata->needLLS = false;
+        extended_face_metadata.needLLS = false;
 
         // .. and towards the application
-        mpListener->facesDetected(extended_face_metadata);
+        mpListener->facesDetected(&extended_face_metadata);
 
         delete[] faceState.faces;
         faceState.faces = NULL;
