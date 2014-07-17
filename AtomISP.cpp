@@ -6704,12 +6704,10 @@ status_t AtomISP::AAAStatSource::observe(IAtomIspObserver::Message *msg)
         ret = -1;
     } else {
         // poll was successful, dequeue the event right away
-        do {
-            ret = mISP->m3AEventSubdevice->dequeueEvent(&event);
-            if (ret < 0) {
-                LOGE("Dequeue stats event failed");
-            }
-        } while (event.pending > 0);
+        ret = mISP->m3AEventSubdevice->dequeueEvent(&event);
+        if (ret < 0) {
+            LOGE("Dequeue stats event failed");
+        }
     }
 
     if (ret < 0) {
