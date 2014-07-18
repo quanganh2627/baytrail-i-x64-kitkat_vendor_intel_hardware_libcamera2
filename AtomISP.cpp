@@ -2547,6 +2547,19 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
 			
 		}
 
+		const char manUsensorBNameOV2722[] = "ov2722";
+		if (strncmp(mSensorHW.getSensorName(), manUsensorBNameOV2722, sizeof(manUsensorBNameOV2722) - 1) == 0) {
+			if (((previewWidth == 176)&& (previewHeight == 144)) || ((previewWidth == 352)&& (previewHeight == 288))) {
+				LOGD("QCIF/CIF recording change preview size to 1320x1080");
+				params->setPreviewSize(1320,1080);
+			}
+
+			if(((previewWidth == 320)&& (previewHeight == 240)) || ((previewWidth == 640)&& (previewHeight == 480))) {
+				LOGD("QVGA/VGA recording change preview size to 1440x1080");
+				params->setPreviewSize(1440,1080);
+			}
+	}
+
         //Workaround 2, detail refer to the function description
         params->getPreviewSize(&previewWidth, &previewHeight);
         params->getVideoSize(&videoWidth, &videoHeight);
