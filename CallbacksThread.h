@@ -43,7 +43,7 @@ class CallbacksThread :
     public IFaceDetectionListener {
 
 public:
-    CallbacksThread(Callbacks *callbacks, ICallbackPicture *pictureDone = NULL);
+    CallbacksThread(Callbacks *callbacks, int cameraId, ICallbackPicture *pictureDone = NULL);
     virtual ~CallbacksThread();
 
 // prevent copy constructor and assignment operator

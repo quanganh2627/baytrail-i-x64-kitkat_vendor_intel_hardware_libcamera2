@@ -230,7 +230,7 @@ status_t ControlThread::init()
     }
 
     // we implement ICallbackPicture interface
-    mCallbacksThread = new CallbacksThread(mCallbacks, this);
+    mCallbacksThread = new CallbacksThread(mCallbacks, mCameraId, this);
     if (mCallbacksThread == NULL) {
         LOGE("error creating CallbacksThread");
         goto bail;
@@ -615,6 +615,11 @@ void ControlThread::deinit()
             it->data.setParameters.params = NULL;
         }
     mPostponedMessages.clear();
+
+    // Clear extended status when close extended camera
+    if (PlatformData::isExtendedCamera(mCameraId)) {
+        PlatformData::useExtendedCamera(false);
+    }
 
     LOG1("@%s- complete", __FUNCTION__);
 }

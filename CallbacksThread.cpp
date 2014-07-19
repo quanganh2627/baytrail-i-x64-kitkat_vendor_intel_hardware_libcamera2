@@ -27,7 +27,7 @@
 
 namespace android {
 
-CallbacksThread::CallbacksThread(Callbacks *callbacks, ICallbackPicture *pictureDone) :
+CallbacksThread::CallbacksThread(Callbacks *callbacks, int cameraId, ICallbackPicture *pictureDone) :
     Thread(true) // callbacks may call into java
     ,mMessageQueue("CallbacksThread", MESSAGE_ID_MAX)
     ,mThreadRunning(false)
@@ -44,6 +44,8 @@ CallbacksThread::CallbacksThread(Callbacks *callbacks, ICallbackPicture *picture
     ,mFaceCbCount(0)
     ,mFaceCbFreqDivider(1)
     ,mPictureDoneCallback(pictureDone)
+    ,mCameraId(cameraId)
+    ,mPausePreviewCallbacks(false)
 {
     LOG1("@%s", __FUNCTION__);
     mFaceMetadata.faces = new camera_face_t[MAX_FACES_DETECTABLE];
@@ -599,7 +601,10 @@ status_t CallbacksThread::handleMessageJpegDataReady(MessageCompressed *msg)
             CameraDump::dumpAtom2File(&jpegBuf, jpegDumpName.string());
         }
 
-        mPausePreviewCallbacks = true;
+        // For depth mode, it don't pause preview callback.
+        if (!PlatformData::isExtendedCamera(mCameraId))
+            mPausePreviewCallbacks = true;
+
         mCallbacks->compressedFrameDone(&jpegBuf);
         if (jpegBuf.buff == NULL) {
             LOGW("CallbacksThread received NULL jpegBuf.buff, which should not happen");
@@ -638,7 +643,11 @@ status_t CallbacksThread::handleMessageJpegDataRequest(MessageDataRequest *msg)
         if (msg->rawCallback) {
             mCallbacks->rawFrameDone(&snapshotBuf);
         }
-        mPausePreviewCallbacks = true;
+
+        // For depth mode, it don't pause preview callback.
+        if (!PlatformData::isExtendedCamera(mCameraId))
+            mPausePreviewCallbacks = true;
+
         mCallbacks->compressedFrameDone(&jpegBuf);
 
         LOG1("Releasing jpegBuf.buff %p, dataPtr %p", jpegBuf.buff, jpegBuf.dataPtr);
