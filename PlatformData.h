@@ -1310,6 +1310,7 @@ protected:
         CameraInfo() {
             sensorName = "";
             extendedCamera = false;
+            extendedFeatureName = "";
             sensorType = SENSOR_TYPE_RAW;
             facing = CAMERA_FACING_BACK;
             orientation = 90;
@@ -1482,6 +1483,7 @@ protected:
 
         String8 sensorName;
         bool extendedCamera;
+        String8 extendedFeatureName;
         SensorType sensorType;
         int facing;
         int orientation;
