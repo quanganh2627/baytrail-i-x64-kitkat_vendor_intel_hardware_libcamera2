@@ -580,6 +580,10 @@ status_t UltraLowLight::processIntelULL()
         mIntelUllCfg->imreg_fallback = new int[mInputBuffers.size()];
         if (mIntelUllCfg->imreg_fallback == NULL) {
             LOGE("imreg_fallback array allocation failed.");
+            delete[] input;
+            input = NULL;
+            delete[] postview;
+            postview = NULL;
             return NO_MEMORY;
         }
     }
@@ -597,6 +601,10 @@ status_t UltraLowLight::processIntelULL()
                     LOGE("GPU image registration failed.");
                     delete[] mIntelUllCfg->imreg_fallback;
                     mIntelUllCfg->imreg_fallback = NULL;
+                    delete[] input;
+                    input = NULL;
+                    delete[] postview;
+                    postview = NULL;
                     return ret;
                 }
             }

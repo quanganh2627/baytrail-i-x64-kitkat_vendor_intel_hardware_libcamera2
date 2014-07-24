@@ -82,6 +82,7 @@ AtomAIQ::AtomAIQ(HWControlGroup &hwcg, int cameraId):
     ,mAwbLocked(false)
     ,mAwbRunCount(0)
     ,mGBCEResults(NULL)
+    ,mPaResults(NULL)
     ,mMkn(NULL)
     ,mSensorCI(hwcg.mSensorCI)
     ,mFlashCI(hwcg.mFlashCI)
