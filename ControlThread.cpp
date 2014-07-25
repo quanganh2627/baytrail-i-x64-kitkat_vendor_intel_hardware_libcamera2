@@ -4629,6 +4629,16 @@ status_t ControlThread::processParamXNR_ANR(const CameraParameters *oldParams,
         }
     }
 
+    // enable XNR in auto scene mode
+    const char *scene_mode = mParameters.get(CameraParameters::KEY_SCENE_MODE);
+    if (scene_mode && !strcmp(scene_mode, CameraParameters::SCENE_MODE_AUTO) && mISP->getXNR()==false) {
+        LOGD("XNR enable in auto mode");
+        XNR_ANR_changed = true;
+        mISP->setXNR(true);
+        // Forcing mParameters to true, to be in sync with app update.
+        mParameters.set(IntelCameraParameters::KEY_XNR, "true");
+    }
+
     // ANR
     newVal = paramsReturnNewIfChanged(oldParams, newParams,
                                               IntelCameraParameters::KEY_ANR);
