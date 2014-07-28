@@ -2443,6 +2443,10 @@ status_t ControlThread::handleMessageTakePicture() {
     LOG1("CaptureSubState %s -> STARTED ", sCaptureSubstateStrings[mCaptureSubState]);
     mCaptureSubState = STATE_CAPTURE_STARTED;
 
+#ifdef RENDER_BLACK_BUFFER_BEFORE_STOP_PREVIEW_FOR_RAW_SENSORS
+    mPreviewThread->setOnShooting(true);
+#endif
+
     switch(mShootingMode) {
 
         case SHOOTING_MODE_SINGLE:

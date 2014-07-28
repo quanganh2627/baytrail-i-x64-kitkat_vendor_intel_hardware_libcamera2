@@ -152,6 +152,9 @@ public:
     status_t returnPreviewBuffers();
     status_t flushBuffers();
     status_t enableOverlay(bool set = true, int rotation = 90);
+#ifdef RENDER_BLACK_BUFFER_BEFORE_STOP_PREVIEW_FOR_RAW_SENSORS
+    void setOnShooting(bool isOnShooting) { mOnShooting = isOnShooting; };
+#endif
 
 // private types
 private:
@@ -344,6 +347,7 @@ private:
     AtomBuffer          mFakeBuf;
     bool mNeedBlackFrames;
     bool mAllAreRawSensors;
+    bool mOnShooting;
 #endif
 }; // class PreviewThread
 

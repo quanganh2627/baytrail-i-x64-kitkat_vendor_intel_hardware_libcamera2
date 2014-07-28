@@ -63,6 +63,7 @@ PreviewThread::PreviewThread(sp<CallbacksThread> callbacksThread, Callbacks* cal
 
 #ifdef RENDER_BLACK_BUFFER_BEFORE_STOP_PREVIEW_FOR_RAW_SENSORS
     mAllAreRawSensors = true;
+    mOnShooting = false;
     for (int index = 0; index < PlatformData::numberOfCameras(); index++) {
         if (PlatformData::sensorType(index) != SENSOR_TYPE_RAW) {
             //LOGD("Camera sensor with ID %d is not raw sensor", index);
@@ -661,7 +662,7 @@ status_t PreviewThread::handleMessageFlush()
     LOG1("@%s", __FUNCTION__);
 
 #ifdef RENDER_BLACK_BUFFER_BEFORE_STOP_PREVIEW_FOR_RAW_SENSORS
-    if (mAllAreRawSensors) {
+    if (mAllAreRawSensors && !mOnShooting) {
         enqueueBlackBuffer();
     }
 #endif
@@ -702,7 +703,6 @@ status_t PreviewThread::enqueueBlackBuffer()
     if (mPreviewWindow != 0) {
         int err;
         bool passedToGfx = false;
-        GfxAtomBuffer aGfxAtomBuf;
         GfxAtomBuffer *bufToEnqueue = NULL;
         GraphicBufferMapper &mapper = GraphicBufferMapper::get();
 
@@ -710,29 +710,27 @@ status_t PreviewThread::enqueueBlackBuffer()
             // Preview mode
             bufToEnqueue = dequeueFromWindow();
             if (bufToEnqueue) {
-                //LOG2("copying frame %p -> %p : size %d", msg->buff.dataPtr, bufToEnqueue->buffer.dataPtr, msg->buff.size);
-                //LOG2("src frame  %dx%d bpl %d ", msg->buff.width, msg->buff.height,msg->buff.bpl);
-                //LOG2("dst frame  %dx%d bpl %d ", bufToEnqueue->buffer.width, bufToEnqueue->buffer.height, bufToEnqueue->buffer.bpl);
-                // If mPreviewBpl is not equal with 0, it had set to Gfx bpl when window configuration.
-                // If Gfx current bpl is not equal with window configuration setting, this frame should be dropped.
                 makeBlackFrame(&bufToEnqueue->buffer);
             } else {
                 LOGE("failed to dequeue from window");
             }
         } else {
-            // Video mode
-            if (mFakeBuf.dataPtr != NULL) {
-                memcpy(&aGfxAtomBuf.buffer, &mFakeBuf, sizeof(struct AtomBuffer));
-                bufToEnqueue = &aGfxAtomBuf;
-
+            bufToEnqueue = dequeueFromWindow();
+            if (bufToEnqueue == NULL)
+                bufToEnqueue = pickReservedBuffer();
+            if (!bufToEnqueue) {
+                LOGE("failed to dequeue from window");
+            } else {
+                LOGD("b444=: got available buffer");
                 makeBlackFrame(&bufToEnqueue->buffer);
             }
         }
 
         if (bufToEnqueue) {
             // TODO: If ISP can be configured to match Gfx buffer stride alignment, please delete below line.
-            bufToEnqueue->buffer.gfxInfo.scalerId = mFakeBuf.gfxInfo.scalerId;
-            bufToEnqueue->buffer.shared = mFakeBuf.shared;
+            //bufToEnqueue->buffer.gfxInfo.scalerId = mFakeBuf.gfxInfo.scalerId;
+            //bufToEnqueue->buffer.shared = mFakeBuf.shared;
+            bufToEnqueue->buffer.frameCounter = mFakeBuf.frameCounter;
             gettimeofday(&bufToEnqueue->buffer.capture_timestamp, NULL);
             mFakeBuf.frameCounter = mFakeBuf.frameCounter + 1;
 
@@ -1326,6 +1324,8 @@ status_t PreviewThread::handleSetPreviewConfig(MessageSetPreviewConfig *msg)
     mSharedMode = msg->sharedMode;
 
 #ifdef RENDER_BLACK_BUFFER_BEFORE_STOP_PREVIEW_FOR_RAW_SENSORS
+    mOnShooting = false;
+
     if (mAllAreRawSensors) {
         memset(&mFakeBuf, 0x0, sizeof(struct AtomBuffer));
     }
