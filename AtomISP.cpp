@@ -2555,8 +2555,30 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
         const char manUsensorBNameGC0339[] = "gc0339";
         if (strncmp(mSensorHW.getSensorName(), manUsensorBNameGC0339, sizeof(manUsensorBNameGC0339) - 1) == 0) {
             if (((previewWidth == 176)&& (previewHeight == 144)) || ((previewWidth == 352)&& (previewHeight == 288))) {
-                LOGD("QCIF/CIF recording change preview size to 528x432");
-                params->setPreviewSize(528,432);
+                if (((videoWidth == 640)&& (videoHeight == 480))
+                    || ((videoWidth == 320)&& (videoHeight == 240))) {
+                    LOGD("QVGA/VGA recording change preview size to 640x480");
+                    params->setPreviewSize(640,480);
+                } else {
+                    LOGD("QCIF/CIF recording change preview size to 528x432");
+                    params->setPreviewSize(528,432);
+                }
+            }
+            if (((previewWidth == 320)&& (previewHeight == 240)) || ((previewWidth == 640)&& (previewHeight == 480))) {
+                LOGD("QVGA/VGA recording change preview size to 640x480");
+                params->setPreviewSize(640,480);
+            }
+        }
+
+        const char sensorBNameGC2235[] = "gc2235";
+        if (strncmp(mSensorHW.getSensorName(), sensorBNameGC2235, sizeof(sensorBNameGC2235) - 1) == 0) {
+            if ((previewWidth == 1280)&& (previewHeight == 720)) {
+                LOGD("720P recording change preview size to 1536x864");
+                params->setPreviewSize(1536,864);
+            } else if ((previewWidth == 720)&& (previewHeight == 480)) {
+                LOGD("720P recording change preview size to 1296x864");
+                params->setPreviewSize(1296,864);
+
             }
         }
 
