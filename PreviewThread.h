@@ -27,10 +27,10 @@
 #include "HALVideoStabilization.h"
 #include "CamHeapMem.h"
 #include "AtomISP.h"
+#include "DebugFrameRate.h"
 
 namespace android {
 
-class DebugFrameRate;
 class Callbacks;
 class CallbacksThread;
 
