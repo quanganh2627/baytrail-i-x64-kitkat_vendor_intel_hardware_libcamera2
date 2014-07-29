@@ -204,7 +204,7 @@ endif
 
 # enable R&D features only in R&D builds
 ifneq ($(filter userdebug eng tests, $(TARGET_BUILD_VARIANT)),)
-LOCAL_CFLAGS += -DLIBCAMERA_RD_FEATURES -Wunused-variable -Werror
+LOCAL_CFLAGS += -DLIBCAMERA_RD_FEATURES -Wunused-variable -Werror -Wno-unused-parameter
 endif
 
 # This micro is used for file injection. Set it when file injection is needed.
