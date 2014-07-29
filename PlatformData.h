@@ -715,6 +715,12 @@ class PlatformData {
     static const char* defaultPreviewUpdateMode(int cameraId);
 
     /**
+     * Returns total system ram amount
+     * \return the total ram amount
+     */
+    static unsigned long getTotalRam();
+
+    /**
      * Whether the slow motion playback in high speed recording mode is supported?
      * \return true if the slow motion playback is supported
      */

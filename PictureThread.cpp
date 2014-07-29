@@ -29,6 +29,7 @@
 
 namespace android {
 
+static const unsigned long MEM_2G = 2147483648U;
 static const unsigned char JPEG_MARKER_SOI[2] = {0xFF, 0xD8}; // JPEG StartOfImage marker
 static const unsigned char JPEG_MARKER_EOI[2] = {0xFF, 0xD9}; // JPEG EndOfImage marker
 static const int SIZE_OF_APP0_MARKER = 18;      /* Size of the JFIF App0 marker
@@ -919,7 +920,7 @@ status_t PictureThread::allocateInputBuffers(AtomBuffer& formatDescriptor, int n
          * is signaled by the boolean registerToScaler. In other cases allocate
          * from HEAP as usual
          */
-        if (registerToScaler)
+        if (registerToScaler || PlatformData::getTotalRam() > MEM_2G)
             MemoryUtils::allocateGraphicBuffer(mInputBufferArray[i], formatDescriptor);
         else
             MemoryUtils::allocateAtomBuffer(mInputBufferArray[i], formatDescriptor, mCallbacks);
@@ -999,7 +1000,7 @@ status_t PictureThread::allocatePostviewBuffers(const AtomBuffer &formatDescript
         postv.size = 0;
         postv.dataPtr = NULL;
 
-        if (registerToScaler) {
+        if (registerToScaler || PlatformData::getTotalRam() > MEM_2G) {
             MemoryUtils::allocateGraphicBuffer(postv, formatDescriptor);
         } else {
             MemoryUtils::allocateAtomBuffer(postv, formatDescriptor, mCallbacks);
