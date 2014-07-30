@@ -348,6 +348,7 @@ protected:
     int startFirmware(unsigned int fwHandle);
     int waitForFirmware(unsigned int fwHandle);
     int abortFirmware(unsigned int fwHandle, unsigned int timeout);
+    int setStageState(unsigned int fwHandle, bool enable);
     /* [END] IHWIspControl overloads */
 
 // private types

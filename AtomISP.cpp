@@ -5931,6 +5931,16 @@ int AtomISP::startFirmware(unsigned int fwHandle)
     return ret;
 }
 
+int AtomISP::setStageState(unsigned int fwHandle, bool enable)
+{
+    atomisp_acc_state accState;
+    accState.fw_handle = fwHandle;
+    accState.flags = enable ? ATOMISP_STATE_FLAG_ENABLE : 0;
+    int ret = pxioctl(mMainDevice, ATOMISP_IOC_S_ACC_STATE, &accState);
+    LOG1("@%s: ATOMISP_IOC_S_ACC_STATE handle:%x, enable:%d ret:%d", __FUNCTION__, fwHandle, enable, ret);
+    return ret;
+}
+
 int AtomISP::waitForFirmware(unsigned int fwHandle)
 {
     int ret;

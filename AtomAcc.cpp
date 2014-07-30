@@ -150,6 +150,12 @@ int abort_firmware(void *isp, unsigned handle, unsigned timeout)
     return ISP->abortFirmware(handle, timeout);
 }
 
+int set_stage_state(void *isp, unsigned int handle, bool enable)
+{
+    IHWIspControl *ISP = (IHWIspControl*)isp;
+    LOG1("@%s", __FUNCTION__);
+    return ISP->setStageState(handle, enable);
+}
 
 } // extern "C"
 

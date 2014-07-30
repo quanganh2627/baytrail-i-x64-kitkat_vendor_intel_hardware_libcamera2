@@ -93,6 +93,9 @@ void AtomCP::initIACP(void)
         mAccAPI.set_mapped_arg     = NULL;
     }
 
+    // TODO: figure out if this needs a version number check like above
+    mAccAPI.set_stage_state = set_stage_state;
+
     mAccAPI.version_css.major = ispMajor;
     mAccAPI.version_css.minor = ispMinor;
     mAccAPI.version_isp.major = mISP->getIspHwMajorVersion();
