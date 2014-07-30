@@ -1164,6 +1164,11 @@ status_t AtomISP::configure(AtomMode mode)
         dumpFrameInfo(mode);
         // Pipeline configured, triggering SensorHW::prepare()
         status = mSensorHW->prepare(mode == MODE_CAPTURE);
+
+        // Need to double check actual fps from sensor.
+        // This may be different from one that was requested.
+        mConfig.fps = mSensorHW->getFramerate();
+        LOG1("Sensor fps: %.2f", mConfig.fps);
     }
 
     /**
@@ -2397,7 +2402,6 @@ status_t AtomISP::configureContinuousVideo()
 {
     LOG1("@%s", __FUNCTION__);
     int ret;
-    float capture_fps;
     status_t status = NO_ERROR;
 
     // continuous mode does not support low_light mode capture
@@ -2430,8 +2434,6 @@ status_t AtomISP::configureContinuousVideo()
         status = UNKNOWN_ERROR;
         goto errorFreeBuf;
     }
-    // save the capture fps
-    capture_fps = mConfig.fps;
 
     status = configureRecording();
     if (status != NO_ERROR) {
@@ -2470,9 +2472,6 @@ status_t AtomISP::configureContinuousVideo()
         mDvs->setZoom(mConfig.zoom);
 
     atomisp_set_zoom(mConfig.zoom);
-
-    // restore the actual capture fps value
-    mConfig.fps = capture_fps;
 
     return status;
 
@@ -3055,13 +3054,9 @@ int AtomISP::configureDevice(V4L2VideoNode *device, int deviceMode, AtomBuffer *
                 mConfig.fps = DEFAULT_SENSOR_FPS;
             }
         } else {
-            ret = device->getFramerate(&mConfig.fps, w, h, fourcc);
-            if (ret != NO_ERROR) {
-                /*Error handler: if driver does not support FPS achieving,
-                  just give the default value.*/
-                mConfig.fps = DEFAULT_SENSOR_FPS;
-                ret = 0;
-            }
+            // Use default for now.
+            // Correct value will be known after SensorHW::prepare.
+            mConfig.fps = DEFAULT_SENSOR_FPS;
         }
     }
 

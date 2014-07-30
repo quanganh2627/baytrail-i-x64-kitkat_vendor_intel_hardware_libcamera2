@@ -576,6 +576,7 @@ int V4L2VideoNode::getFramerate(float * framerate, int width, int height, int pi
     assert(0 != frm_interval.discrete.denominator);
 
     *framerate = 1.0 / (1.0 * frm_interval.discrete.numerator / frm_interval.discrete.denominator);
+    LOG2("%s returns %f", __FUNCTION__, *framerate);
 
     return NO_ERROR;
 }
