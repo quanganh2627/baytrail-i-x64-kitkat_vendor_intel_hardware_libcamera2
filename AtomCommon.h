@@ -501,10 +501,8 @@ void mirrorBuffer(AtomBuffer *buffer, int currentOrientation, int cameraOrientat
 void flipBufferV(AtomBuffer *buffer);
 void flipBufferH(AtomBuffer *buffer);
 
-#ifdef LIBCAMERA_RD_FEATURES
 void trace_callstack();
 void inject(AtomBuffer *b, const char* name);
-#endif
 
 }
 #endif // ANDROID_LIBCAMERA_COMMON_H

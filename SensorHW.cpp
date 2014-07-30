@@ -665,20 +665,23 @@ status_t SensorHW::prepare(bool preQueuedExposure)
         mInitialModeData.vt_pix_clk_freq_mhz != 0) {
         mInitialModeDataValid = true;
 
-#ifdef LIBCAMERA_RD_FEATURES
-        // Debug logging for timings from SensorModeData
-        long long vbi_ll = mInitialModeData.frame_length_lines - (mInitialModeData.crop_vertical_end - mInitialModeData.crop_vertical_start + 1) / mInitialModeData.binning_factor_y;
+        // do this only with more verbose debugging
+        if (gLogLevel & CAMERA_DEBUG_LOG_LEVEL1)
+        {
+            // Debug logging for timings from SensorModeData
+            long long vbi_ll = mInitialModeData.frame_length_lines - (mInitialModeData.crop_vertical_end -
+                mInitialModeData.crop_vertical_start + 1) / mInitialModeData.binning_factor_y;
 
-        LOG2("SensorModeData timings: FL %lldus, VBI %lldus, FPS %f",
-             ((long long) mInitialModeData.line_length_pck
-              * mInitialModeData.frame_length_lines) * 1000000
-              / mInitialModeData.vt_pix_clk_freq_mhz,
-             ((long long) mInitialModeData.line_length_pck * vbi_ll) * 1000000
-              / mInitialModeData.vt_pix_clk_freq_mhz,
-             ((double) mInitialModeData.vt_pix_clk_freq_mhz)
-              / (mInitialModeData.line_length_pck
-              * mInitialModeData.frame_length_lines));
-#endif
+            LOG2("SensorModeData timings: FL %lldus, VBI %lldus, FPS %f",
+                 ((long long) mInitialModeData.line_length_pck
+                 * mInitialModeData.frame_length_lines) * 1000000
+                 / mInitialModeData.vt_pix_clk_freq_mhz,
+                 ((long long) mInitialModeData.line_length_pck * vbi_ll) * 1000000
+                 / mInitialModeData.vt_pix_clk_freq_mhz,
+                 ((double) mInitialModeData.vt_pix_clk_freq_mhz)
+                 / (mInitialModeData.line_length_pck
+                 * mInitialModeData.frame_length_lines));
+        }
     }
 
     LOG1("Sensor output size %dx%d, FPS %f", mOutputWidth, mOutputHeight, getFramerate());
@@ -1647,11 +1650,9 @@ void SensorHW::processExposureHistory(nsecs_t ts)
             }
         }
     } else {
-#ifdef LIBCAMERA_RD_FEATURES
         if (itemsToApply > 1) {
             LOG1("## More than one new exposure to apply (%d)", itemsToApply);
         }
-#endif
         applyToSensor = true;
         item = mExposureHistory->peek(itemsToApply - 1);
         if (item == NULL) {

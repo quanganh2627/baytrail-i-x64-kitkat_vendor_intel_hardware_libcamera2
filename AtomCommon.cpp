@@ -25,7 +25,6 @@
 #include "VAScaler.h"
 #endif
 
-#ifdef LIBCAMERA_RD_FEATURES
 #include <dlfcn.h>
 #include <sys/types.h>
 #include <pthread.h>
@@ -37,7 +36,6 @@ struct stack_crawl_state_t {
     intptr_t* addrs;
 };
 
-#endif
 namespace android {
 
 /*
@@ -506,7 +504,6 @@ int getGFXHALPixelFormatFromV4L2Format(int previewFormat)
     return halPixelFormat;
 }
 
-#ifdef LIBCAMERA_RD_FEATURES
 /************************************************************************
  * DEBUGGING UTILITIES
  *
@@ -611,5 +608,4 @@ void inject(AtomBuffer *b, const char* name)
 #endif
 }
 
-#endif //LIBCAMERA_RD_FEATURES
 }

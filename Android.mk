@@ -202,10 +202,7 @@ ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_CFLAGS += -DUSE_INTEL_JPEG
 endif
 
-# enable R&D features only in R&D builds
-ifneq ($(filter userdebug eng tests, $(TARGET_BUILD_VARIANT)),)
-LOCAL_CFLAGS += -DLIBCAMERA_RD_FEATURES -Wunused-variable -Werror -Wno-unused-parameter
-endif
+LOCAL_CFLAGS += -Wunused-variable -Werror -Wno-unused-parameter
 
 # This micro is used for file injection. Set it when file injection is needed.
 #LOCAL_CFLAGS += -DENABLE_FILE_INJECTION

@@ -23,8 +23,6 @@
 
 namespace android {
 
-#ifdef LIBCAMERA_RD_FEATURES
-
 class DebugFrameRate : public Thread {
 
 public:
@@ -48,19 +46,6 @@ private:
     Mutex mMutex;
     bool mActive;
 };
-
-#else // ATOM_LIBCAMERA_DEBUG
-
-class DebugFrameRate : public RefBase {
-public:
-    DebugFrameRate() {}
-    ~DebugFrameRate() {}
-    void update() {}
-    status_t run() { return NO_ERROR; }
-    status_t requestExitAndWait() { return NO_ERROR; }
-};
-
-#endif // ATOM_LIBCAMERA_DEBUG
 
 };
 #endif // ANDROID_LIBCAMERA_DEBUG_FPS
