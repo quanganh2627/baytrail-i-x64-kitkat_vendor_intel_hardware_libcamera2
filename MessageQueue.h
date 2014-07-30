@@ -180,6 +180,14 @@ public:
         mReplyMutex[replyId].unlock();
     }
 
+    void replyAll(MessageId replyId, status_t status)
+    {
+        mReplyMutex[replyId].lock();
+        mReplyStatus[replyId] = status;
+        mReplyCondition[replyId].signal(Condition::WAKE_UP_ALL);
+        mReplyMutex[replyId].unlock();
+    }
+
     // Return true if the queue is empty
     bool isEmpty() {
         Mutex::Autolock lock(mQueueMutex);

@@ -169,7 +169,7 @@ public:
     virtual int waitForFirmware(unsigned int fwHandle) = 0;
     virtual int abortFirmware(unsigned int fwHandle, unsigned int timeout) = 0;
     virtual int setStageState(unsigned int fwHandle, bool enable) = 0;
-
+    virtual int waitStageUpdate(unsigned int fwHandle) = 0;
     /* **********************************************************
      * File input/injection API
      */

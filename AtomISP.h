@@ -349,6 +349,7 @@ protected:
     int waitForFirmware(unsigned int fwHandle);
     int abortFirmware(unsigned int fwHandle, unsigned int timeout);
     int setStageState(unsigned int fwHandle, bool enable);
+    int waitStageUpdate(unsigned int fwHandle);
     /* [END] IHWIspControl overloads */
 
 // private types
@@ -409,6 +410,9 @@ private:
     void initFileInject();
     void initFrameConfig();
 
+    void dropACCStageUpdatesLocked(unsigned int fwHandle);
+    void dropACCStageUpdates(unsigned int fwHandle);
+
     status_t configurePreview();
     status_t startPreview();
     status_t stopPreview();
@@ -457,6 +461,9 @@ private:
     status_t freeSnapshotBuffers();
     status_t freePostviewBuffers();
     bool needNewPostviewBuffers();
+
+    status_t stageUpdate(unsigned int stageHandle);
+    status_t newAccPipeFw(unsigned int handle);
 
 #ifdef ENABLE_INTEL_METABUFFER
     void initMetaDataBuf(IntelMetadataBuffer* metaDatabuf);
@@ -591,6 +598,17 @@ private:
     bool mUsingClientPostviewBuffers;
     bool mStoreMetaDataInBuffers;
     int  mBufferSharingSessionID;
+
+    Mutex mACCEventSystemLock;
+    struct EventWaiter {
+        Condition mWaitCond;
+        Mutex mWaitLock;
+        unsigned int handle;
+        bool enabled;
+    };
+    KeyedVector<unsigned int, EventWaiter *> mAllWaiters;
+    KeyedVector<unsigned int, EventWaiter *> mSleepingWaiters;
+    KeyedVector<unsigned int, unsigned int>  mUpdates;
 
     AtomBuffer mSnapshotBuffers[MAX_BURST_BUFFERS];
     Vector <AtomBuffer> mPostviewBuffers;

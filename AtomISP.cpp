@@ -62,6 +62,7 @@ namespace android {
 const int ZOOM_LINEAR_RATIO_STEP(10); // 0.1
 const int ZOOM_LINEAR_MIN_DRIVE(1);
 const int ZOOM_LINEAR_MAX_DRIVE(31);
+static const unsigned int MAX_NUMBER_PENDING_UPDATES(20);
 
 ////////////////////////////////////////////////////////////////////
 //                          STATIC DATA
@@ -5801,9 +5802,131 @@ int AtomISP::loadAccPipeFirmware(void *fw, size_t size,
         *fwHandle = fwDataPipe.fw_handle;
         LOG1("%s IOCTL Call returned : %d Handle: %ud",
                 __FUNCTION__, ret, *fwHandle );
+
+        if (fwDataPipe.flags == ATOMISP_ACC_FW_LOAD_FL_ACC) {
+            ret = newAccPipeFw(fwDataPipe.fw_handle);
+        }
     }
 
     return ret;
+}
+
+int AtomISP::waitStageUpdate(unsigned int handle)
+{
+    LOG2("@%s: ATOMISP_IOC_S_ACC_STATE handle: %x", __FUNCTION__, handle);
+    status_t status = OK;
+
+    mACCEventSystemLock.lock(); // this must be held while using the vectors
+    int updateIndex = mUpdates.indexOfKey(handle);
+    if (updateIndex >= 0) {
+        // found pending update, remove it from vector, then unlock and return
+        mUpdates.removeItemsAt(updateIndex, 1);
+    } else {
+        // find the waiter object and sleep against its condition
+        int waiterIndex = mAllWaiters.indexOfKey(handle);
+        if (waiterIndex >= 0) {
+            EventWaiter *waiter = mAllWaiters.valueAt(waiterIndex);
+            if (waiter) { // to keep static code analyzers happy
+                // add this waiter object to sleeping waiter vector
+                mSleepingWaiters.add(handle, waiter);
+                waiter->mWaitLock.lock(); // to ensure no signals are too early
+                mACCEventSystemLock.unlock(); // can't hold this during the cond wait
+                waiter->mWaitCond.wait(waiter->mWaitLock);
+                mACCEventSystemLock.lock(); // remove the sleeper from vector
+                mSleepingWaiters.removeItem(handle);
+                mACCEventSystemLock.unlock();
+                waiter->mWaitLock.unlock();
+                return OK;
+            }
+        } else {
+            LOGE("Unknown waiter handle %x given", handle);
+            status = BAD_VALUE;
+        }
+    }
+    mACCEventSystemLock.unlock();
+    return status;
+}
+
+status_t AtomISP::stageUpdate(unsigned int handle)
+{
+    LOG2("@%s: update handle: %x", __FUNCTION__, handle);
+
+    Mutex::Autolock lock(mACCEventSystemLock);
+
+    // first check if stage is disabled, drop the update if it is
+    int index = mAllWaiters.indexOfKey(handle);
+    if (index >= 0) {
+        EventWaiter *waiter = mAllWaiters.valueAt(index);
+        if (waiter) {// to keep static code analyzers happy
+            if (!waiter->enabled) {
+                LOGW("Stage update happened for a disabled stage. Dropping it, maybe scheduling was unlucky.");
+                return OK; // drop the update
+            }
+        }
+    } else {
+        LOGE("Unknown stage!");
+        return BAD_VALUE;
+    }
+
+    index = mSleepingWaiters.indexOfKey(handle);
+    if (index >= 0) {
+        EventWaiter *waiter = mSleepingWaiters.valueAt(index);
+        if (waiter) {// to keep static code analyzers happy
+            Mutex::Autolock waiterLock(waiter->mWaitLock); // to ensure no signals are too early
+            waiter->mWaitCond.signal(); // wake up the sleeping thread
+        }
+    } else {
+        mUpdates.add(handle, handle);
+        if (mUpdates.size() > MAX_NUMBER_PENDING_UPDATES) {
+            LOGW("Pending acc stage updates now already: %d", mUpdates.size());
+        }
+    }
+    return OK;
+}
+
+status_t AtomISP::newAccPipeFw(unsigned int handle)
+{
+    LOG1("@%s: handle: %x", __FUNCTION__, handle);
+
+    status_t status = OK;
+    EventWaiter *waiter = new EventWaiter();
+
+    Mutex::Autolock lock(mACCEventSystemLock);
+    if (waiter) {// for code analyzers
+        waiter->handle = handle;
+        mAllWaiters.add(handle, waiter);
+    } else {
+        LOGE("Not enough memory to allocate event waiter");
+        return NO_MEMORY;
+    }
+
+    return status;
+}
+
+/*
+ * Drops pending stage updates for the given fw handle. Takes the
+ * mACCEventSystemLock lock.
+ */
+void AtomISP::dropACCStageUpdatesLocked(unsigned int fwHandle)
+{
+    LOG1("@ %s fw_Handle: %d\n",__FUNCTION__, fwHandle);
+    Mutex::Autolock lock(mACCEventSystemLock);
+    dropACCStageUpdates(fwHandle);
+}
+
+/*
+ * Drops pending stage updates for the given fw handle. Caller must take
+ * the mACCEventSystemLock itself!
+ */
+void AtomISP::dropACCStageUpdates(unsigned int fwHandle)
+{
+    LOG1("@ %s fw_Handle: %d\n",__FUNCTION__, fwHandle);
+    int index = -1;
+    do {
+        index = mUpdates.indexOfKey(fwHandle);
+        if (index >= 0)
+            mUpdates.removeItemsAt(index, 1);
+    } while (index >= 0);
 }
 
 /*
@@ -5816,6 +5939,21 @@ int AtomISP::unloadAccFirmware(unsigned int fwHandle)
 {
     LOG1("@ %s fw_Handle: %d\n",__FUNCTION__, fwHandle);
     int ret = -1;
+
+    // remove acc event waiter for the stage, if it exists
+    Mutex::Autolock lock(mACCEventSystemLock);
+    int index = mAllWaiters.indexOfKey(fwHandle);
+    if (index >= 0) {
+        EventWaiter *waiter = mAllWaiters.editValueAt(index);
+        // unsubscribe v4l2 events for this fw handle
+        if (waiter)
+            m3AEventSubdevice->unsubscribeEvent(V4L2_EVENT_ATOMISP_ACC_COMPLETE, fwHandle);
+
+        mAllWaiters.removeItem(fwHandle);
+        delete waiter;
+        waiter = NULL;
+        dropACCStageUpdates(fwHandle);
+    }
 
     ret = pxioctl(mMainDevice, ATOMISP_IOC_ACC_UNLOAD, &fwHandle);
     LOG1("%s IOCTL ATOMISP_IOC_ACC_UNLOAD ret: %d \n", __FUNCTION__,ret);
@@ -5933,11 +6071,30 @@ int AtomISP::startFirmware(unsigned int fwHandle)
 
 int AtomISP::setStageState(unsigned int fwHandle, bool enable)
 {
+    LOG1("@%s", __FUNCTION__);
+
+    // set the stage struct internal state first
+    Mutex::Autolock lock(mACCEventSystemLock);
+    int index = mAllWaiters.indexOfKey(fwHandle);
+    if (index >= 0) {
+        EventWaiter *waiter = mAllWaiters.valueAt(index);
+        if (waiter) {// to keep static code analyzers happy
+            waiter->enabled = enable;
+        }
+    } else {
+        LOGE("Bad ACC fwHandle given!");
+        return BAD_VALUE;
+    }
+
     atomisp_acc_state accState;
     accState.fw_handle = fwHandle;
     accState.flags = enable ? ATOMISP_STATE_FLAG_ENABLE : 0;
     int ret = pxioctl(mMainDevice, ATOMISP_IOC_S_ACC_STATE, &accState);
     LOG1("@%s: ATOMISP_IOC_S_ACC_STATE handle:%x, enable:%d ret:%d", __FUNCTION__, fwHandle, enable, ret);
+
+    if (!enable)
+        dropACCStageUpdates(fwHandle);
+
     return ret;
 }
 
@@ -6612,14 +6769,16 @@ IObserverSubject* AtomISP::observerSubjectByType(ObserverType t)
  */
 status_t AtomISP::attachObserver(IAtomIspObserver *observer, ObserverType t)
 {
-    status_t ret;
+    status_t ret = 0;
 
     if (t == OBSERVE_3A_STAT_READY) {
         m3AStatRequested++;
         if (m3AStatRequested == 1) {
           // subscribe to 3A frame sync event, only one subscription is needed
           // to serve multiple observers
-          ret = m3AEventSubdevice->open();
+          if (!m3AEventSubdevice->isOpen())
+              ret = m3AEventSubdevice->open();
+
           if (ret < 0) {
               LOGE("Failed to open V4L2_ISP_SUBDEV2!");
               return UNKNOWN_ERROR;
@@ -6638,6 +6797,16 @@ status_t AtomISP::attachObserver(IAtomIspObserver *observer, ObserverType t)
               LOGE("Failed to subscribe to sensor metadata event!");
               m3AEventSubdevice->close();
               return UNKNOWN_ERROR;
+          }
+
+          for (unsigned int i = 0; i < mAllWaiters.size(); i++) {
+              EventWaiter *waiter = mAllWaiters.editValueAt(i);
+              status_t status = m3AEventSubdevice->subscribeEvent(V4L2_EVENT_ATOMISP_ACC_COMPLETE, waiter->handle);
+              if (status < 0) {
+                  LOGE("Failed to subscribe to ACC complete event!");
+                  m3AEventSubdevice->close();
+                  return UNKNOWN_ERROR;
+              }
           }
         }
     }
@@ -6741,7 +6910,12 @@ status_t AtomISP::AAAStatSource::observe(IAtomIspObserver::Message *msg)
     }
 
     // poll was successful
-    if (mISP->mSensorEmbeddedMetaDataSupported && event.type == V4L2_EVENT_ATOMISP_METADATA_READY) {
+    if (event.type == V4L2_EVENT_ATOMISP_ACC_COMPLETE) {
+        mISP->stageUpdate(event.id);
+        msg->id = IAtomIspObserver::MESSAGE_ID_EVENT;
+        msg->data.event.type = IAtomIspObserver::EVENT_TYPE_ACC_COMPLETE;
+        msg->data.event.handle = event.id;
+    } else if (mISP->mSensorEmbeddedMetaDataSupported && event.type == V4L2_EVENT_ATOMISP_METADATA_READY) {
         mISP->mSensorEmbeddedMetaData->handleSensorEmbeddedMetaData();
         msg->id = IAtomIspObserver::MESSAGE_ID_EVENT;
         msg->data.event.type = IAtomIspObserver::EVENT_TYPE_METADATA_READY;

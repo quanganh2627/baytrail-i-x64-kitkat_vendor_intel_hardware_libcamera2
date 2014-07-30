@@ -151,9 +151,9 @@ int V4L2DeviceBase::poll(int timeout)
     return ret;
 }
 
-int V4L2DeviceBase::subscribeEvent(int event)
+int V4L2DeviceBase::subscribeEvent(int event, int id)
 {
-    LOG1("@%s", __FUNCTION__);
+    LOG1("@%s event %x:", __FUNCTION__, event);
     int ret(0);
     struct v4l2_event_subscription sub;
 
@@ -164,6 +164,7 @@ int V4L2DeviceBase::subscribeEvent(int event)
 
     memset(&sub, 0, sizeof(sub));
     sub.type = event;
+    sub.id = id;
 
     ret = pioctl(mFd, VIDIOC_SUBSCRIBE_EVENT, &sub);
     if (ret < 0) {
@@ -174,7 +175,7 @@ int V4L2DeviceBase::subscribeEvent(int event)
     return ret;
 }
 
-int V4L2DeviceBase::unsubscribeEvent(int event)
+int V4L2DeviceBase::unsubscribeEvent(int event, int id)
 {
     LOG1("@%s", __FUNCTION__);
     int ret(0);
@@ -187,6 +188,7 @@ int V4L2DeviceBase::unsubscribeEvent(int event)
 
     CLEAR(sub);
     sub.type = event;
+    sub.id = id;
 
     ret = pioctl(mFd, VIDIOC_UNSUBSCRIBE_EVENT, &sub);
     if (ret < 0) {

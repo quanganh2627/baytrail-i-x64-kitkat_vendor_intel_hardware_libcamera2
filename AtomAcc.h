@@ -56,6 +56,8 @@ int abort_firmware(void *isp, unsigned handle, unsigned timeout);
 
 int set_stage_state(void *isp, unsigned int handle, bool state);
 
+int wait_stage_update(void *isp, unsigned int handle);
+
 #if defined(__cplusplus)
 } // extern "C"
 #endif

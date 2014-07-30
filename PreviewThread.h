@@ -28,6 +28,7 @@
 #include "CamHeapMem.h"
 #include "AtomISP.h"
 #include "DebugFrameRate.h"
+#include "ICallbackPreview.h"
 
 namespace android {
 
@@ -69,35 +70,6 @@ class CallbacksThread;
  * window.
  */
 #define GFX_DEQUEUE_RETRY_COUNT 3
-
-
-/**
- * \class ICallbackPreview
- *
- *  Interface implemented by classes that want to receive preview frames after
- *  PreviewThread has finish with them
- */
-class ICallbackPreview {
-public:
-    /**
-     * \enum CallbackType
-     * Types of callbacks the PreviewThread accepts
-     */
-    enum CallbackType {
-        INPUT,          /*!< Callback is triggered before being processed by PreviewThread for every frame */
-        INPUT_ONCE,     /*!< Callback is triggered only once before frame has been processed by PreviewThread (i.e. rendered) */
-        OUTPUT,         /*!< Callback is triggered after PreviewThread has render the frame for every frame */
-        OUTPUT_ONCE,    /*!< Callback is triggered once after PreviewThread has render the frame */
-        OUTPUT_WITH_DATA/*!< Callback is triggered after PreviewThread has render the frame for every frame.
-                             The AtomBuffer associated with this frame is also sent. This is how we pass the
-                             preview frame to the PostProcThread */
-    };
-
-    ICallbackPreview() {}
-    virtual ~ICallbackPreview() {}
-    virtual void previewBufferCallback(AtomBuffer *memory, CallbackType t) = 0;
-    virtual int getCameraID() = 0;
-};
 
 /**
  * class PreviewThread

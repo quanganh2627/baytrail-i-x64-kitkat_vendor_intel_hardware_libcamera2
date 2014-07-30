@@ -20,13 +20,11 @@
 
 #include <utils/threads.h>
 #include "MessageQueue.h"
-#include "PreviewThread.h" // ICallbackPreview
 #include "IntelParameters.h"
 #include "ICameraHwControls.h"
+#include "ICallbackPreview.h"
 
 namespace android {
-
-//class Callbacks;
 
 class AccManagerThread : public Thread,
                          public ICallbackPreview

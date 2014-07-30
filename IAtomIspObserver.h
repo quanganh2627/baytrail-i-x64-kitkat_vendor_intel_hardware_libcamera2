@@ -41,7 +41,8 @@ public:
         EVENT_TYPE_SOF = 1,
         EVENT_TYPE_METADATA_READY = 2,
         EVENT_TYPE_STATISTICS_READY = 1<<2,
-        EVENT_TYPE_STATISTICS_SKIPPED = 1<<3
+        EVENT_TYPE_STATISTICS_SKIPPED = 1<<3,
+        EVENT_TYPE_ACC_COMPLETE = 1<<4
     };
 
     struct MessageFrameBuffer {
@@ -51,6 +52,7 @@ public:
     struct MessageEvent {
         EventType       type;
         struct timeval  timestamp;
+        unsigned int    handle;
         unsigned int    sequence;   // for debugging, not reliable as frame indentifier
     };
 

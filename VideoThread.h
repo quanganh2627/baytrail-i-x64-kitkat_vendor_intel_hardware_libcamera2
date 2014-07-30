@@ -23,7 +23,7 @@
 #include "MessageQueue.h"
 #include "AtomCommon.h"
 #include "ICameraHwControls.h"
-#include "PreviewThread.h"
+#include "ICallbackPreview.h"
 
 #ifdef GRAPHIC_IS_GEN
 #include <VideoVPPBase.h>

@@ -25,7 +25,7 @@
 #include "MessageQueue.h"
 #include "IFaceDetector.h"
 #include "PanoramaThread.h"
-#include "PreviewThread.h" // ICallbackPreview
+#include "ICallbackPreview.h"
 #include "SensorThread.h"
 
 namespace android {

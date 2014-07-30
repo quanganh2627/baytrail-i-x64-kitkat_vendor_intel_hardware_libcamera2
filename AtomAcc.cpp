@@ -157,6 +157,13 @@ int set_stage_state(void *isp, unsigned int handle, bool enable)
     return ISP->setStageState(handle, enable);
 }
 
+int wait_stage_update(void *isp, unsigned int handle)
+{
+    IHWIspControl *ISP = (IHWIspControl*)isp;
+    LOG1("@%s", __FUNCTION__);
+    return ISP->waitStageUpdate(handle);
+}
+
 } // extern "C"
 
 } // namespace android

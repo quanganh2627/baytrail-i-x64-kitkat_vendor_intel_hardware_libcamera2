@@ -126,8 +126,8 @@ public:
     virtual status_t setControl (int aControlNum, const int value, const char *name);
     virtual status_t getControl (int aControlNum, int *value);
 
-    virtual int subscribeEvent(int event);
-    virtual int unsubscribeEvent(int event);
+    virtual int subscribeEvent(int event, int id = 0);
+    virtual int unsubscribeEvent(int event, int id = 0);
     virtual int dequeueEvent(struct v4l2_event *event);
 
     bool isOpen() { return mFd != -1; };
