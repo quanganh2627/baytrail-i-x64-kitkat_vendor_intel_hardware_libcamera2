@@ -128,6 +128,8 @@ LOCAL_C_INCLUDES += \
 	$(TARGET_OUT_HEADERS)/pvr/hal
 endif
 
+LOCAL_C_INCLUDES += libnativehelper/include/nativehelper
+
 # HACK to access camera_extension headers when compiling PDK
 ifeq (,$(wildcard frameworks/base/core/jni/android_hardware_Camera.h))
 LOCAL_C_INCLUDES += \

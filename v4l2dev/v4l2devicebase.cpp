@@ -141,7 +141,7 @@ int V4L2DeviceBase::poll(int timeout)
     pfd.fd = mFd;
     pfd.events = POLLPRI | POLLIN | POLLERR;
 
-    ret = ppoll(&pfd, 1, timeout);
+    ret = _ppoll(&pfd, 1, timeout);
 
     if (pfd.revents & POLLERR) {
         LOG1("%s received POLLERR", __FUNCTION__);

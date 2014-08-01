@@ -20,7 +20,7 @@
 #include <utils/threads.h>
 #include <system/camera.h>
 #include <utils/List.h>
-#include <utils/UniquePtr.h>
+#include <UniquePtr.h>
 #include "I3AControls.h"
 #include "ICameraHwControls.h"
 #include "BracketManager.h"

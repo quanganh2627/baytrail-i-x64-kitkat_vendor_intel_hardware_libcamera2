@@ -57,7 +57,7 @@
     reti; \
 })
 
-#define ppoll(fd, value, timeout) \
+#define _ppoll(fd, value, timeout) \
 ({ \
     int reti; \
     PERFORMANCE_TRACES_IO_BREAKDOWN("poll"); \
@@ -78,7 +78,7 @@
 #define pxioctl(device, ctrlId, attr) \
     device->xioctl(ctrlId, attr)
 
-#define ppoll(fd, value, timeout) \
+#define _ppoll(fd, value, timeout) \
     ::poll(fd, value, timeout)
 
 #endif // USE_CAMERA_IO_BREAKDOWN
