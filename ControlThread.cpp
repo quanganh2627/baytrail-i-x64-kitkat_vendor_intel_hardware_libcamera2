@@ -561,6 +561,7 @@ void ControlThread::deinit()
     }
 
     if (mCP != NULL) {
+        mCP->deinitIACP();
         if (mHdr.enabled)
             mCP->uninitializeHDR();
         delete mCP;
@@ -6536,6 +6537,7 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
             if (status != NO_ERROR)
                 LOGW("@%s: cannot retrieve CPF binary data for HDR capture", __FUNCTION__);
 
+            mCP->initIACP();
             status = mCP->initializeHDR(newWidth, newHeight, &aiqb_data);
             if (status == NO_ERROR) {
                 mHdr.enabled = true;
@@ -6656,6 +6658,10 @@ status_t ControlThread::processParamULL(const CameraParameters *oldParams,
         } else {
             mULL->setMode(UltraLowLight::ULL_OFF);
             mISP->setSRESmode(false);
+        }
+
+        if (ullActive) {
+            mCP->initIACP();
         }
 
         m3AControls->setUllEnabled(ullActive);
@@ -7851,21 +7857,24 @@ status_t ControlThread::processStaticParameters(CameraParameters *oldParams,
     // Capture bracketing
     status = processParamBracket(oldParams, newParams, restartNeeded);
 
+    status = processParamDualVideo(oldParams,newParams, restartNeeded);
+
+    status = processParamDualCameraMode(oldParams,newParams);
+
     // Burst mode and HDR
     int oldBurstLength = mBurstLength;
     int oldFpsAdaptSkip = mFpsAdaptSkip;
     status = processParamBurst(oldParams, newParams);
     if (status == NO_ERROR) {
-      status = processParamHDR(oldParams, newParams);
+        // IA CP library don't support multi-instance, if working in dual camera case,
+        // just let main camera support HDR.
+        if ((!mDualVideo && !PlatformData::isExtendedCamera(mCameraId)) || (mCameraId == 0))
+            status = processParamHDR(oldParams, newParams);
     }
     if (mBurstLength != oldBurstLength || mFpsAdaptSkip != oldFpsAdaptSkip) {
         LOG1("Burst configuration changed, restarting preview");
         restartNeeded = true;
     }
-
-    status = processParamDualVideo(oldParams,newParams, restartNeeded);
-
-    status = processParamDualCameraMode(oldParams,newParams);
 
     status = processParamContinuousShooting(oldParams,newParams, restartNeeded);
 
@@ -7873,7 +7882,10 @@ status_t ControlThread::processStaticParameters(CameraParameters *oldParams,
 
     status = processParamSDV(oldParams,newParams, &restartNeeded);
 
-    status = processParamULL(oldParams,newParams, &restartNeeded);
+    // IA CP library don't support multi-instance, if working in dual camera case,
+    // just let main camera support ULL.
+    if ((!mDualVideo && !PlatformData::isExtendedCamera(mCameraId)) || (mCameraId == 0))
+        status = processParamULL(oldParams,newParams, &restartNeeded);
 
     /*
      *  Process parameter that controls raw data format for snapshot,

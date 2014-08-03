@@ -55,6 +55,9 @@ public:
     status_t uninitializeHDR(void)STAT_STUB;
     static status_t setIaFrameFormat(ia_frame *inputBuf, int v4l2Format)STAT_STUB;
 
+    void initIACP(void)STAT_STUB;
+    void deinitIACP(void)STAT_STUB;
+
 // prevent copy constructor and assignment operator
 private:
     AtomCP(const AtomCP& other);
@@ -66,6 +69,7 @@ private:
     IHWIspControl *mISP;
     Mutex mLock;
     ia_cp_hdr_cfg *mIntelHdrCfg;
+    bool mInitIACP;
 };
 
 };
