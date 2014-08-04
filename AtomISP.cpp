@@ -1578,6 +1578,8 @@ status_t AtomISP::configureRecording()
         recordingConfig = &(mConfig.recording);
     }
 
+    configureDepthMode(PlatformData::isExtendedCameras());
+
     //open recording device
     ret = mRecordingDevice->open();
     if (ret < 0) {
