@@ -889,6 +889,9 @@ private:
                                                      this frame to avoid getting old frame */
     int mContinuousPicsReady;                     /*!< number buffer ready*/
 
+    const static uint64_t REPEATING_TIMEOUT = 5000000000; /*!< time under which a timeout is considered repeating. In nanoseconds. */
+    uint64_t mTimeoutTimestamp;
+
     /*----------- Debugging helpers --------------------*/
     static const char* sCaptureSubstateStrings[STATE_CAPTURE_LAST];
 
