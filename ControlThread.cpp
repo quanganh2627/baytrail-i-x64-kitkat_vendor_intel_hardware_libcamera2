@@ -596,6 +596,8 @@ void ControlThread::deinit()
         mWarperService.clear();
     }
 
+    delete(SensorThread::getInstance());
+
     if (mULL != NULL) {
         delete mULL;
         mULL = NULL;
