@@ -26,7 +26,6 @@
 namespace android {
 
 const int NUM_OF_JPEG_CAPTURE_SNAPSHOT_BUF = 6;
-const int FMT_CONTINUOUS_JPEG_BPL = 2048;
 const int YUV_MAX_WIDTH = 4128;
 const int YUV_MAX_HEIGHT = 3096;
 

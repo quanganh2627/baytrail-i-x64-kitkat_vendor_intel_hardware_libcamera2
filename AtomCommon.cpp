@@ -270,15 +270,8 @@ bool isBayerFormat(int fourcc)
 }
 
 /**
- * Calculates the frame bytes-per-line following the limitations imposed by display subsystem
- * This is used to model the HACK in a atomsisp that forces allocation
- * to be aligned to the bpl that SGX requires. This HACK is only active
- * in CTP based platforms.
- *
  * TODO: This needs to be removed once CSS API changes to support different bpl's
  *
- * The SGX limitation is that the number of bytes per line needs to be aligned
- * to 64
  * In case of Raw capture the requirement changes
  *
  * \param format [in] V4L2 pixel format of the image
@@ -289,26 +282,10 @@ bool isBayerFormat(int fourcc)
 int SGXandDisplayBpl(int fourcc, int width)
 {
     /**
-     * continuous jpeg capture isp has always 2048 virtual bpl
-     */
-    if (fourcc ==  V4L2_PIX_FMT_CONTINUOUS_JPEG)
-        return FMT_CONTINUOUS_JPEG_BPL;
-
-    /**
      * Raw format has special aligning requirements
      */
     if (isBayerFormat(fourcc))
         width = ALIGN128(width);
-
-    // Alignment requirement of the display controller in CTP platform.
-    // Bytes per line needs to be aligned to 64 with a minimum of 512.
-    else  if ((strcmp(PlatformData::getBoardName(), "victoriabay") == 0) ||
-              (strcmp(PlatformData::getBoardName(), "redhookbay") == 0)) {
-        if (width <= 512)
-            width = 512;
-        else
-            width = ALIGN64(width);
-    }
 
     return pixelsToBytes(fourcc, width);
 }
