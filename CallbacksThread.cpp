@@ -48,9 +48,6 @@ CallbacksThread::CallbacksThread(Callbacks *callbacks, int cameraId, ICallbackPi
     ,mPausePreviewCallbacks(false)
 {
     LOG1("@%s", __FUNCTION__);
-    mFaceMetadata.faces = new camera_face_t[MAX_FACES_DETECTABLE];
-    memset(mFaceMetadata.faces, 0, MAX_FACES_DETECTABLE * sizeof(camera_face_t));
-    mFaceMetadata.number_of_faces = 0;
     mPostponedJpegReady.id = (MessageId) -1;
 
     // Trying to slighly optimize here, instead of calling this for each face callback
@@ -60,8 +57,6 @@ CallbacksThread::CallbacksThread(Callbacks *callbacks, int cameraId, ICallbackPi
 CallbacksThread::~CallbacksThread()
 {
     LOG1("@%s", __FUNCTION__);
-    delete [] mFaceMetadata.faces;
-    mFaceMetadata.faces = NULL;
 }
 
 status_t CallbacksThread::shutterSound()
@@ -461,14 +456,13 @@ void CallbacksThread::facesDetected(extended_frame_metadata_t *extended_face_met
     if (num_faces > 0)
         PerformanceTraces::FaceLock::stop(num_faces);
 
-    mFaceMetadata.number_of_faces = num_faces;
-    mFaceMetadata.needLLS = extended_face_metadata->needLLS;
-    memcpy(mFaceMetadata.faces, extended_face_metadata->faces,
-           mFaceMetadata.number_of_faces * sizeof(camera_face_t));
-
     Message msg;
     msg.id = MESSAGE_ID_FACES;
-    msg.data.faces.meta_data = mFaceMetadata;
+    msg.data.faces.needLLS = extended_face_metadata->needLLS;
+    msg.data.faces.numFaces = num_faces;
+    memcpy(msg.data.faces.faces, extended_face_metadata->faces,
+           num_faces * sizeof(camera_face_t));
+
     mMessageQueue.send(&msg);
 }
 
@@ -791,9 +785,13 @@ status_t CallbacksThread::handleMessageFlush()
 status_t CallbacksThread::handleMessageFaces(MessageFaces *msg)
 {
     LOG2("@%s", __FUNCTION__);
-    Mutex::Autolock lock(mFaceReportingLock); // the ::facesDetected function may write to the face array, so protect with lock
-    if (!mFocusActive)
-        mCallbacks->facesDetected((camera_frame_metadata_t *)&msg->meta_data);
+    if (!mFocusActive) {
+        extended_frame_metadata_t face_metadata;
+        face_metadata.number_of_faces = msg->numFaces;
+        face_metadata.faces = msg->faces;
+        face_metadata.needLLS = msg->needLLS;
+        mCallbacks->facesDetected((camera_frame_metadata_t *)&face_metadata);
+    }
     else
         LOG1("Faces metadata dropped during focusing.");
     return NO_ERROR;

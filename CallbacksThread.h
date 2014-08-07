@@ -23,6 +23,7 @@
 #include "AtomCommon.h"
 #include "IFaceDetectionListener.h"
 #include "intel_camera_extensions.h"
+#include "FaceDetector.h" // for MAX_FACES_DETECTABLE
 
 namespace android {
 
@@ -174,7 +175,9 @@ private:
     };
 
     struct MessageFaces {
-        extended_frame_metadata_t meta_data;
+        int32_t numFaces;
+        int32_t needLLS;
+        camera_face_t faces[MAX_FACES_DETECTABLE];
     };
 
     struct MessageAutoFocusActive {
@@ -367,7 +370,6 @@ private:
      * JPEG, RAW and POSTIVEW callbacks are sent to the camera client.
      */
     Vector<MessageCompressed> mBuffers;
-    extended_frame_metadata_t mFaceMetadata;
     int mCameraId;
     bool mPausePreviewCallbacks;
 
