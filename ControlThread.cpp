@@ -3739,7 +3739,9 @@ bool ControlThread::selectPostviewSize(int &width, int &height)
         LOGW("Thumbnail size doesn't match the picture aspect"
              "(%d,%d) -> (%d,%d), check your configuration",
              picWidth, picHeight, thuWidth, thuHeight);
-        int heightByPicAspect = thuWidth * picHeight / picWidth;
+
+        int heightByPicAspect = round(thuWidth / normalAspectRatioForResolution(picWidth, picHeight));
+
         if (heightByPicAspect < thuHeight) {
             // maintain height
             // width = thuHeight * picWidth / picHeight;

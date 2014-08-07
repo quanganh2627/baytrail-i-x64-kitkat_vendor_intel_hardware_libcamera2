@@ -310,6 +310,30 @@ static int parsePair(const char *str, int *first, int *second, char delim,
     return 0;
 }
 
+static double normalAspectRatioForResolution(int width, int height)
+{
+    double realRatio = ((double) (width)) / height;
+
+    // this is the deviation from the normal aspect, that we allow
+    double allowedDelta = 0.01;
+
+    // add more as needed
+    double normalAspectRatios[] = {
+            4.0  / 3.0,
+            16.0 / 9.0,
+            11.0 / 9.0,
+            3.0  / 2.0
+    };
+
+    for (uint32_t i = 0; i < sizeof(normalAspectRatios) / sizeof(double); i++) {
+        if (fabs(realRatio - normalAspectRatios[i]) < allowedDelta)
+            return normalAspectRatios[i];
+    }
+
+    // default
+    return realRatio;
+}
+
 /**
  * Parse string like "1024x768,640x480"
  * Output integer vector list
