@@ -1334,9 +1334,9 @@ int PlatformData::getMaxNumYUVBufferForBracket(int cameraId)
     return getInstance()->mCameras[getActiveCamIdx(cameraId)].maxNumYUVBufferForBracket;
 }
 
-bool PlatformData::supportDualVideo(void)
+bool PlatformData::supportDualMode(void)
 {
-    return getInstance()->mSupportDualVideo;
+    return getInstance()->mSupportDualMode;
 }
 
 bool PlatformData::supportPreviewLimitation(void)

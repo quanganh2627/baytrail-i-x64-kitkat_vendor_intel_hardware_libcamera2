@@ -1041,11 +1041,11 @@ class PlatformData {
     static int getGFXHALPixelFormat(void);
 
     /**
-     * Whether dual video is supported?
+     * Whether dual mode is supported?
      *
      * \return true if supported
      */
-    static bool supportDualVideo(void);
+    static bool supportDualMode(void);
 
     /**
      * Whether preview limitation is supported
@@ -1295,7 +1295,7 @@ public:
         ,mMaxZoomFactor(64)
         ,mNumRecordingBuffers(9)
         ,mNumPreviewBuffers(6)
-        ,mSupportDualVideo(false)
+        ,mSupportDualMode(false)
         ,mSupportPreviewLimitation(true)
         ,mSensorGainLag(2)
         ,mSensorExposureLag(2)
@@ -1715,8 +1715,8 @@ protected:
 
     int mNumPreviewBuffers;
 
-    /* For Dual Video */
-    bool mSupportDualVideo;
+    /* For Dual Mode */
+    bool mSupportDualMode;
 
     /* For Preview Size Limitation*/
     bool mSupportPreviewLimitation;

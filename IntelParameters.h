@@ -196,9 +196,9 @@ namespace android {
     static const char KEY_SUPPORTED_RECORDING_FRAME_RATES[];
     static const char KEY_SUPPORTED_HIGH_SPEED_RESOLUTION_FPS[];
 
-    // dual video
-    static const char KEY_DUAL_VIDEO[];
-    static const char KEY_DUAL_VIDEO_SUPPORTED[];
+    // dual mode
+    static const char KEY_DUAL_MODE[];
+    static const char KEY_DUAL_MODE_SUPPORTED[];
 
     // dual camera mode
     static const char KEY_DUAL_CAMERA_MODE[];

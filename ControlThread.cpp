@@ -151,7 +151,7 @@ ControlThread::ControlThread(int cameraId) :
     ,mAELockFlashStage(CAM_FLASH_STAGE_NONE)
     ,mPublicShutter(-1)
     ,mDvsEnable(false)
-    ,mDualVideo(false)
+    ,mDualMode(false)
     ,mJpegContinuousShootingRunning(false)
     ,mParamCache(NULL)
     ,mPreviewForceChanged(false)
@@ -1977,9 +1977,9 @@ ControlThread::State ControlThread::selectPreviewMode(const CameraParameters &pa
         goto online_preview;
     }
 
-    // Online mode for dual video
-    if (mDualVideo) {
-        LOG1("@%s: Dual video, disabling continuous mode", __FUNCTION__);
+    // Online mode for dual mode
+    if (mDualMode) {
+        LOG1("@%s: Dual mode, disabling continuous mode", __FUNCTION__);
         goto online_preview;
     }
 
@@ -2072,7 +2072,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
                                                 mIntelParameters.get(IntelCameraParameters::KEY_SDV);
         String8 sdvParam (sdvValue, (sdvValue == NULL ? 0 : strlen(sdvValue)));
         mFullSizeSdv = PlatformData::isFullResSdvSupported(mCameraId) && // platform supported
-            !mDualVideo && // not dual video
+            !mDualMode && // not dual mode
             sdvParam == CameraParameters::TRUE && // user doesn't request to disable sdv by parameter
             fps <= DEFAULT_RECORDING_FPS && // not high speed mode
             isFullSizeSdvSupportedVideoSize(width, height, previewWidth, previewHeight) && // video size limitation
@@ -5533,18 +5533,18 @@ status_t ControlThread::ProcessOverlayEnable(const CameraParameters *oldParams,
     return status;
 }
 
-status_t ControlThread::processParamDualVideo(const CameraParameters *oldParams,
+status_t ControlThread::processParamDualMode(const CameraParameters *oldParams,
         CameraParameters *newParams, bool &restartNeeded)
 {
     LOG1("@%s restartNeeded:%d", __FUNCTION__, restartNeeded);
     status_t status = NO_ERROR;
 
-    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams, IntelCameraParameters::KEY_DUAL_VIDEO);
+    String8 newVal = paramsReturnNewIfChanged(oldParams, newParams, IntelCameraParameters::KEY_DUAL_MODE);
     if (!newVal.isEmpty()) {
-        mDualVideo = (newVal == CameraParameters::TRUE);
-        // Dual video only prefer online mode
-        if ((mDualVideo == true && (mState == STATE_CONTINUOUS_CAPTURE || mISP->getMode() == MODE_CONTINUOUS_VIDEO))
-                || (mDualVideo == false && (mState == STATE_PREVIEW_STILL || mState == STATE_CAPTURE)))
+        mDualMode = (newVal == CameraParameters::TRUE);
+        // Dual mode only prefer online mode
+        if ((mDualMode == true && (mState == STATE_CONTINUOUS_CAPTURE || mISP->getMode() == MODE_CONTINUOUS_VIDEO))
+                || (mDualMode == false && (mState == STATE_PREVIEW_STILL || mState == STATE_CAPTURE)))
             restartNeeded = true;
     }
     return status;
@@ -7861,7 +7861,7 @@ status_t ControlThread::processStaticParameters(CameraParameters *oldParams,
     // Capture bracketing
     status = processParamBracket(oldParams, newParams, restartNeeded);
 
-    status = processParamDualVideo(oldParams,newParams, restartNeeded);
+    status = processParamDualMode(oldParams,newParams, restartNeeded);
 
     status = processParamDualCameraMode(oldParams,newParams);
 
@@ -7872,7 +7872,7 @@ status_t ControlThread::processStaticParameters(CameraParameters *oldParams,
     if (status == NO_ERROR) {
         // IA CP library don't support multi-instance, if working in dual camera case,
         // just let main camera support HDR.
-        if ((!mDualVideo && !PlatformData::isExtendedCamera(mCameraId)) || (mCameraId == 0))
+        if ((!mDualMode && !PlatformData::isExtendedCamera(mCameraId)) || (mCameraId == 0))
             status = processParamHDR(oldParams, newParams);
     }
     if (mBurstLength != oldBurstLength || mFpsAdaptSkip != oldFpsAdaptSkip) {
@@ -7888,7 +7888,7 @@ status_t ControlThread::processStaticParameters(CameraParameters *oldParams,
 
     // IA CP library don't support multi-instance, if working in dual camera case,
     // just let main camera support ULL.
-    if ((!mDualVideo && !PlatformData::isExtendedCamera(mCameraId)) || (mCameraId == 0))
+    if ((!mDualMode && !PlatformData::isExtendedCamera(mCameraId)) || (mCameraId == 0))
         status = processParamULL(oldParams,newParams, &restartNeeded);
 
     /*

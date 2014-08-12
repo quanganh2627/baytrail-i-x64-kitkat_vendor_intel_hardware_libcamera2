@@ -552,7 +552,7 @@ private:
     IDvs *mDvs;
     bool mDvsEnabled;
 
-    // Dual Video
+    // Dual Mode
     int mGroupIndex;
     static Mutex sISPCountLock;
 

@@ -548,7 +548,7 @@ private:
     status_t processDynamicParameters(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamDvs(const CameraParameters *oldParams, CameraParameters *newParams);
-    status_t processParamDualVideo(const CameraParameters *oldParams,
+    status_t processParamDualMode(const CameraParameters *oldParams,
             CameraParameters *newParams, bool &restartPreview);
     status_t processParamDualCameraMode(CameraParameters *oldParams,
             CameraParameters *newParams);
@@ -814,7 +814,7 @@ private:
     float mPublicShutter;       /* Shutter set by application */
 
     bool mDvsEnable;
-    bool mDualVideo;
+    bool mDualMode;
 
     bool mJpegContinuousShootingRunning;
 
