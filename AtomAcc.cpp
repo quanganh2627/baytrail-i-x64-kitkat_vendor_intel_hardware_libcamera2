@@ -87,6 +87,13 @@ int load_firmware(void *isp, void *fw, unsigned size, unsigned *handle)
     return ISP->loadAccFirmware(fw, size, handle);
 }
 
+int load_firmware_ext(void *isp, void *fw, unsigned size, unsigned *handle, int dst)
+{
+    IHWIspControl *ISP = (IHWIspControl*)isp;
+    LOG1("@%s", __FUNCTION__);
+    return ISP->loadAccPipeFirmware(fw, size, handle, dst);
+}
+
 int load_firmware_pipe(void *isp, void *fw, unsigned size, unsigned *handle)
 {
     IHWIspControl *ISP = (IHWIspControl*)isp;
@@ -160,7 +167,7 @@ int set_stage_state(void *isp, unsigned int handle, bool enable)
 int wait_stage_update(void *isp, unsigned int handle)
 {
     IHWIspControl *ISP = (IHWIspControl*)isp;
-    LOG1("@%s", __FUNCTION__);
+    LOG2("@%s", __FUNCTION__);
     return ISP->waitStageUpdate(handle);
 }
 

@@ -5778,25 +5778,48 @@ int AtomISP::loadAccFirmware(void *fw, size_t size,
 }
 
 int AtomISP::loadAccPipeFirmware(void *fw, size_t size,
-                             unsigned int *fwHandle)
+                             unsigned int *fwHandle,
+                             int destination)
 {
     LOG1("@%s", __FUNCTION__);
     int ret = -1;
 
     struct atomisp_acc_fw_load_to_pipe fwDataPipe;
     memset(&fwDataPipe, 0, sizeof(fwDataPipe));
-    fwDataPipe.flags = ATOMISP_ACC_FW_LOAD_FL_PREVIEW;
-    fwDataPipe.type = ATOMISP_ACC_FW_LOAD_TYPE_VIEWFINDER;
+
+    switch(destination) {
+        case CAPTURE_OUTPUT:
+            fwDataPipe.flags = ATOMISP_ACC_FW_LOAD_FL_CAPTURE;
+            fwDataPipe.type = ATOMISP_ACC_FW_LOAD_TYPE_OUTPUT;
+            break;
+        case CAPTURE_VFPP:
+            fwDataPipe.flags = ATOMISP_ACC_FW_LOAD_FL_CAPTURE;
+            fwDataPipe.type = ATOMISP_ACC_FW_LOAD_TYPE_VIEWFINDER;
+            break;
+        case PREVIEW_VFPP:
+            fwDataPipe.flags = ATOMISP_ACC_FW_LOAD_FL_PREVIEW;
+            fwDataPipe.type = ATOMISP_ACC_FW_LOAD_TYPE_VIEWFINDER;
+            break;
+        case ACC_QOS:
+            fwDataPipe.flags = ATOMISP_ACC_FW_LOAD_FL_ACC;
+            fwDataPipe.type = ATOMISP_ACC_FW_LOAD_TYPE_VIEWFINDER;
+            break;
+        default:
+            LOGE("@%s: Invalid acc destination", __FUNCTION__);
+            return BAD_VALUE;
+            break;
+    }
 
     /*  fwDataPipe.fw_handle filled by kernel and returned to caller */
     fwDataPipe.size = size;
     fwDataPipe.data = fw;
 
     ret = pxioctl(mMainDevice, ATOMISP_IOC_ACC_LOAD_TO_PIPE, &fwDataPipe);
-    LOG1("%s IOCTL ATOMISP_IOC_ACC_LOAD_TO_PIPE ret : %d fwDataPipe->fw_handle: %d"\
-            , __FUNCTION__, ret, fwDataPipe.fw_handle);
+    LOG1("%s IOCTL ATOMISP_IOC_ACC_LOAD_TO_PIPE ret: %d fwDataPipe->fw_handle: %d "
+         "flags: %d type: %d", __FUNCTION__, ret, fwDataPipe.fw_handle,
+         fwDataPipe.flags, fwDataPipe.type);
 
-    //If IOCTRL call was returned successfully, get the firmware handle
+    //If IOCTL call was returned successfully, get the firmware handle
     //from the structure and return it to the application.
     if(!ret){
         *fwHandle = fwDataPipe.fw_handle;

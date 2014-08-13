@@ -336,7 +336,7 @@ protected:
 
     /* Acceleration API extensions */
     int loadAccFirmware(void *fw, size_t size, unsigned int *fwHandle);
-    int loadAccPipeFirmware(void *fw, size_t size, unsigned int *fwHandle);
+    int loadAccPipeFirmware(void *fw, size_t size, unsigned int *fwHandle, int dst);
     int unloadAccFirmware(unsigned int fwHandle);
     int mapFirmwareArgument(void *val, size_t size, unsigned long *ptr);
     int unmapFirmwareArgument(unsigned long val, size_t size);

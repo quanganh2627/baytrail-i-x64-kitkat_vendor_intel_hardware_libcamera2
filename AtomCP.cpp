@@ -96,6 +96,7 @@ void AtomCP::initIACP(void)
     // TODO: figure out if this needs a version number check like above
     mAccAPI.set_stage_state   = set_stage_state;
     mAccAPI.wait_stage_update = wait_stage_update;
+    mAccAPI.load_firmware_ext = load_firmware_ext;
 
     mAccAPI.version_css.major = ispMajor;
     mAccAPI.version_css.minor = ispMinor;

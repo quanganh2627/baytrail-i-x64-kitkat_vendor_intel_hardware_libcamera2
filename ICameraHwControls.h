@@ -38,6 +38,13 @@ struct sensorPrivateData
     bool fetched; // true if data has been attempted to read, false otherwise
 };
 
+enum AccelerationFwDst {
+    CAPTURE_OUTPUT,
+    CAPTURE_VFPP,
+    PREVIEW_VFPP,
+    ACC_QOS
+};
+
 enum ObserverType {
     OBSERVE_PREVIEW_STREAM,
     OBSERVE_FRAME_SYNC_SOF,
@@ -155,8 +162,9 @@ public:
     /* **********************************************************
      * Acceleration API extensions
      */
+
     virtual int loadAccFirmware(void *fw, size_t size, unsigned int *fwHandle) = 0;
-    virtual int loadAccPipeFirmware(void *fw, size_t size, unsigned int *fwHandle) = 0;
+    virtual int loadAccPipeFirmware(void *fw, size_t size, unsigned int *fwHandle, int dst = PREVIEW_VFPP) = 0;
     virtual int unloadAccFirmware(unsigned int fwHandle) = 0;
     virtual int mapFirmwareArgument(void *val, size_t size, unsigned long *ptr) = 0;
     virtual int unmapFirmwareArgument(unsigned long val, size_t size) = 0;

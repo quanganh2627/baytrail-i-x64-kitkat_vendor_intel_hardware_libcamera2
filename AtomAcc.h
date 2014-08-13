@@ -38,6 +38,8 @@ int load_firmware(void *isp, void *fw, unsigned size, unsigned *handle);
 /* for extension mode : used in FA */
 int load_firmware_pipe(void *isp, void *fw, unsigned size, unsigned *handle);
 
+int load_firmware_ext(void *isp, void *fw, unsigned size, unsigned *handle, int dst);
+
 int unload_firmware(void *isp, unsigned handle);
 
 int map_firmware_arg (void *isp, void *val, size_t size, unsigned long *ptr);
