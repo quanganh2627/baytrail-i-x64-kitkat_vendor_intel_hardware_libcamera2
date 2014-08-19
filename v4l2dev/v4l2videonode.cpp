@@ -99,14 +99,14 @@ status_t V4L2VideoNode::queryCap(struct v4l2_capability *cap)
     int ret(0);
 
     if (mState != DEVICE_OPEN) {
-        LOGE("%s invalid device state %d",__FUNCTION__, mState);
+        ALOGE("%s invalid device state %d",__FUNCTION__, mState);
         return INVALID_OPERATION;
     }
 
     ret = pioctl(mFd, VIDIOC_QUERYCAP, cap);
 
     if (ret < 0) {
-        LOGE("VIDIOC_QUERYCAP returned: %d (%s)", ret, strerror(errno));
+        ALOGE("VIDIOC_QUERYCAP returned: %d (%s)", ret, strerror(errno));
         return UNKNOWN_ERROR;
     }
 
@@ -120,18 +120,18 @@ status_t V4L2VideoNode::queryCap(struct v4l2_capability *cap)
 
     if (mDirection == INPUT_VIDEO_NODE) {
         if (!(cap->capabilities & V4L2_CAP_VIDEO_CAPTURE)) {
-           LOGW("No capture devices - But this is an input video node!");
+           ALOGW("No capture devices - But this is an input video node!");
            return DEAD_OBJECT;
         }
 
         if (!(cap->capabilities & V4L2_CAP_STREAMING)) {
-            LOGW("Is not a video streaming device");
+            ALOGW("Is not a video streaming device");
             return DEAD_OBJECT;
         }
 
     } else {
         if (!(cap->capabilities & V4L2_CAP_VIDEO_OUTPUT)) {
-            LOGW("No output devices - but this is an output video node!");
+            ALOGW("No output devices - but this is an output video node!");
             return DEAD_OBJECT;
         }
     }
@@ -146,7 +146,7 @@ status_t V4L2VideoNode::enumerateInputs(struct v4l2_input *anInput)
     int ret(0);
 
     if (mState == DEVICE_CLOSED) {
-        LOGE("%s invalid device state %d",__FUNCTION__, mState);
+        ALOGE("%s invalid device state %d",__FUNCTION__, mState);
         return INVALID_OPERATION;
     }
 
@@ -156,7 +156,7 @@ status_t V4L2VideoNode::enumerateInputs(struct v4l2_input *anInput)
         if (errno == EINVAL) {
             return BAD_INDEX; // Caller to handle this.
         } else {
-            LOGE("VIDIOC_ENUMINPUT failed returned: %d (%s)", ret, strerror(errno));
+            ALOGE("VIDIOC_ENUMINPUT failed returned: %d (%s)", ret, strerror(errno));
             return UNKNOWN_ERROR;
         }
     }
@@ -170,7 +170,7 @@ status_t V4L2VideoNode::queryCapturePixelFormats(Vector<v4l2_fmtdesc> &formats)
     struct v4l2_fmtdesc aFormat;
 
     if (mState == DEVICE_CLOSED) {
-        LOGE("%s invalid device state %d",__FUNCTION__, mState);
+        ALOGE("%s invalid device state %d",__FUNCTION__, mState);
         return INVALID_OPERATION;
     }
 
@@ -205,7 +205,7 @@ status_t V4L2VideoNode::setInput(int index)
     int ret(0);
 
     if (mState == DEVICE_CLOSED) {
-        LOGE("%s invalid device state %d",__FUNCTION__, mState);
+        ALOGE("%s invalid device state %d",__FUNCTION__, mState);
         return INVALID_OPERATION;
     }
 
@@ -214,7 +214,7 @@ status_t V4L2VideoNode::setInput(int index)
     ret = pioctl(mFd, VIDIOC_S_INPUT, &input);
 
     if (ret < 0) {
-       LOGE("VIDIOC_S_INPUT index %d returned: %d (%s)",
+       ALOGE("VIDIOC_S_INPUT index %d returned: %d (%s)",
            input.index, ret, strerror(errno));
        status = UNKNOWN_ERROR;
     }
@@ -245,7 +245,7 @@ int V4L2VideoNode::stop(bool leavePopulated)
         //stream off
         ret = pioctl(mFd, VIDIOC_STREAMOFF, &type);
         if (ret < 0) {
-            LOGE("VIDIOC_STREAMOFF returned: %d (%s)", ret, strerror(errno));
+            ALOGE("VIDIOC_STREAMOFF returned: %d (%s)", ret, strerror(errno));
             return ret;
         }
 
@@ -257,7 +257,7 @@ int V4L2VideoNode::stop(bool leavePopulated)
             mState = DEVICE_POPULATED;
         }
     } else {
-        LOGW("Trying to stop a device not started");
+        ALOGW("Trying to stop a device not started");
         ret = -1;
     }
     PERFORMANCE_TRACES_BREAKDOWN_STEP_PARAM("DeviceId:", mDeviceId);
@@ -291,7 +291,7 @@ int V4L2VideoNode::start(int buffer_count, int initial_skips)
 
     if ((mState != DEVICE_POPULATED) &&
         (mState != DEVICE_PREPARED)) {
-        LOGE("%s: Invalid state to start %d", __FUNCTION__, mState);
+        ALOGE("%s: Invalid state to start %d", __FUNCTION__, mState);
         return -1;
     }
 
@@ -312,7 +312,7 @@ int V4L2VideoNode::start(int buffer_count, int initial_skips)
     enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     ret = pioctl(mFd, VIDIOC_STREAMON, &type);
     if (ret < 0) {
-        LOGE("VIDIOC_STREAMON returned: %d (%s)", ret, strerror(errno));
+        ALOGE("VIDIOC_STREAMON returned: %d (%s)", ret, strerror(errno));
         return ret;
     }
 
@@ -361,7 +361,7 @@ status_t V4L2VideoNode::setFormat(AtomBuffer &formatDescriptor)
     if ((mState != DEVICE_OPEN) &&
         (mState != DEVICE_CONFIGURED) &&
         (mState != DEVICE_PREPARED) ){
-        LOGE("@%s: invalid device state %d",__FUNCTION__, mState);
+        ALOGE("@%s: invalid device state %d",__FUNCTION__, mState);
         return INVALID_OPERATION;
     }
 
@@ -369,7 +369,7 @@ status_t V4L2VideoNode::setFormat(AtomBuffer &formatDescriptor)
     LOG1("VIDIOC_G_FMT");
     ret = pioctl (mFd, VIDIOC_G_FMT, &v4l2_fmt);
     if (ret < 0) {
-        LOGE("VIDIOC_G_FMT failed: %s", strerror(errno));
+        ALOGE("VIDIOC_G_FMT failed: %s", strerror(errno));
         return UNKNOWN_ERROR;
     }
 
@@ -392,7 +392,7 @@ status_t V4L2VideoNode::setFormat(AtomBuffer &formatDescriptor)
 
     //Update the configuration struct with the bpl from ISP, if there is a mismatch
     if (formatDescriptor.bpl != 0 && formatDescriptor.bpl != mFormatDescriptor.bpl) {
-        LOGW("@%s: Mismatch between requested bpl (%d) and bpl from ISP (%d), using the value from ISP",
+        ALOGW("@%s: Mismatch between requested bpl (%d) and bpl from ISP (%d), using the value from ISP",
                 __FUNCTION__, formatDescriptor.bpl, mFormatDescriptor.bpl);
     }
     formatDescriptor.bpl = mFormatDescriptor.bpl;
@@ -400,7 +400,7 @@ status_t V4L2VideoNode::setFormat(AtomBuffer &formatDescriptor)
     //Update the configuration struct with the width and height from ISP, if there is a mismatch
     if ((formatDescriptor.width != 0 && formatDescriptor.width != mFormatDescriptor.width)
         ||(formatDescriptor.height != 0 && formatDescriptor.height != mFormatDescriptor.height)) {
-        LOGW("@%s: Mismatch between requested size (%dx%d) and size from ISP (%dx%d),using the value from ISP",
+        ALOGW("@%s: Mismatch between requested size (%dx%d) and size from ISP (%dx%d),using the value from ISP",
             __FUNCTION__, formatDescriptor.width, formatDescriptor.height, mFormatDescriptor.width, mFormatDescriptor.height);
     }
     formatDescriptor.width = mFormatDescriptor.width;
@@ -436,7 +436,7 @@ status_t V4L2VideoNode::setFormat(struct v4l2_format &aFormat)
     if ((mState != DEVICE_OPEN) &&
         (mState != DEVICE_CONFIGURED) &&
         (mState != DEVICE_PREPARED) ){
-        LOGE("%s invalid device state %d",__FUNCTION__, mState);
+        ALOGE("%s invalid device state %d",__FUNCTION__, mState);
         return INVALID_OPERATION;
     }
 
@@ -450,7 +450,7 @@ status_t V4L2VideoNode::setFormat(struct v4l2_format &aFormat)
             aFormat.fmt.pix.field);
     ret = pioctl(mFd, VIDIOC_S_FMT, &aFormat);
     if (ret < 0) {
-        LOGE("VIDIOC_S_FMT failed: %s", strerror(errno));
+        ALOGE("VIDIOC_S_FMT failed: %s", strerror(errno));
         return UNKNOWN_ERROR;
     }
 
@@ -485,11 +485,11 @@ int V4L2VideoNode::grabFrame(struct v4l2_buffer_info *buf)
     int ret(0);
 
     if (mState != DEVICE_STARTED) {
-        LOGE("%s invalid device state %d",__FUNCTION__, mState);
+        ALOGE("%s invalid device state %d",__FUNCTION__, mState);
         return -1;
     }
     if (buf == NULL) {
-        LOGE("%s: invalid parameter buf is NULL",__FUNCTION__);
+        ALOGE("%s: invalid parameter buf is NULL",__FUNCTION__);
         return -1;
     }
 
@@ -522,7 +522,7 @@ int V4L2VideoNode::putFrame(unsigned int index)
     int ret(0);
 
     if (index > mBufferPool.size()) {
-        LOGE("%s Invalid index %d pool size %d", __FUNCTION__, index, mBufferPool.size());
+        ALOGE("%s Invalid index %d pool size %d", __FUNCTION__, index, mBufferPool.size());
         return -1;
     }
     struct v4l2_buffer_info vbuf = mBufferPool.editItemAt(index);
@@ -541,7 +541,7 @@ status_t V4L2VideoNode::setParameter (struct v4l2_streamparm *aParam)
 
     ret = pioctl(mFd, VIDIOC_S_PARM, aParam);
     if (ret < 0) {
-        LOGE("VIDIOC_S_PARM failed ret %d : %s", ret, strerror(errno));
+        ALOGE("VIDIOC_S_PARM failed ret %d : %s", ret, strerror(errno));
         ret = UNKNOWN_ERROR;
     }
     return ret;
@@ -557,7 +557,7 @@ int V4L2VideoNode::getFramerate(float * framerate, int width, int height, int pi
         return BAD_VALUE;
 
     if (mState == DEVICE_CLOSED) {
-        LOGE("Invalid state (%d) to set an attribute",mState);
+        ALOGE("Invalid state (%d) to set an attribute",mState);
         return UNKNOWN_ERROR;
     }
 
@@ -569,7 +569,7 @@ int V4L2VideoNode::getFramerate(float * framerate, int width, int height, int pi
 
     ret = pioctl(mFd, VIDIOC_ENUM_FRAMEINTERVALS, &frm_interval);
     if (ret < 0) {
-        LOGW("ioctl VIDIOC_ENUM_FRAMEINTERVALS failed: %s", strerror(errno));
+        ALOGW("ioctl VIDIOC_ENUM_FRAMEINTERVALS failed: %s", strerror(errno));
         return UNKNOWN_ERROR;
     }
 
@@ -612,13 +612,13 @@ status_t V4L2VideoNode::setBufferPool(void **pool, int poolSize,
                           V4L2_BUF_FLAG_NO_CACHE_CLEAN;
 
     if ((mState != DEVICE_CONFIGURED) && (mState != DEVICE_PREPARED)) {
-        LOGE("%s:Invalid operation, device %s not configured (state = %d)",
+        ALOGE("%s:Invalid operation, device %s not configured (state = %d)",
                 __FUNCTION__, mName.string(), mState);
         return INVALID_OPERATION;
     }
 
     if (pool == NULL || formatDescriptor == NULL) {
-        LOGE("Invalid parameters, pool %p frameInfo %p",pool, formatDescriptor);
+        ALOGE("Invalid parameters, pool %p frameInfo %p",pool, formatDescriptor);
         return BAD_TYPE;
     }
 
@@ -630,7 +630,7 @@ status_t V4L2VideoNode::setBufferPool(void **pool, int poolSize,
         (formatDescriptor->height != mFormatDescriptor.height) ||
         (formatDescriptor->bpl != mFormatDescriptor.bpl) ||
         (formatDescriptor->fourcc != mFormatDescriptor.fourcc) ) {
-        LOGE("Pool configuration does not match device configuration: (%dx%d) s:%d f:%s Pool is: (%dx%d) s:%d f:%s ",
+        ALOGE("Pool configuration does not match device configuration: (%dx%d) s:%d f:%s Pool is: (%dx%d) s:%d f:%s ",
                 mFormatDescriptor.width, mFormatDescriptor.height, mFormatDescriptor.bpl, v4l2Fmt2Str(mFormatDescriptor.fourcc),
                 formatDescriptor->width, formatDescriptor->height, formatDescriptor->bpl, v4l2Fmt2Str(formatDescriptor->fourcc));
         return BAD_VALUE;
@@ -690,7 +690,7 @@ int V4L2VideoNode::requestBuffers(uint num_buffers)
     else if (mDirection == OUTPUT_VIDEO_NODE)
         req_buf.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
     else {
-        LOGE("Unknown node direction (in/out) this should not happen");
+        ALOGE("Unknown node direction (in/out) this should not happen");
         return -1;
     }
 
@@ -698,13 +698,13 @@ int V4L2VideoNode::requestBuffers(uint num_buffers)
     ret = pioctl(mFd, VIDIOC_REQBUFS, &req_buf);
 
     if (ret < 0) {
-        LOGE("VIDIOC_REQBUFS(%d) returned: %d (%s)",
+        ALOGE("VIDIOC_REQBUFS(%d) returned: %d (%s)",
             num_buffers, ret, strerror(errno));
         return ret;
     }
 
     if (req_buf.count < num_buffers)
-        LOGW("Got less buffers than requested! %d < %d",req_buf.count, num_buffers);
+        ALOGW("Got less buffers than requested! %d < %d",req_buf.count, num_buffers);
 
     return req_buf.count;
 }
@@ -722,7 +722,7 @@ int V4L2VideoNode::activateBufferPool()
     for (size_t i = 0; i < mBufferPool.size(); i++) {
         ret = qbuf(&mBufferPool.editItemAt(i));
         if (ret < 0) {
-            LOGE("Failed to queue buffer %d", i);
+            ALOGE("Failed to queue buffer %d", i);
             break;
         }
     }
@@ -741,7 +741,7 @@ int V4L2VideoNode::qbuf(struct v4l2_buffer_info *buf)
     v4l2_buf->reserved2 = 0;
     ret = pioctl(mFd, VIDIOC_QBUF, v4l2_buf);
     if (ret < 0) {
-        LOGE("VIDIOC_QBUF on %s failed: %s", mName.string(), strerror(errno));
+        ALOGE("VIDIOC_QBUF on %s failed: %s", mName.string(), strerror(errno));
         return ret;
     }
 
@@ -759,7 +759,7 @@ int V4L2VideoNode::dqbuf(struct v4l2_buffer_info *buf)
 
     ret = pioctl(mFd, VIDIOC_DQBUF, v4l2_buf);
     if (ret < 0) {
-        LOGE("VIDIOC_DQBUF failed: %s", strerror(errno));
+        ALOGE("VIDIOC_DQBUF failed: %s", strerror(errno));
         return ret;
     }
 
@@ -787,19 +787,19 @@ int V4L2VideoNode::createBufferPool(unsigned int buffer_count)
     int ret(0);
 
     if (mState != DEVICE_PREPARED) {
-        LOGE("%s: Incorrect device state  %d", __FUNCTION__, mState);
+        ALOGE("%s: Incorrect device state  %d", __FUNCTION__, mState);
         return -1;
     }
 
     if (buffer_count > mSetBufferPool.size()) {
-        LOGE("%s: Incorrect parameter requested %d, but only %d provided",
+        ALOGE("%s: Incorrect parameter requested %d, but only %d provided",
                 __FUNCTION__, buffer_count, mSetBufferPool.size());
         return -1;
     }
 
     int num_buffers = requestBuffers(buffer_count);
     if (num_buffers <= 0) {
-        LOGE("%s: Could not complete buffer request",__FUNCTION__);
+        ALOGE("%s: Could not complete buffer request",__FUNCTION__);
         return -1;
     }
 
@@ -817,7 +817,7 @@ int V4L2VideoNode::createBufferPool(unsigned int buffer_count)
     return 0;
 
 error:
-    LOGE("Failed to VIDIOC_QUERYBUF some of the buffers, clearing the active buffer pool");
+    ALOGE("Failed to VIDIOC_QUERYBUF some of the buffers, clearing the active buffer pool");
     mBufferPool.clear();
     mBufferPool.setCapacity(MAX_V4L2_BUFFERS);
     return ret;
@@ -838,7 +838,7 @@ int V4L2VideoNode::newBuffer(int index, struct v4l2_buffer_info &buf)
     else if (mDirection == OUTPUT_VIDEO_NODE)
         vbuf->type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
     else {
-        LOGE("Unknown node direction (in/out) this should not happen");
+        ALOGE("Unknown node direction (in/out) this should not happen");
         return -1;
     }
 
@@ -847,7 +847,7 @@ int V4L2VideoNode::newBuffer(int index, struct v4l2_buffer_info &buf)
     ret = pioctl(mFd , VIDIOC_QUERYBUF, vbuf);
 
     if (ret < 0) {
-        LOGE("VIDIOC_QUERYBUF failed: %s", strerror(errno));
+        ALOGE("VIDIOC_QUERYBUF failed: %s", strerror(errno));
         return ret;
     }
 

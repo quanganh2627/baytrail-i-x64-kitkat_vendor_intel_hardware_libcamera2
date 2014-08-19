@@ -35,10 +35,10 @@ static bool validateSize(int width, int height, Vector<Size> &supportedSizes, bo
             return true;
 
     if (onlyWarning) {
-        LOGW("WARNING: The Size %dx%d is not fully supported. Some issues might occur!", width, height);
+        ALOGW("WARNING: The Size %dx%d is not fully supported. Some issues might occur!", width, height);
         return true;
     } else {
-        LOGE("Invalid size %dx%d is not in supported list.", width, height);
+        ALOGE("Invalid size %dx%d is not in supported list.", width, height);
         return false;
     }
 }
@@ -59,7 +59,7 @@ static bool validateBoolParameter(const char* paramName, const char* paramSuppor
     LOG2("@%s", __FUNCTION__);
 
     if (paramName == NULL || paramSupportedName == NULL || params == NULL) {
-        LOGE("%s: Invalid argument!",  __FUNCTION__);
+        ALOGE("%s: Invalid argument!",  __FUNCTION__);
         return false;
     }
 
@@ -71,12 +71,12 @@ static bool validateBoolParameter(const char* paramName, const char* paramSuppor
     }
 
     if (strcmp(value, CameraParameters::TRUE) != 0  && strcmp(value, CameraParameters::FALSE) != 0) {
-        LOGE("Bad value(%s) for %s. Not bool value.", value,  paramName);
+        ALOGE("Bad value(%s) for %s. Not bool value.", value,  paramName);
         return false;
     }
 
     if (isParameterSet(paramName, *params) && !isParameterSet(paramSupportedName, *params)) {
-        LOGE("bad value for %s, is set, but not supported", paramName);
+        ALOGE("bad value for %s, is set, but not supported", paramName);
         return false;
     }
 
@@ -170,7 +170,7 @@ static void validateReadOnlyParameters(const CameraParameters *oldParams, const 
 
     while (name != NULL) {
         if(!isParamsEqual(oldParams->get(name), params->get(name))) {
-              LOGW("Change of read-only parameter %s", name);
+              ALOGW("Change of read-only parameter %s", name);
               LOG1("The changed value was %s, restoring the old value %s", params->get(name), oldParams->get(name));
               CameraParameters *wParams = const_cast<CameraParameters *>(params);
               wParams->set(name, oldParams->get(name));
@@ -290,7 +290,7 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
     }
     params->getPreviewSize(&width, &height);
     if (!validateSize(width, height, supportedSizes, sizeErrorOnlyWarning)) {
-        LOGE("bad preview size");
+        ALOGE("bad preview size");
         return BAD_VALUE;
     }
 
@@ -302,7 +302,7 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
     const char* fpsRanges = params->get(CameraParameters::KEY_SUPPORTED_PREVIEW_FPS_RANGE);
     if ((fpsRange && fpsRanges && strstr(fpsRanges, fpsRange) == NULL) ||
         minFPS < 0 || maxFPS < 0) {
-            LOGE("invalid fps range: %s; supported %s", fpsRange, fpsRanges);
+            ALOGE("invalid fps range: %s; supported %s", fpsRange, fpsRanges);
             return BAD_VALUE;
     }
 
@@ -311,7 +311,7 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
     supportedSizes.clear();
     params->getSupportedVideoSizes(supportedSizes);
     if (!validateSize(width, height, supportedSizes, sizeErrorOnlyWarning)) {
-        LOGE("bad video size %dx%d", width, height);
+        ALOGE("bad video size %dx%d", width, height);
         return BAD_VALUE;
     }
 
@@ -319,7 +319,7 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
     const char* recordingFps = params->get(IntelCameraParameters::KEY_RECORDING_FRAME_RATE);
     const char* supportedRecordingFps = params->get(IntelCameraParameters::KEY_SUPPORTED_RECORDING_FRAME_RATES);
     if (!validateString(recordingFps, supportedRecordingFps)) {
-        LOGE("bad recording frame rate: %s, supported: %s", recordingFps, supportedRecordingFps);
+        ALOGE("bad recording frame rate: %s, supported: %s", recordingFps, supportedRecordingFps);
         return BAD_VALUE;
     }
 
@@ -331,7 +331,7 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
         LOG2("@%s: snapshot size auto select HACK in use", __FUNCTION__);
     } else {
         if (!validateSize(width, height, supportedSizes, sizeErrorOnlyWarning)) {
-            LOGE("bad picture size");
+            ALOGE("bad picture size");
             return BAD_VALUE;
         }
     }
@@ -339,14 +339,14 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
     // JPEG QUALITY
     int jpegQuality = params->getInt(CameraParameters::KEY_JPEG_QUALITY);
     if (jpegQuality < 1 || jpegQuality > 100) {
-        LOGE("bad jpeg quality: %d", jpegQuality);
+        ALOGE("bad jpeg quality: %d", jpegQuality);
         return BAD_VALUE;
     }
 
     // THUMBNAIL QUALITY
     int thumbQuality = params->getInt(CameraParameters::KEY_JPEG_THUMBNAIL_QUALITY);
     if (thumbQuality < 1 || thumbQuality > 100) {
-        LOGE("bad thumbnail quality: %d", thumbQuality);
+        ALOGE("bad thumbnail quality: %d", thumbQuality);
         return BAD_VALUE;
     }
 
@@ -365,18 +365,18 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
             ++thumbnailSizes;
         }
         if (!validateSize(thumbWidth, thumbHeight, supportedSizes, sizeErrorOnlyWarning)) {
-            LOGE("bad thumbnail size: (%d,%d)", thumbWidth, thumbHeight);
+            ALOGE("bad thumbnail size: (%d,%d)", thumbWidth, thumbHeight);
             return BAD_VALUE;
         }
     } else {
-        LOGE("bad thumbnail size");
+        ALOGE("bad thumbnail size");
         return BAD_VALUE;
     }
     // PICTURE FORMAT
     const char* picFormat = params->get(CameraParameters::KEY_PICTURE_FORMAT);
     const char* picFormats = params->get(CameraParameters::KEY_SUPPORTED_PICTURE_FORMATS);
     if (!validateString(picFormat, picFormats)) {
-        LOGE("bad picture fourcc: %s", picFormat);
+        ALOGE("bad picture fourcc: %s", picFormat);
         return BAD_VALUE;
     }
 
@@ -384,14 +384,14 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
     const char* preFormat = params->get(CameraParameters::KEY_PREVIEW_FORMAT);
     const char* preFormats = params->get(CameraParameters::KEY_SUPPORTED_PREVIEW_FORMATS);
     if (!validateString(preFormat, preFormats))  {
-        LOGE("bad preview fourcc: %s", preFormat);
+        ALOGE("bad preview fourcc: %s", preFormat);
         return BAD_VALUE;
     }
 
     // ROTATION, can only be 0 ,90, 180 or 270.
     int rotation = params->getInt(CameraParameters::KEY_ROTATION);
     if (rotation != 0 && rotation != 90 && rotation != 180 && rotation != 270) {
-        LOGE("bad rotation value: %d", rotation);
+        ALOGE("bad rotation value: %d", rotation);
         return BAD_VALUE;
     }
 
@@ -400,7 +400,7 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
     const char* whiteBalance = params->get(CameraParameters::KEY_WHITE_BALANCE);
     const char* whiteBalances = params->get(CameraParameters::KEY_SUPPORTED_WHITE_BALANCE);
     if (!validateString(whiteBalance, whiteBalances)) {
-        LOGE("bad white balance mode: %s", whiteBalance);
+        ALOGE("bad white balance mode: %s", whiteBalance);
         return BAD_VALUE;
     }
 
@@ -408,7 +408,7 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
     int zoom = params->getInt(CameraParameters::KEY_ZOOM);
     int maxZoom = params->getInt(CameraParameters::KEY_MAX_ZOOM);
     if (zoom > maxZoom || zoom < 0) {
-        LOGE("bad zoom index: %d", zoom);
+        ALOGE("bad zoom index: %d", zoom);
         return BAD_VALUE;
     }
 
@@ -416,7 +416,7 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
     const char* flashMode = params->get(CameraParameters::KEY_FLASH_MODE);
     const char* flashModes = params->get(CameraParameters::KEY_SUPPORTED_FLASH_MODES);
     if (!validateString(flashMode, flashModes)) {
-        LOGE("bad flash mode");
+        ALOGE("bad flash mode");
         return BAD_VALUE;
     }
 
@@ -424,7 +424,7 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
     const char* sceneMode = params->get(CameraParameters::KEY_SCENE_MODE);
     const char* sceneModes = params->get(CameraParameters::KEY_SUPPORTED_SCENE_MODES);
     if (!validateString(sceneMode, sceneModes)) {
-        LOGE("bad scene mode: %s; supported: %s", sceneMode, sceneModes);
+        ALOGE("bad scene mode: %s; supported: %s", sceneMode, sceneModes);
         return BAD_VALUE;
     }
 
@@ -432,7 +432,7 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
     const char* focusMode = params->get(CameraParameters::KEY_FOCUS_MODE);
     const char* focusModes = params->get(CameraParameters::KEY_SUPPORTED_FOCUS_MODES);
     if (!validateString(focusMode, focusModes)) {
-        LOGE("bad focus mode: %s; supported: %s", focusMode, focusModes);
+        ALOGE("bad focus mode: %s; supported: %s", focusMode, focusModes);
         return BAD_VALUE;
     }
 
@@ -441,7 +441,7 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
     const char* burstLengths = params->get(IntelCameraParameters::KEY_SUPPORTED_BURST_LENGTH);
      int burstMaxLengthNegative = params->getInt(IntelCameraParameters::KEY_MAX_BURST_LENGTH_WITH_NEGATIVE_START_INDEX);
     if (!validateString(burstLength, burstLengths)) {
-        LOGE("bad burst length: %s; supported: %s", burstLength, burstLengths);
+        ALOGE("bad burst length: %s; supported: %s", burstLength, burstLengths);
         return BAD_VALUE;
     }
     const char* burstStart = params->get(IntelCameraParameters::KEY_BURST_START_INDEX);
@@ -450,12 +450,12 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
         if (burstStartInt < 0) {
             const char* captureBracket = params->get(IntelCameraParameters::KEY_CAPTURE_BRACKET);
             if (captureBracket && String8(captureBracket) != "none") {
-                LOGE("negative start-index and bracketing not supported concurrently");
+                ALOGE("negative start-index and bracketing not supported concurrently");
                 return BAD_VALUE;
             }
             int len = burstLength ? atoi(burstLength) : 0;
             if (len > burstMaxLengthNegative) {
-                LOGE("negative start-index and burst-length=%d not supported concurrently", len);
+                ALOGE("negative start-index and burst-length=%d not supported concurrently", len);
                 return BAD_VALUE;
             }
         }
@@ -465,7 +465,7 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
     const char* burstSpeed = params->get(IntelCameraParameters::KEY_BURST_SPEED);
     const char* burstSpeeds = params->get(IntelCameraParameters::KEY_SUPPORTED_BURST_SPEED);
     if (!validateString(burstSpeed, burstSpeeds)) {
-        LOGE("bad burst speed: %s; supported: %s", burstSpeed, burstSpeeds);
+        ALOGE("bad burst speed: %s; supported: %s", burstSpeed, burstSpeeds);
         return BAD_VALUE;
     }
 
@@ -473,7 +473,7 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
     const char* overlaySupported = params->get(IntelCameraParameters::KEY_HW_OVERLAY_RENDERING_SUPPORTED);
     const char* overlay = params->get(IntelCameraParameters::KEY_HW_OVERLAY_RENDERING);
         if (!validateString(overlay, overlaySupported)) {
-        LOGE("bad overlay rendering mode: %s; supported: %s", overlay, overlaySupported);
+        ALOGE("bad overlay rendering mode: %s; supported: %s", overlay, overlaySupported);
         return BAD_VALUE;
     }
 
@@ -481,7 +481,7 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
     const char *size = params->get(IntelCameraParameters::KEY_PANORAMA_LIVE_PREVIEW_SIZE);
     const char *livePreviewSizes = IntelCameraParameters::getSupportedPanoramaLivePreviewSizes(*params);
     if (!validateString(size, livePreviewSizes)) {
-        LOGE("bad panorama live preview size");
+        ALOGE("bad panorama live preview size");
         return BAD_VALUE;
     }
 
@@ -489,7 +489,7 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
     const char* flickerMode = params->get(CameraParameters::KEY_ANTIBANDING);
     const char* flickerModes = params->get(CameraParameters::KEY_SUPPORTED_ANTIBANDING);
     if (!validateString(flickerMode, flickerModes)) {
-        LOGE("bad anti flicker mode");
+        ALOGE("bad anti flicker mode");
         return BAD_VALUE;
     }
 
@@ -497,7 +497,7 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
     const char* colorEffect = params->get(CameraParameters::KEY_EFFECT);
     const char* colorEffects = params->get(CameraParameters::KEY_SUPPORTED_EFFECTS);
     if (!validateString(colorEffect, colorEffects)) {
-        LOGE("bad color effect: %s", colorEffect);
+        ALOGE("bad color effect: %s", colorEffect);
         return BAD_VALUE;
     }
 
@@ -506,7 +506,7 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
     int minExposure = params->getInt(CameraParameters::KEY_MIN_EXPOSURE_COMPENSATION);
     int maxExposure = params->getInt(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION);
     if (exposure > maxExposure || exposure < minExposure) {
-        LOGE("bad exposure compensation value: %d", exposure);
+        ALOGE("bad exposure compensation value: %d", exposure);
         return BAD_VALUE;
     }
 
@@ -519,7 +519,7 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
     const char* noiseReductionAndEdgeEnhancement = params->get(IntelCameraParameters::KEY_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT);
     const char* noiseReductionAndEdgeEnhancements = params->get(IntelCameraParameters::KEY_SUPPORTED_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT);
     if (!validateString(noiseReductionAndEdgeEnhancement, noiseReductionAndEdgeEnhancements)) {
-        LOGE("bad noise reduction and edge enhancement value : %s", noiseReductionAndEdgeEnhancement);
+        ALOGE("bad noise reduction and edge enhancement value : %s", noiseReductionAndEdgeEnhancement);
         return BAD_VALUE;
     }
 
@@ -527,37 +527,37 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
     const char* multiAccessColorCorrection = params->get(IntelCameraParameters::KEY_MULTI_ACCESS_COLOR_CORRECTION);
     const char* multiAccessColorCorrections = params->get(IntelCameraParameters::KEY_SUPPORTED_MULTI_ACCESS_COLOR_CORRECTIONS);
     if (!validateString(multiAccessColorCorrection, multiAccessColorCorrections)) {
-        LOGE("bad multi access color correction value : %s", multiAccessColorCorrection);
+        ALOGE("bad multi access color correction value : %s", multiAccessColorCorrection);
         return BAD_VALUE;
     }
 
     // AUTO EXPOSURE LOCK
     if (!validateBoolParameter(CameraParameters::KEY_AUTO_EXPOSURE_LOCK,CameraParameters::KEY_AUTO_EXPOSURE_LOCK_SUPPORTED, params)) {
-        LOGE("bad value for auto exporsure lock");
+        ALOGE("bad value for auto exporsure lock");
         return BAD_VALUE;
     }
 
     // AUTO WHITEBALANCE LOCK
     if (!validateBoolParameter(CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK, CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK_SUPPORTED, params)) {
-        LOGE("bad value for auto whitebalance lock");
+        ALOGE("bad value for auto whitebalance lock");
         return BAD_VALUE;
     }
 
     // DVS (VIDEO STABILIZATION)
     if (!validateBoolParameter(CameraParameters::KEY_VIDEO_STABILIZATION, CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED, params)) {
-        LOGE("bad value for DVS");
+        ALOGE("bad value for DVS");
         return BAD_VALUE;
     }
 
     // SDV (still during video)
     if (!validateBoolParameter(IntelCameraParameters::KEY_SDV, IntelCameraParameters::KEY_SDV_SUPPORTED, params)) {
-        LOGE("bad value for SDV");
+        ALOGE("bad value for SDV");
         return BAD_VALUE;
     }
 
     // Dual mode
     if (!validateBoolParameter(IntelCameraParameters::KEY_DUAL_MODE, IntelCameraParameters::KEY_DUAL_MODE_SUPPORTED, params)) {
-        LOGE("bad value for dual mode");
+        ALOGE("bad value for dual mode");
         return BAD_VALUE;
     }
 
@@ -565,13 +565,13 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
     const char* dualCameraMode = params->get(IntelCameraParameters::KEY_DUAL_CAMERA_MODE);
     const char* dualCameraModes = params->get(IntelCameraParameters::KEY_SUPPORTED_DUAL_CAMERA_MODE);
     if (!validateString(dualCameraMode, dualCameraModes)) {
-        LOGE("bad value for dual camera mode: %s", dualCameraMode);
+        ALOGE("bad value for dual camera mode: %s", dualCameraMode);
         return BAD_VALUE;
     }
 
     // continuous shooting
     if (!validateBoolParameter(IntelCameraParameters::KEY_CONTINUOUS_SHOOTING, IntelCameraParameters::KEY_CONTINUOUS_SHOOTING_SUPPORTED, params)) {
-        LOGE("bad value for continuous shooting");
+        ALOGE("bad value for continuous shooting");
         return BAD_VALUE;
     }
 
@@ -579,7 +579,7 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
     const char* contrastMode = params->get(IntelCameraParameters::KEY_CONTRAST_MODE);
     const char* contrastModes = params->get(IntelCameraParameters::KEY_SUPPORTED_CONTRAST_MODES);
     if (!validateString(contrastMode, contrastModes)) {
-        LOGE("bad contrast mode: %s", contrastMode);
+        ALOGE("bad contrast mode: %s", contrastMode);
         return BAD_VALUE;
     }
 
@@ -587,7 +587,7 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
     const char* saturationMode = params->get(IntelCameraParameters::KEY_SATURATION_MODE);
     const char* saturationModes = params->get(IntelCameraParameters::KEY_SUPPORTED_SATURATION_MODES);
     if (!validateString(saturationMode, saturationModes)) {
-        LOGE("bad saturation mode: %s", saturationMode);
+        ALOGE("bad saturation mode: %s", saturationMode);
         return BAD_VALUE;
     }
 
@@ -595,7 +595,7 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
     const char* sharpnessMode = params->get(IntelCameraParameters::KEY_SHARPNESS_MODE);
     const char* sharpnessModes = params->get(IntelCameraParameters::KEY_SUPPORTED_SHARPNESS_MODES);
     if (!validateString(sharpnessMode, sharpnessModes)) {
-        LOGE("bad sharpness mode: %s", sharpnessMode);
+        ALOGE("bad sharpness mode: %s", sharpnessMode);
         return BAD_VALUE;
     }
 
@@ -603,7 +603,7 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
     const char* intelligentMode = params->get(IntelCameraParameters::KEY_INTELLIGENT_MODE);
     const char* intelligentModes = params->get(IntelCameraParameters::KEY_SUPPORTED_INTELLIGENT_MODE);
     if (!validateString(intelligentMode, intelligentModes)) {
-        LOGE("bad intelligent mode: %s", intelligentMode);
+        ALOGE("bad intelligent mode: %s", intelligentMode);
         return BAD_VALUE;
     }
 
@@ -611,7 +611,7 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
     const char* colorbarMode = params->get(IntelCameraParameters::KEY_COLORBAR);
     const char* colorbarModes = params->get(IntelCameraParameters::KEY_SUPPORTED_COLORBAR);
     if (!validateString(colorbarMode, colorbarModes)) {
-        LOGE("bad colorbar mode: %s", colorbarMode);
+        ALOGE("bad colorbar mode: %s", colorbarMode);
         return BAD_VALUE;
     }
 

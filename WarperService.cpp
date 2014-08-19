@@ -79,7 +79,7 @@ status_t WarperService::warpBackFrame(AtomBuffer *frame, double projective[PROJ_
     if (frame) {
         msg.data.messageWarpBackFrame.frame = frame;
     } else {
-        LOGE("Can not access frame data.");
+        ALOGE("Can not access frame data.");
         return INVALID_OPERATION;
     }
     if (projective) {
@@ -89,7 +89,7 @@ status_t WarperService::warpBackFrame(AtomBuffer *frame, double projective[PROJ_
             }
         }
     } else {
-        LOGE("Projective matrix is not initialized.");
+        ALOGE("Projective matrix is not initialized.");
         return INVALID_OPERATION;
     }
     return mMessageQueue.send(&msg, MESSAGE_ID_WARP_BACK_FRAME);
@@ -107,7 +107,7 @@ status_t WarperService::handleMessageUpdateFrameDimensions(MessageUpdateFrameDim
 
         if (mGPUWarperActive) {
             if (mGPUWarper == NULL) {
-                LOGE("GPUWarper is not initialized.");
+                ALOGE("GPUWarper is not initialized.");
                 mMessageQueue.reply(MESSAGE_ID_UPDATE_FRAME_DIMENSIONS, INVALID_OPERATION);
                 return INVALID_OPERATION;
             }
@@ -137,7 +137,7 @@ status_t WarperService::handleMessageUpdateStatus(MessageUpdateStatus &msg) {
         if (mGPUWarper == NULL) {
             mGPUWarper = new GPUWarper(mWidth, mHeight, 64);
             if (mGPUWarper == NULL) {
-                LOGE("Failed to create GPUWarper");
+                ALOGE("Failed to create GPUWarper");
                 mGPUWarperActive = false;
                 mMessageQueue.reply(MESSAGE_ID_UPDATE_STATUS, NO_MEMORY);
                 return NO_MEMORY;
@@ -176,7 +176,7 @@ status_t WarperService::handleMessageWarpBackFrame(MessageWarpBackFrame &msg) {
 
     if (mGPUWarper == NULL) {
         // GPUWarper should be initialized before entering this function
-        LOGE("GPUWarper is not initialized.");
+        ALOGE("GPUWarper is not initialized.");
         mMessageQueue.reply(MESSAGE_ID_WARP_BACK_FRAME, INVALID_OPERATION);
         return INVALID_OPERATION;
     }

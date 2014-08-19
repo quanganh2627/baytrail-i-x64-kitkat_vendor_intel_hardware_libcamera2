@@ -41,7 +41,7 @@ VideoThread::VideoThread(AtomISP *atomIsp, sp<CallbacksThread> callbacksThread) 
 #ifdef GRAPHIC_IS_GEN
     mVpp = new VideoVPPBase();
     if (!mVpp) {
-        LOGE("Fail to construct VPP");
+        ALOGE("Fail to construct VPP");
     }
 #endif
     IHWSensorControl *hwSensorCtl = mIsp->getSensorControlInterface();
@@ -49,7 +49,7 @@ VideoThread::VideoThread(AtomISP *atomIsp, sp<CallbacksThread> callbacksThread) 
     if (hwSensorCtl != NULL)
         mCameraId = hwSensorCtl->getCurrentCameraId();
     else
-        LOGW("Sensor HW not initialized");
+        ALOGW("Sensor HW not initialized");
 
     hwSensorCtl = NULL;
     reset();
@@ -84,7 +84,7 @@ bool VideoThread::atomIspNotify(IAtomIspObserver::Message *msg, const ObserverSt
         if (msg->id != IAtomIspObserver::MESSAGE_ID_FRAME) {
             LOG1("Received unexpected notify message id %d!", msg->id);
             if (msg->id == IAtomIspObserver::MESSAGE_ID_ERROR) {
-                LOGE("Error in preview stream");
+                ALOGE("Error in preview stream");
             }
             return false;
         }
@@ -108,7 +108,7 @@ status_t VideoThread::startRecording()
 {
     LOG1("@%s", __FUNCTION__);
     if (mState == STATE_RECORDING) {
-        LOGW("Already in recording state");
+        ALOGW("Already in recording state");
         return NO_ERROR;
     }
 
@@ -121,7 +121,7 @@ status_t VideoThread::stopRecording()
 {
     LOG1("@%s", __FUNCTION__);
     if (mState != STATE_RECORDING) {
-        LOGW("Invalid stopRecording request for state:%d", mState);
+        ALOGW("Invalid stopRecording request for state:%d", mState);
         return NO_ERROR;
     }
 
@@ -194,7 +194,7 @@ status_t VideoThread::handleMessageDequeueRecording(MessageDequeueRecording *msg
     // many recording buffers, so we need to skip the unnecessary notifications
     status = mIsp->getRecordingFrame(&buff);
     if (status == NOT_ENOUGH_DATA) {
-        LOGW("@%s - recording frame was not ready. Maybe there was an ISP timeout?", __FUNCTION__);
+        ALOGW("@%s - recording frame was not ready. Maybe there was an ISP timeout?", __FUNCTION__);
         return NO_ERROR;
     }
 
@@ -202,7 +202,7 @@ status_t VideoThread::handleMessageDequeueRecording(MessageDequeueRecording *msg
        if (buff.status != FRAME_STATUS_CORRUPTED) {
             // Check whether driver has run out of buffers
             if (!mIsp->dataAvailable()) {
-                LOGE("Video frame dropped, buffers reserved : %d video encoder, %d video snapshot",
+                ALOGE("Video frame dropped, buffers reserved : %d video encoder, %d video snapshot",
                         mRecordingBuffers.size(), mSnapshotBuffers.size());
                 msg->skipFrame = true;
             }
@@ -229,11 +229,11 @@ status_t VideoThread::handleMessageDequeueRecording(MessageDequeueRecording *msg
                 mIsp->putRecordingFrame(&buff);
             }
         } else {
-            LOGD("Recording frame %d corrupted, ignoring", buff.id);
+            ALOGD("Recording frame %d corrupted, ignoring", buff.id);
             mIsp->putRecordingFrame(&buff);
         }
     } else {
-        LOGE("Error: getting recording from isp\n");
+        ALOGE("Error: getting recording from isp\n");
     }
 
     return status;
@@ -306,7 +306,7 @@ status_t VideoThread::handleMessageReleaseRecordingFrame(MessageReleaseRecording
             // to see if sharing was disabled then we restart the ISP with new buffers. In
             // the mean time, the app is returning us shared buffers when we are no longer
             // using them.
-            LOGE("Could not find recording buffer: %p", msg->buff);
+            ALOGE("Could not find recording buffer: %p", msg->buff);
             return DEAD_OBJECT;
         }
         LOG2("Recording buffer released from encoder, buff id = %d", recBuff->id);
@@ -364,7 +364,7 @@ AtomBuffer* VideoThread::findRecordingBuffer(void *ptr)
         }
     }
 
-    LOGD("@%s ptr:%p buffer is not found", __FUNCTION__, ptr);
+    ALOGD("@%s ptr:%p buffer is not found", __FUNCTION__, ptr);
     return NULL;
 }
 
@@ -390,7 +390,7 @@ void VideoThread::getDefaultParameters(CameraParameters *intel_params, int camer
 {
     LOG1("@%s", __FUNCTION__);
     if (!intel_params) {
-        LOGE("params is null!");
+        ALOGE("params is null!");
         return;
     }
     // Set slow motion rate in high speed mode
@@ -418,7 +418,7 @@ status_t VideoThread::convertNV12Linear2Tiled(const AtomBuffer &buff)
     ANativeWindowBuffer *nativeBuffer = buff.gfxInfo_rec.gfxBuffer->getNativeBuffer();
 
     if (mVpp == NULL) {
-        LOGE("@%s vpp is not valid", __FUNCTION__);
+        ALOGE("@%s vpp is not valid", __FUNCTION__);
         return UNKNOWN_ERROR;
     }
 
@@ -454,7 +454,7 @@ status_t VideoThread::convertNV12Linear2Tiled(const AtomBuffer &buff)
      */
     ret = mVpp->perform(Src, Dst, NULL, true);
     if (ret != VA_STATUS_SUCCESS) {
-        LOGE("@%s error:%x", __FUNCTION__, ret);
+        ALOGE("@%s error:%x", __FUNCTION__, ret);
         return UNKNOWN_ERROR;
     }
 #endif //GRAPHIC_IS_GEN
@@ -477,7 +477,7 @@ status_t VideoThread::processVideoBuffer(AtomBuffer &buff)
 
     if (convertNV12Linear2Tiled(buff)) {
         // Print err and do nothing here
-        LOGE("Fail to convertNV12Linear2Tiled");
+        ALOGE("Fail to convertNV12Linear2Tiled");
     }
 
     mCallbacksThread->videoFrameDone(&buff, timestamp);
@@ -549,7 +549,7 @@ status_t VideoThread::waitForAndExecuteMessage()
             break;
 
         default:
-            LOGE("Invalid message");
+            ALOGE("Invalid message");
             status = BAD_VALUE;
             break;
     };
@@ -592,7 +592,7 @@ void VideoThread::previewBufferCallback(AtomBuffer *buff, ICallbackPreview::Call
 {
     LOG2("@%s", __FUNCTION__);
     if (t != ICallbackPreview::OUTPUT_WITH_DATA) {
-        LOGE("Unexpected preview/video buffer callback type!");
+        ALOGE("Unexpected preview/video buffer callback type!");
         return;
     }
 

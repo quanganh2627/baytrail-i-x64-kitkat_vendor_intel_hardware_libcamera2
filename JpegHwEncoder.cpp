@@ -33,7 +33,7 @@ JpegHwEncoder::JpegHwEncoder() :
 
     mHwImageEncoder = new IntelImageEncoder();
     if (mHwImageEncoder == NULL) {
-        LOGE("mHwImageEncoder allocation failed");
+        ALOGE("mHwImageEncoder allocation failed");
     }
     mBufferAttribute.clear();
 }
@@ -65,7 +65,7 @@ int JpegHwEncoder::init(void)
 
     status = mHwImageEncoder->initializeEncoder();
     if (status != 0) {
-        LOGE("mHwImageEncoder initializeEncoder failed");
+        ALOGE("mHwImageEncoder initializeEncoder failed");
         delete mHwImageEncoder;
         mHwImageEncoder = NULL;
         return -1;
@@ -128,17 +128,17 @@ status_t JpegHwEncoder::setInputBuffers(AtomBuffer* inputBuffersArray, int input
     }
 
     if (inputBuffersArray[0].bpl % SIZE_OF_WIDTH_ALIGNMENT || inputBuffersArray[0].height % 2) {
-        LOGW("@%s, line:%d, bpl:%d or height:%d, we can't support", __FUNCTION__, __LINE__, inputBuffersArray[0].bpl, inputBuffersArray[0].height);
+        ALOGW("@%s, line:%d, bpl:%d or height:%d, we can't support", __FUNCTION__, __LINE__, inputBuffersArray[0].bpl, inputBuffersArray[0].height);
         return BAD_VALUE;
     }
 
     if (V4L2Fmt2VAFmt(inputBuffersArray[0].fourcc, vaFmt) < 0) {
-        LOGW("@%s, unsupport format, do not use the hw jpeg encoder", __FUNCTION__);
+        ALOGW("@%s, unsupport format, do not use the hw jpeg encoder", __FUNCTION__);
         return BAD_VALUE;
     }
 
     if (init() < 0) {
-        LOGE("HW encoder failed to initialize when setting the input buffers");
+        ALOGE("HW encoder failed to initialize when setting the input buffers");
         return UNKNOWN_ERROR;
     }
 
@@ -148,7 +148,7 @@ status_t JpegHwEncoder::setInputBuffers(AtomBuffer* inputBuffersArray, int input
         */
         status = mHwImageEncoder->createSourceSurface(SURFACE_TYPE_USER_PTR, inputBuffersArray[i].dataPtr, inputBuffersArray[i].width, inputBuffersArray[i].height, inputBuffersArray[i].bpl, vaFmt, &imageSeq);
         if (status != 0) {
-            LOGE("create source surface failed");
+            ALOGE("create source surface failed");
             return UNKNOWN_ERROR;
         }
         mBuffer2SurfaceId.add(inputBuffersArray[i].dataPtr, imageSeq);
@@ -165,7 +165,7 @@ status_t JpegHwEncoder::setInputBuffers(AtomBuffer* inputBuffersArray, int input
     //create context
     status = mHwImageEncoder->createContext(mFirstImageSeq, &mMaxOutJpegBufSize);
     if (status != 0) {
-        LOGE("createContext failed");
+        ALOGE("createContext failed");
         return UNKNOWN_ERROR;
     }
 
@@ -190,17 +190,17 @@ int JpegHwEncoder::encode(const InputBuffer &in, OutputBuffer &out)
     unsigned int vaFmt = 0;
 
     if (mHwImageEncoder == NULL) {
-        LOGW("JPEG HW encoding failed, falling back to SW");
+        ALOGW("JPEG HW encoding failed, falling back to SW");
         return -1;
     }
 
     if (mContextRestoreNeeded == true) {
-        LOGW("@%s Not allowed to call in parallel, this should not happen", __FUNCTION__);
+        ALOGW("@%s Not allowed to call in parallel, this should not happen", __FUNCTION__);
     }
 
     if ((in.width <= MIN_HW_ENCODING_WIDTH && in.height <= MIN_HW_ENCODING_HEIGHT)
         || V4L2Fmt2VAFmt(in.fourcc, vaFmt) < 0) {
-         LOGW("@%s, line:%d, do not use the hw jpeg encoder", __FUNCTION__, __LINE__);
+         ALOGW("@%s, line:%d, do not use the hw jpeg encoder", __FUNCTION__, __LINE__);
          return -1;
     }
 
@@ -208,30 +208,30 @@ int JpegHwEncoder::encode(const InputBuffer &in, OutputBuffer &out)
     if (imgSeq == ERROR_POINTER_NOT_FOUND) {
         status = handleDynamicBuffer(in, imgSeq);
         if (status) {
-            LOGE("failed to handle dynamic buffer, falling back to SW");
+            ALOGE("failed to handle dynamic buffer, falling back to SW");
             finalizeDynamicBuffer();
             return -1;
         }
     }
     if (mHwImageEncoder->encode(imgSeq, CLIP(out.quality, 100, 1)) == 0) {
     } else {
-        LOGW("JPEG HW encoding failed, falling back to SW");
+        ALOGW("JPEG HW encoding failed, falling back to SW");
         return -1;
     }
     //according to libmix Jpegencoder function call flow, getCodedSize must be called before getCoded
     if (mHwImageEncoder->getCodedSize(&out.size) < 0) {
-        LOGE("Could not get coded JPEG size!");
+        ALOGE("Could not get coded JPEG size!");
         return -1;
     }
 
     if (mHwImageEncoder->getCoded((void*)out.buf, out.size) < 0) {
-        LOGE("Could not encode picture stream!");
+        ALOGE("Could not encode picture stream!");
         status = -1;
     }
     if (mDynamicImageSeq != ERROR_POINTER_NOT_FOUND) {
         status = finalizeDynamicBuffer();
         if (status != 0) {
-            LOGW("finalizeDynamicBuffer failed");
+            ALOGW("finalizeDynamicBuffer failed");
         }
     }
 
@@ -256,14 +256,14 @@ int JpegHwEncoder::encodeAsync(const InputBuffer &in, OutputBuffer &out, int &mM
     void* dataPtr = (void*)in.buf;
 
     if (mContextRestoreNeeded == true) {
-        LOGW("@%s Not allowed to call in parallel, this should not happen", __FUNCTION__);
+        ALOGW("@%s Not allowed to call in parallel, this should not happen", __FUNCTION__);
     }
 
     imgSeq = mBuffer2SurfaceId.valueFor(dataPtr);
     if (imgSeq == ERROR_POINTER_NOT_FOUND) {
         status = handleDynamicBuffer(in, imgSeq);
         if (status) {
-            LOGE("failed to handle dynamic buffer, falling back to SW");
+            ALOGE("failed to handle dynamic buffer, falling back to SW");
             finalizeDynamicBuffer();
             return -1;
         }
@@ -271,7 +271,7 @@ int JpegHwEncoder::encodeAsync(const InputBuffer &in, OutputBuffer &out, int &mM
     if (mHwImageEncoder &&
         mHwImageEncoder->encode(imgSeq, CLIP(out.quality, 100, 1)) == 0) {
     } else {
-        LOGW("JPEG HW encoding failed, falling back to SW");
+        ALOGW("JPEG HW encoding failed, falling back to SW");
         return -1;
     }
     mMaxCodedSize = mMaxOutJpegBufSize;
@@ -291,7 +291,7 @@ int JpegHwEncoder::getOutputSize(unsigned int& outSize)
     int status = 0;
 
     if (mHwImageEncoder->getCodedSize(&outSize) < 0) {
-        LOGE("Could not get coded size!");
+        ALOGE("Could not get coded size!");
         status = -1;
     }
     return status;
@@ -313,14 +313,14 @@ int JpegHwEncoder::getOutput(void* outBuf, unsigned int& outSize)
     int status = 0;
 
     if (mHwImageEncoder->getCoded(outBuf, outSize) < 0) {
-        LOGE("Could not encode picture stream!");
+        ALOGE("Could not encode picture stream!");
         status = -1;
     }
 
     if (mDynamicImageSeq != ERROR_POINTER_NOT_FOUND) {
         status = finalizeDynamicBuffer();
         if (status != 0) {
-            LOGW("finalizeDynamicBuffer failed");
+            ALOGW("finalizeDynamicBuffer failed");
         }
     }
     return status;
@@ -341,7 +341,7 @@ int JpegHwEncoder::V4L2Fmt2VAFmt(unsigned int v4l2Fmt, unsigned int &vaFmt)
          vaFmt = VA_RT_FORMAT_YUV422;
          break;
     default:
-         LOGE("@%s Unknown / unsupported preview pixel format: fatal error",__FUNCTION__);
+         ALOGE("@%s Unknown / unsupported preview pixel format: fatal error",__FUNCTION__);
          status = -1;
          break;
     }
@@ -370,16 +370,16 @@ status_t JpegHwEncoder::handleDynamicBuffer(const InputBuffer &in, int &imgSeq)
     unsigned int vaFmt = 0;
 
     if (in.height % 2 || in.bpl % SIZE_OF_WIDTH_ALIGNMENT) {
-        LOGW("@%s, line:%d, width:%d or height:%d, we can't support", __FUNCTION__, __LINE__, in.width, in.height);
+        ALOGW("@%s, line:%d, width:%d or height:%d, we can't support", __FUNCTION__, __LINE__, in.width, in.height);
         return BAD_VALUE;
     }
     if (V4L2Fmt2VAFmt(in.fourcc, vaFmt) < 0) {
-        LOGW("@%s, unsupport format, do not use the hw jpeg encoder", __FUNCTION__);
+        ALOGW("@%s, unsupport format, do not use the hw jpeg encoder", __FUNCTION__);
         return BAD_VALUE;
     }
     if (! isInitialized()) {
         if (init() < 0) {
-            LOGE("HW encoder failed to initialize when setting the input buffers");
+            ALOGE("HW encoder failed to initialize when setting the input buffers");
             return NO_INIT;
         }
     }
@@ -388,7 +388,7 @@ status_t JpegHwEncoder::handleDynamicBuffer(const InputBuffer &in, int &imgSeq)
     // create surface for the dynamic buffer
     status = mHwImageEncoder->createSourceSurface(SURFACE_TYPE_USER_PTR, in.buf, in.width, in.height, in.bpl, vaFmt, &imgSeq);
     if (status != NO_ERROR) {
-        LOGE("create source surface failed");
+        ALOGE("create source surface failed");
         return UNKNOWN_ERROR;
     }
     mDynamicImageSeq = imgSeq;
@@ -402,12 +402,12 @@ status_t JpegHwEncoder::handleDynamicBuffer(const InputBuffer &in, int &imgSeq)
     // destroy context first
     status = mHwImageEncoder->destroyContext();
     if (status != NO_ERROR) {
-        LOGW("destroy context failed, try to create new context");
+        ALOGW("destroy context failed, try to create new context");
     }
     // create new context
     status = mHwImageEncoder->createContext(imgSeq, &mMaxOutJpegBufSize);
     if (status != NO_ERROR) {
-        LOGE("failed to creat new context");
+        ALOGE("failed to creat new context");
         return UNKNOWN_ERROR;
     }
     mContextRestoreNeeded = true;
@@ -432,7 +432,7 @@ status_t JpegHwEncoder::finalizeDynamicBuffer()
     if (mDynamicImageSeq != ERROR_POINTER_NOT_FOUND) {
         status = mHwImageEncoder->destroySourceSurface(mDynamicImageSeq);
         if (status != NO_ERROR) {
-            LOGW("failed to destroy surface:%d", mDynamicImageSeq);
+            ALOGW("failed to destroy surface:%d", mDynamicImageSeq);
         }
         mDynamicImageSeq = ERROR_POINTER_NOT_FOUND;
     }
@@ -446,13 +446,13 @@ status_t JpegHwEncoder::finalizeDynamicBuffer()
     // destroy temporary context
     status = mHwImageEncoder->destroyContext();
     if (status != NO_ERROR) {
-        LOGW("destroy context failed");
+        ALOGW("destroy context failed");
     }
     // create context if needed
     if (mFirstImageSeq != ERROR_POINTER_NOT_FOUND) {
         status = mHwImageEncoder->createContext(mFirstImageSeq, &mMaxOutJpegBufSize);
         if (status != 0) {
-            LOGE("createContext failed");
+            ALOGE("createContext failed");
             return -1;
         }
     }

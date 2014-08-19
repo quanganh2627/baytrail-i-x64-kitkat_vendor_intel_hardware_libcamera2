@@ -59,7 +59,7 @@ const char *eglErrorString(EGLint err) {
 
 void gpuw_pzEglUtil_printGLString(const char *name, GLenum s) {
     const char *v = (const char *) glGetString(s);
-    LOGI("GL %s = %s\n", name, v);
+    ALOGI("GL %s = %s\n", name, v);
 }
 
 void gpuw_pzEglUtil_printEGLConfiguration(EGLDisplay dpy, EGLConfig config) {
@@ -109,24 +109,24 @@ void gpuw_pzEglUtil_printEGLConfiguration(EGLDisplay dpy, EGLConfig config) {
         EGLint returnVal = eglGetConfigAttrib(dpy, config, names[j].attribute, &value);
         EGLint error = eglGetError();
         if (returnVal && error == EGL_SUCCESS) {
-            LOGI(" %s: ", names[j].name);
-            LOGI("%d (0x%x)", value, value);
+            ALOGI(" %s: ", names[j].name);
+            ALOGI("%d (0x%x)", value, value);
         }
     }
 }
 
 void gpuw_pzEglUtil_checkEglError(const char* op, EGLBoolean returnVal = EGL_TRUE) {
     if (returnVal != EGL_TRUE) {
-        LOGE("%s() returned %d\n", op, returnVal);
+        ALOGE("%s() returned %d\n", op, returnVal);
     }
     for (EGLint error = eglGetError(); error != EGL_SUCCESS; error = eglGetError()) {
-        LOGE("after %s() eglError %s (0x%x)\n", op, eglErrorString(error), error);
+        ALOGE("after %s() eglError %s (0x%x)\n", op, eglErrorString(error), error);
     }
 }
 
 void gpuw_pzEglUtil_checkGlError(const char* op) {
     for (GLint error = glGetError(); error; error = glGetError()) {
-        LOGE("%s() glError (0x%x)\n", op, error);
+        ALOGE("%s() glError (0x%x)\n", op, error);
     }
 }
 

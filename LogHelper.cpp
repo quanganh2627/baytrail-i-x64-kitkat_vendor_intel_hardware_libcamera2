@@ -44,11 +44,11 @@ void android::LogHelper::setDebugLevel(void)
 
     if (property_get("camera.hal.debug", gLogLevelProp, NULL)) {
         gLogLevel = atoi(gLogLevelProp);
-        LOGD("Debug level is %d", gLogLevel);
+        ALOGD("Debug level is %d", gLogLevel);
 
         // Check that the property value is a valid integer
         if (gLogLevel >= INT_MAX || gLogLevel <= INT_MIN) {
-            LOGE("Invalid camera.hal.debug property integer value: %s",gLogLevelProp);
+            ALOGE("Invalid camera.hal.debug property integer value: %s",gLogLevelProp);
             gLogLevel = 0;
         }
 
@@ -61,11 +61,11 @@ void android::LogHelper::setDebugLevel(void)
     //Performance property
     if (property_get("camera.hal.perf", gPerfLevelProp, NULL)) {
         gPerfLevel = atoi(gPerfLevelProp);
-        LOGD("Performance level is %d", gPerfLevel);
+        ALOGD("Performance level is %d", gPerfLevel);
 
         // Check that the property value is a valid integer
         if (gPerfLevel >= INT_MAX || gPerfLevel <= INT_MIN) {
-            LOGE("Invalid camera.hal.perf property integer value: %s",gPerfLevelProp);
+            ALOGE("Invalid camera.hal.perf property integer value: %s",gPerfLevelProp);
             gPerfLevel = 0;
         }
 
@@ -96,22 +96,22 @@ void android::LogHelper::setDebugLevel(void)
     //Power property
     if (property_get("camera.hal.power", gPowerLevelProp, NULL)) {
         gPowerLevel = atoi(gPowerLevelProp);
-        LOGD("Power level is %d", gPowerLevel);
+        ALOGD("Power level is %d", gPowerLevel);
 
         // Check that the property value is a valid integer
         if (gPowerLevel >= INT_MAX || gPowerLevel <= INT_MIN) {
-            LOGE("Invalid camera.hal.power property integer value: %s",gPowerLevelProp);
+            ALOGE("Invalid camera.hal.power property integer value: %s",gPowerLevelProp);
             gPowerLevel = 0;
         }
     }
 
     if (property_get("camera.hal.control", gControlLevelProp, NULL)) {
         gControlLevel = atoi(gControlLevelProp);
-        LOGD("Control level is %d", gControlLevel);
+        ALOGD("Control level is %d", gControlLevel);
 
         // Check that the property value is a valid integer
         if (gControlLevel >= INT_MAX || gControlLevel <= INT_MIN) {
-            LOGE("Invalid camera.hal.control property integer value: %s",gControlLevelProp);
+            ALOGE("Invalid camera.hal.control property integer value: %s",gControlLevelProp);
             gControlLevel = 0;
         }
     }
@@ -209,7 +209,7 @@ CameraParamsLogger::fillMap(KeyedVector<String8,String8> &aMap, String8 &aString
        theParam.setTo( &(aString.string()[start]),(end == -1) ? aString.size() - start : end - start);
 
        if(splitParam(theParam, aKey, aValue)) {
-            LOGE("Invalid Param: %s", theParam.string());
+            ALOGE("Invalid Param: %s", theParam.string());
             start = end + 1;
             continue;
        }

@@ -186,7 +186,7 @@ const struct AtomFormatBridge* getAtomFormatBridge(unsigned int fourcc)
             return &sV4L2PixelFormatBridge[i];
     }
 
-    LOGE("Unknown pixel format being used : %s, aborting!", v4l2Fmt2Str(fourcc));
+    ALOGE("Unknown pixel format being used : %s, aborting!", v4l2Fmt2Str(fourcc));
     abort();
     return NULL;
 }
@@ -251,7 +251,7 @@ AtomBuffer AtomBufferFactory::createAtomBuffer(AtomBufferType type,
 bool isParameterSet(const char *param, const CameraParameters &params)
 {
     if (param == NULL) {
-        LOGW("param string is NULL in isParameterSet");
+        ALOGW("param string is NULL in isParameterSet");
         return false;
     }
 
@@ -473,7 +473,7 @@ int getGFXHALPixelFormatFromV4L2Format(int previewFormat)
     }
 
     if (halPixelFormat == BAD_VALUE) {
-        LOGE("@%s Unknown / unsupported preview pixel format: fatal error, aborting",
+        ALOGE("@%s Unknown / unsupported preview pixel format: fatal error, aborting",
                 __FUNCTION__);
         abort();
     }
@@ -548,9 +548,9 @@ void trace_callstack () {
                offset = info.dli_saddr;
                symbol = info.dli_sname;
                fname = info.dli_fname;
-               LOGE("Camera_BT:%s:%s:+%p",fname,symbol,offset);
+               ALOGE("Camera_BT:%s:%s:+%p",fname,symbol,offset);
         } else {
-            LOGE("Camera_BT symbol not found in address %x",bt[i]);
+            ALOGE("Camera_BT symbol not found in address %x",bt[i]);
         }
 
     }
@@ -567,18 +567,18 @@ void inject(AtomBuffer *b, const char* name)
 #ifdef ENABLE_FILE_INJECTION
     int bytes = 0;
 
-    LOGE("Injecting yuv file %s resolution (%dx%d) format %s",name,b->width, b->height,v4l2Fmt2Str(b->fourcc));
+    ALOGE("Injecting yuv file %s resolution (%dx%d) format %s",name,b->width, b->height,v4l2Fmt2Str(b->fourcc));
 
     FILE *fd = fopen(name, "rb+");
 
     if(fd == NULL) {
-        LOGE("%s: could not open inject file ", __FUNCTION__);
+        ALOGE("%s: could not open inject file ", __FUNCTION__);
         return;
     }
 
     bytes = fread(b->dataPtr, 1, b->size, fd);
     if (bytes != b->size) {
-        LOGE("ERROR INJECTING %s read %d size %d",name, bytes, b->size);
+        ALOGE("ERROR INJECTING %s read %d size %d",name, bytes, b->size);
     }
 
     fclose(fd);

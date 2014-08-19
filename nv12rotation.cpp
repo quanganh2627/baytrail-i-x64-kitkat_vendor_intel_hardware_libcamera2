@@ -378,7 +378,7 @@ bool genericRotateBy90(const int   width,
     char* a = (char*) sptr;
     char* b = dptr;
 
-    LOGW("Unoptimized CPU rotation! "
+    ALOGW("Unoptimized CPU rotation! "
          "Disable overlay or optimize for this resolution(%dx%d)",width, height);
 
     // Luma rotation

@@ -322,7 +322,7 @@ status_t SensorEmbeddedMetaData::decodeSensorEmbeddedMetaData()
 
     err = ia_emd_decoder_run(&mEmbeddedDataBin, &mEmbeddedDataMode, mEmbeddedMetaDecoderHandler);
     if (err !=  ia_err_none) {
-        LOGW("decoder error ret:%d", err);
+        ALOGW("decoder error ret:%d", err);
         ret = UNKNOWN_ERROR;
     }
     if (mSensorMetaDataConfigFlag == 0) {
@@ -423,7 +423,7 @@ status_t SensorEmbeddedMetaData::decodeSbsSensorsEmbeddedMetaData()
     embeddedDataBin.size = mEmbeddedDataBin.size / 2;
     err = ia_emd_decoder_run(&embeddedDataBin, &mEmbeddedDataMode, mEmbeddedMetaDecoderHandler);
     if (err !=  ia_err_none) {
-        LOGW("decoder error ret:%d", err);
+        ALOGW("decoder error ret:%d", err);
         ret = UNKNOWN_ERROR;
     }
 
@@ -449,7 +449,7 @@ status_t SensorEmbeddedMetaData::decodeSbsSensorsEmbeddedMetaData()
         embeddedDataBin.size = mEmbeddedDataBin.size / 2;
         err = ia_emd_decoder_run(&embeddedDataBin, &mEmbeddedDataMode, mEmbeddedMetaDecoderHandler);
         if (err !=  ia_err_none) {
-            LOGW("decoder error ret:%d", err);
+            ALOGW("decoder error ret:%d", err);
             ret = UNKNOWN_ERROR;
         }
 
@@ -474,7 +474,7 @@ status_t SensorEmbeddedMetaData::decodeSbsSensorsEmbeddedMetaData()
                 if (getSbsSensorInitFrameCount(index, lastIndex, count)) {
                     // reinitialize frame counter
                     (mEmbeddedMetaDecoderHandler->decoded_data).misc_parameters_p->frame_counter = count;
-                    LOGI("count = %d, first = %d, second = %d", count, mSbsSensorsFrameCount.firstFrameCount[index], mSbsSensorsFrameCount.secondFrameCount[index]);
+                    ALOGI("count = %d, first = %d, second = %d", count, mSbsSensorsFrameCount.firstFrameCount[index], mSbsSensorsFrameCount.secondFrameCount[index]);
                     mSbsSensorsFrameCount.hasInit = true;
                 }
             } else {
@@ -486,7 +486,7 @@ status_t SensorEmbeddedMetaData::decodeSbsSensorsEmbeddedMetaData()
                     if (getSbsSensorInitFrameCount(lastIndex, preIndex, count)) {
                         // calculate the delta between real frame count and recalculated frame count
                         mSbsSensorsFrameCount.delta = mSbsSensorsFrameCount.firstFrameCount[index] - (count + 1);
-                        LOGI("delta = %d, frame count = %d", mSbsSensorsFrameCount.delta, mSbsSensorsFrameCount.firstFrameCount[index]);
+                        ALOGI("delta = %d, frame count = %d", mSbsSensorsFrameCount.delta, mSbsSensorsFrameCount.firstFrameCount[index]);
                         mSbsSensorsFrameCount.hasDelta = true;
                     }
                 }

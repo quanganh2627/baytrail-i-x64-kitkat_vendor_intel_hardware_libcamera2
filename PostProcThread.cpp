@@ -86,7 +86,7 @@ status_t PostProcThread::init(void* isp)
 {
     mFaceDetector = new FaceDetector();
     if (mFaceDetector == NULL) {
-        LOGE("Error creating FaceDetector");
+        ALOGE("Error creating FaceDetector");
         return UNKNOWN_ERROR;
     }
 
@@ -99,7 +99,7 @@ void PostProcThread::getDefaultParameters(CameraParameters *params, CameraParame
 {
     LOG1("@%s", __FUNCTION__);
     if (!params) {
-        LOGE("params is null!");
+        ALOGE("params is null!");
         return;
     }
     // Set maximum number of detectable faces
@@ -140,7 +140,7 @@ void PostProcThread::previewBufferCallback(AtomBuffer *buff, ICallbackPreview::C
 {
     LOG2("@%s", __FUNCTION__);
     if (t != ICallbackPreview::OUTPUT_WITH_DATA) {
-        LOGE("Unexpected preview buffer callback type!");
+        ALOGE("Unexpected preview buffer callback type!");
         return;
     }
 
@@ -264,7 +264,7 @@ status_t PostProcThread::handleMessageStartSmartShutter(MessageSmartShutter para
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
     if (!mFaceDetectionRunning) {
-        LOGE("%s: Face Detection must be running", __FUNCTION__);
+        ALOGE("%s: Face Detection must be running", __FUNCTION__);
         mMessageQueue.reply(MESSAGE_ID_START_SMART_SHUTTER, INVALID_OPERATION);
     }
     if (params.mode == SMILE_MODE) {
@@ -590,7 +590,7 @@ int PostProcThread::sendFrame(AtomBuffer *img)
     if (img != NULL) {
         msg.data.frame.img = *img;
     } else {
-        LOGW("@%s: NULL AtomBuffer frame", __FUNCTION__);
+        ALOGW("@%s: NULL AtomBuffer frame", __FUNCTION__);
     }
 
     if (mMessageQueue.send(&msg) == NO_ERROR)
@@ -708,7 +708,7 @@ status_t PostProcThread::waitForAndExecuteMessage()
             break;
     }
     if (status != NO_ERROR) {
-        LOGE("operation failed, ID = %d, status = %d", msg.id, status);
+        ALOGE("operation failed, ID = %d, status = %d", msg.id, status);
     }
     return status;
 }
@@ -747,7 +747,7 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
         frameData.height = frame.img.height;
         frameData.stride = frame.img.bpl;
         if (AtomCP::setIaFrameFormat(&frameData, frame.img.fourcc) != NO_ERROR) {
-            LOGE("@%s: setting ia_frame format failed", __FUNCTION__);
+            ALOGE("@%s: setting ia_frame format failed", __FUNCTION__);
         }
 
         // correcting acceleration sensor orientation result
@@ -788,7 +788,7 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
         ia_face_state faceState;
         faceState.faces = new ia_face[num_faces];
         if (faceState.faces == NULL) {
-            LOGE("Error allocation memory");
+            ALOGE("Error allocation memory");
             return NO_MEMORY;
         }
 
@@ -875,7 +875,7 @@ status_t PostProcThread::handleFrame(MessageFrame frame)
 status_t PostProcThread::handleExtIspFaceDetection(AtomBuffer *auxBuf)
 {
     if (auxBuf == NULL) {
-        LOGE("No metadata buffer. FD bailing out.");
+        ALOGE("No metadata buffer. FD bailing out.");
         return UNKNOWN_ERROR;
     }
 
@@ -884,13 +884,13 @@ status_t PostProcThread::handleExtIspFaceDetection(AtomBuffer *auxBuf)
     if (mFaceDetectionRunning) {
         uint16_t fdState = getU16fromFrame(nv12meta, NV12_META_FD_ONOFF_ADDR);
         if (fdState != 1) {
-            LOGW("Face detection is OFF in metadata, despite mFaceDetectionRunning being true. FD bailing out.");
+            ALOGW("Face detection is OFF in metadata, despite mFaceDetectionRunning being true. FD bailing out.");
             return UNKNOWN_ERROR;
         }
 
         numFaces = getU16fromFrame(nv12meta, NV12_META_FD_COUNT_ADDR);
         if (numFaces > NV12_META_MAX_FACE_COUNT) {
-            LOGE("Face count bigger than 16 in metadata, considering metadata corrupted. FD bailing out.");
+            ALOGE("Face count bigger than 16 in metadata, considering metadata corrupted. FD bailing out.");
             return UNKNOWN_ERROR;
         }
     }

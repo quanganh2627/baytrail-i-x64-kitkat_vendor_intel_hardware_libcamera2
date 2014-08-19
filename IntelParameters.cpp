@@ -298,7 +298,7 @@ namespace android {
             status_t status = parseResolution(sizeStartPtr, width, height,
                                      &sizeStartPtr);
             if (status != OK || (*sizeStartPtr != ',' && *sizeStartPtr != '\0')) {
-                LOGE("Resolution string \"%s\" contains invalid character.", sizeStr);
+                ALOGE("Resolution string \"%s\" contains invalid character.", sizeStr);
                 return;
             }
             sizes.push(Size(width, height));

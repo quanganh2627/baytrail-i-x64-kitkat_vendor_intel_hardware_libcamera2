@@ -104,7 +104,7 @@ status_t AtomDvs2::dvsInit()
         err = dvs_init(&mState, NULL, NULL, NULL, &mDvs2Env);
     }
     if (err != ia_err_none) {
-        LOGE("Failed to initilize the DVS library");
+        ALOGE("Failed to initilize the DVS library");
         status = NO_INIT;
     }
 
@@ -128,7 +128,7 @@ status_t AtomDvs2::allocateDvs2Statistics(atomisp_dvs_grid_info info)
     }
     err = dvs_allocate_statistics(&info, &mDvs2stats);
     if (err != ia_err_none) {
-        LOGW("dvs_allocate_statistics error:%d", err);
+        ALOGW("dvs_allocate_statistics error:%d", err);
         return UNKNOWN_ERROR;
     }
     memcpy(&(mStatistics.dvs2_stat), mDvs2stats, sizeof(struct atomisp_dvs2_statistics));
@@ -249,7 +249,7 @@ status_t AtomDvs2::reconfigureNoLock()
 
     err = dvs_config(mState, &mDvs2Config, DIGITAL_ZOOM_RATIO, &mDumpParams);
     if (err != ia_err_none) {
-        LOGW("Configure DVS failed %d", err);
+        ALOGW("Configure DVS failed %d", err);
         return UNKNOWN_ERROR;
     }
     LOG2("Configure DVS success");
@@ -272,13 +272,13 @@ status_t AtomDvs2::reconfigureNoLock()
     if (mDVSEnabled) {
         status = allocateDvs2Statistics(dvs_grid);
         if (status != NO_ERROR) {
-            LOGW("Allocate dvs statistics failed");
+            ALOGW("Allocate dvs statistics failed");
             return UNKNOWN_ERROR;
         }
     }
     status = allocateDvs2MorphTable();
     if(!mMorphTable || status != NO_ERROR) {
-        LOGW("Allocate dvs morph table failed");
+        ALOGW("Allocate dvs morph table failed");
         return UNKNOWN_ERROR;
     }
 
@@ -287,13 +287,13 @@ status_t AtomDvs2::reconfigureNoLock()
         atomisp_dis_coefficients *dvs_coefs = NULL;
         err = dvs_allocate_coefficients(&dvs_grid, &dvs_coefs);
         if (err != ia_err_none) {
-            LOGW("allocate dvs2 coeff failed:%d", err);
+            ALOGW("allocate dvs2 coeff failed:%d", err);
             return UNKNOWN_ERROR;
         }
 
         err = dvs_get_coefficients(mState, dvs_coefs);
         if (err != ia_err_none) {
-            LOGW("get dvs2 coeff failed: %d", err);
+            ALOGW("get dvs2 coeff failed: %d", err);
             return UNKNOWN_ERROR;
         } else {
             mIsp->setDvsCoefficients(dvs_coefs);
@@ -324,7 +324,7 @@ status_t AtomDvs2::run()
             goto end;
         status = mIsp->getDvsStatistics(&mStatistics, &try_again);
         if (status != NO_ERROR) {
-            LOGW("%s : Failed to get DVS statistics", __FUNCTION__);
+            ALOGW("%s : Failed to get DVS statistics", __FUNCTION__);
             goto end;
         }
         /* When the driver tells us to try again, it means the grid
@@ -334,14 +334,14 @@ status_t AtomDvs2::run()
             reconfigureNoLock();
             status = mIsp->getDvsStatistics(&mStatistics, NULL);
             if (status != NO_ERROR) {
-                LOGW("%s : Failed to get DVS statistics (again)", __FUNCTION__);
+                ALOGW("%s : Failed to get DVS statistics (again)", __FUNCTION__);
                 goto end;
             }
         }
         memcpy(mDvs2stats, &(mStatistics.dvs2_stat), sizeof(struct atomisp_dvs2_statistics));
         err = dvs_set_statistics(mState, mDvs2stats);
         if (err != ia_err_none)
-            LOGW(" dvs_set_statistics failed: %d", err);
+            ALOGW(" dvs_set_statistics failed: %d", err);
 
         if ((err = dvs_execute(mState)) != ia_err_none) {
             LOG2("DVS2 execution failed: %d", err);
@@ -416,13 +416,13 @@ bool AtomDvs2::isDvsValid()
 
     // Judge whether the current video size is supported for DVS
     if (!isDvsSupportedSize(width, height)) {
-        LOGW("%s:DVS can not be supported for video size (%dx%d)", __FUNCTION__, width, height);
+        ALOGW("%s:DVS can not be supported for video size (%dx%d)", __FUNCTION__, width, height);
         return false;
     }
 
     if (sensorFps > DEFAULT_RECORDING_FPS && !isHighSpeedDvsSupported(width, height)) {
         // Workaround 1: disable DVS functionality in hi-speed recording due to performance issue
-        LOGW("%s:DVS cannot be set when HighSpeed Capture and the selected resolution", __FUNCTION__);
+        ALOGW("%s:DVS cannot be set when HighSpeed Capture and the selected resolution", __FUNCTION__);
         return false;
     }
 

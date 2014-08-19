@@ -76,7 +76,7 @@ bool DebugFrameRate::threadLoop()
         status = mCondition.waitRelative(mMutex, WAIT_TIME_NSECS);
 
         if (status == 0) {
-            LOGD("Exiting...\n");
+            ALOGD("Exiting...\n");
             mMutex.unlock();
             return false;
         }
@@ -88,7 +88,7 @@ bool DebugFrameRate::threadLoop()
         delta = delta < 0.0 ? -delta : delta; // make sure is positive
         fps = mCount / delta;
 
-        LOGD("time: %f seconds, frames: %d, fps: %f\n", (float) delta, mCount, fps);
+        ALOGD("time: %f seconds, frames: %d, fps: %f\n", (float) delta, mCount, fps);
         mMutex.unlock();
     }
 

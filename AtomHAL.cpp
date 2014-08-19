@@ -95,12 +95,12 @@ int openCameraHardware(int cameraId)
     atom_cam[cameraId].camera_id = cameraId;
     atom_cam[cameraId].control_thread = new ControlThread(cameraId);
     if (atom_cam[cameraId].control_thread == NULL) {
-        LOGE("Memory allocation error!");
+        ALOGE("Memory allocation error!");
         return NO_MEMORY;
     }
     int status = atom_cam[cameraId].control_thread->init();
     if (status != NO_ERROR) {
-        LOGE("Error initializing ControlThread");
+        ALOGE("Error initializing ControlThread");
         atom_cam[cameraId].control_thread.clear();
         return status;
     }
@@ -117,7 +117,7 @@ int openCameraHardware(int cameraId)
 static int atom_set_preview_window(struct camera_device * device,
         struct preview_stream_ops *window)
 {
-    LOGD("%s preview_window = %p", __FUNCTION__, window);
+    ALOGD("%s preview_window = %p", __FUNCTION__, window);
     if(!device)
         return -EINVAL;
     atom_camera *cam = (atom_camera *)(device->priv);
@@ -131,7 +131,7 @@ static void atom_set_callbacks(struct camera_device * device,
         camera_request_memory get_memory,
         void *user)
 {
-    LOGD("%s", __FUNCTION__);
+    ALOGD("%s", __FUNCTION__);
     if(!device)
         return;
     atom_camera *cam = (atom_camera *)(device->priv);
@@ -167,7 +167,7 @@ static int atom_msg_type_enabled(struct camera_device * device, int32_t msg_type
 
 static int atom_start_preview(struct camera_device * device)
 {
-    LOGD("%s", __FUNCTION__);
+    ALOGD("%s", __FUNCTION__);
     if(!device)
         return -EINVAL;
     atom_camera *cam = (atom_camera *)(device->priv);
@@ -176,7 +176,7 @@ static int atom_start_preview(struct camera_device * device)
 
 static void atom_stop_preview(struct camera_device * device)
 {
-    LOGD("%s", __FUNCTION__);
+    ALOGD("%s", __FUNCTION__);
     if(!device)
         return;
     atom_camera *cam = (atom_camera *)(device->priv);
@@ -186,7 +186,7 @@ static void atom_stop_preview(struct camera_device * device)
 
 static int atom_preview_enabled(struct camera_device * device)
 {
-    LOGD("%s", __FUNCTION__);
+    ALOGD("%s", __FUNCTION__);
     if(!device)
         return -EINVAL;
     atom_camera *cam = (atom_camera *)(device->priv);
@@ -195,7 +195,7 @@ static int atom_preview_enabled(struct camera_device * device)
 
 static int atom_store_meta_data_in_buffers(struct camera_device * device, int32_t enabled)
 {
-    LOGD("%s", __FUNCTION__);
+    ALOGD("%s", __FUNCTION__);
     if(!device)
         return -EINVAL;
     atom_camera *cam = (atom_camera *)(device->priv);
@@ -204,7 +204,7 @@ static int atom_store_meta_data_in_buffers(struct camera_device * device, int32_
 
 static int atom_start_recording(struct camera_device * device)
 {
-    LOGD("%s", __FUNCTION__);
+    ALOGD("%s", __FUNCTION__);
     if(!device)
         return -EINVAL;
     atom_camera *cam = (atom_camera *)(device->priv);
@@ -213,7 +213,7 @@ static int atom_start_recording(struct camera_device * device)
 
 static void atom_stop_recording(struct camera_device * device)
 {
-    LOGD("%s", __FUNCTION__);
+    ALOGD("%s", __FUNCTION__);
     if(!device)
         return;
     atom_camera *cam = (atom_camera *)(device->priv);
@@ -222,7 +222,7 @@ static void atom_stop_recording(struct camera_device * device)
 
 static int atom_recording_enabled(struct camera_device * device)
 {
-    LOGD("%s", __FUNCTION__);
+    ALOGD("%s", __FUNCTION__);
     if(!device)
         return -EINVAL;
     atom_camera *cam = (atom_camera *)(device->priv);
@@ -232,7 +232,7 @@ static int atom_recording_enabled(struct camera_device * device)
 static void atom_release_recording_frame(struct camera_device * device,
                const void *opaque)
 {
-    LOGV("%s", __FUNCTION__);
+    ALOGV("%s", __FUNCTION__);
     if(!device)
         return;
     atom_camera *cam = (atom_camera *)(device->priv);
@@ -241,7 +241,7 @@ static void atom_release_recording_frame(struct camera_device * device,
 
 static int atom_auto_focus(struct camera_device * device)
 {
-    LOGD("%s", __FUNCTION__);
+    ALOGD("%s", __FUNCTION__);
     if(!device)
         return -EINVAL;
     atom_camera *cam = (atom_camera *)(device->priv);
@@ -250,7 +250,7 @@ static int atom_auto_focus(struct camera_device * device)
 
 static int atom_cancel_auto_focus(struct camera_device * device)
 {
-    LOGD("%s", __FUNCTION__);
+    ALOGD("%s", __FUNCTION__);
     if(!device)
         return -EINVAL;
     atom_camera *cam = (atom_camera *)(device->priv);
@@ -259,7 +259,7 @@ static int atom_cancel_auto_focus(struct camera_device * device)
 
 static int atom_take_picture(struct camera_device * device)
 {
-    LOGD("%s", __FUNCTION__);
+    ALOGD("%s", __FUNCTION__);
     if(!device)
         return -EINVAL;
     PerformanceTraces::HDRShot2Preview::start();
@@ -269,7 +269,7 @@ static int atom_take_picture(struct camera_device * device)
 
 static int atom_cancel_picture(struct camera_device * device)
 {
-    LOGD("%s", __FUNCTION__);
+    ALOGD("%s", __FUNCTION__);
     if(!device)
         return -EINVAL;
     atom_camera *cam = (atom_camera *)(device->priv);
@@ -278,7 +278,7 @@ static int atom_cancel_picture(struct camera_device * device)
 
 static int atom_set_parameters(struct camera_device * device, const char *params)
 {
-    LOGD("%s", __FUNCTION__);
+    ALOGD("%s", __FUNCTION__);
     if(!device)
         return -EINVAL;
     atom_camera *cam = (atom_camera *)(device->priv);
@@ -288,7 +288,7 @@ static int atom_set_parameters(struct camera_device * device, const char *params
 static char *atom_get_parameters(struct camera_device * device)
 {
     char* params = NULL;
-    LOGD("%s", __FUNCTION__);
+    ALOGD("%s", __FUNCTION__);
     if(!device)
         return NULL;
     atom_camera *cam = (atom_camera *)(device->priv);
@@ -298,7 +298,7 @@ static char *atom_get_parameters(struct camera_device * device)
 
 static void atom_put_parameters(struct camera_device *device, char *parms)
 {
-    LOGD("%s", __FUNCTION__);
+    ALOGD("%s", __FUNCTION__);
     if(!device)
         return;
     atom_camera *cam = (atom_camera *)(device->priv);
@@ -308,7 +308,7 @@ static void atom_put_parameters(struct camera_device *device, char *parms)
 static int atom_send_command(struct camera_device * device,
             int32_t cmd, int32_t arg1, int32_t arg2)
 {
-    LOGD("%s", __FUNCTION__);
+    ALOGD("%s", __FUNCTION__);
     if (!device)
         return -EINVAL;
     atom_camera *cam = (atom_camera *)(device->priv);
@@ -319,7 +319,7 @@ static int atom_send_command(struct camera_device * device,
 
 static void atom_release(struct camera_device * device)
 {
-    LOGD("%s", __FUNCTION__);
+    ALOGD("%s", __FUNCTION__);
     atom_camera *cam = (atom_camera *)(device->priv);
     if (cam)
         cam->control_thread->atomRelease();
@@ -327,7 +327,7 @@ static void atom_release(struct camera_device * device)
 
 static int atom_dump(struct camera_device * device, int fd)
 {
-    LOGD("%s", __FUNCTION__);
+    ALOGD("%s", __FUNCTION__);
     // TODO: implement
     return 0;
 }
@@ -375,7 +375,7 @@ static camera_device_ops_t atom_ops = {
 static int ATOM_OpenCameraHardware(const hw_module_t* module, const char* name,
                 hw_device_t** device)
 {
-    LOGD("%s", __FUNCTION__);
+    ALOGD("%s", __FUNCTION__);
 
     // debug/trace setup (done as early as possible, can be called
     // without taking the instance lock
@@ -387,7 +387,7 @@ static int ATOM_OpenCameraHardware(const hw_module_t* module, const char* name,
 
     camera_device_t *camera_dev;
     if ((!PlatformData::supportDualMode() && atom_instances == 1) || atom_instances > MAX_HAL_INSTANCES-1) {
-        LOGE("error:only support maximum  %d instances for front/primary sensor", atom_instances);
+        ALOGE("error:only support maximum  %d instances for front/primary sensor", atom_instances);
         return -EINVAL;
     }
 
@@ -401,13 +401,13 @@ static int ATOM_OpenCameraHardware(const hw_module_t* module, const char* name,
 
     int status = openCameraHardware(cameraId);
     if (status != NO_ERROR) {
-        LOGE("Error initializing ControlThread");
+        ALOGE("Error initializing ControlThread");
         return status;
     }
 
     camera_dev = (camera_device_t*)malloc(sizeof(*camera_dev));
     if (camera_dev == NULL) {
-        LOGE("Memory allocation error!");
+        ALOGE("Memory allocation error!");
         return NO_MEMORY;
     }
     memset(camera_dev, 0, sizeof(*camera_dev));
@@ -427,7 +427,7 @@ static int ATOM_OpenCameraHardware(const hw_module_t* module, const char* name,
 
 static int ATOM_CloseCameraHardware(hw_device_t* device)
 {
-    LOGD("%s", __FUNCTION__);
+    ALOGD("%s", __FUNCTION__);
 
     Mutex::Autolock _l(atom_instance_lock);
 
@@ -445,7 +445,7 @@ static int ATOM_CloseCameraHardware(hw_device_t* device)
 
     --atom_instances;
 
-    LOGD("%s: Camera close done (open instances after close: %d)", __FUNCTION__, atom_instances);
+    ALOGD("%s: Camera close done (open instances after close: %d)", __FUNCTION__, atom_instances);
 
     PERFORMANCE_TRACES_BREAKDOWN_STEP("Close_HAL_Done");
     PERFORMANCE_TRACES_IO_STOP();
@@ -454,7 +454,7 @@ static int ATOM_CloseCameraHardware(hw_device_t* device)
 
 static int ATOM_GetNumberOfCameras(void)
 {
-    LOGD("%s", __FUNCTION__);
+    ALOGD("%s", __FUNCTION__);
 
     // This is called again in ATOM_OpenCameraHardware to allow
     // setting log level without restarting media server.
@@ -474,7 +474,7 @@ static int ATOM_GetNumberOfCameras(void)
 
 static int ATOM_GetCameraInfo(int camera_id, struct camera_info *info)
 {
-    LOGD("%s", __FUNCTION__);
+    ALOGD("%s", __FUNCTION__);
     if (camera_id >= PlatformData::numberOfCameras())
         return BAD_VALUE;
 

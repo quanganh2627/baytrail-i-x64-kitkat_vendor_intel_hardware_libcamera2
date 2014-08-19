@@ -51,7 +51,7 @@ status_t BracketManager::createImpl(BracketImplMethod method)
     LOG1("@%s method:%d", __FUNCTION__, method);
 
     if (mBracketImpl != NULL) {
-        LOGW("Braket impl already exist");
+        ALOGW("Braket impl already exist");
         return status;
     }
 
@@ -59,7 +59,7 @@ status_t BracketManager::createImpl(BracketImplMethod method)
         OnlineBracket *onlineBracket = new OnlineBracket(mISP, m3AControls, this, mCameraId);
         status = onlineBracket->run("CamHAL_ONLINE_BRACKET");
         if (status != NO_ERROR) {
-            LOGW("Error Starting online bracket");
+            ALOGW("Error Starting online bracket");
         }
         mBracketImpl = onlineBracket;
     } else {
@@ -67,7 +67,7 @@ status_t BracketManager::createImpl(BracketImplMethod method)
     }
 
     if (mBracketImpl == NULL)  {
-        LOGE("Error in creating bracket implementation");
+        ALOGE("Error in creating bracket implementation");
         status = UNKNOWN_ERROR;
     }
 
@@ -85,7 +85,7 @@ void BracketManager::destroyImpl()
                 onlineBracket->requestExitAndWait();
                 onlineBracket.clear();
             } else {
-                LOGE("Error in destroy online bracket implementation");
+                ALOGE("Error in destroy online bracket implementation");
             }
         } else {
             delete mBracketImpl;
@@ -100,7 +100,7 @@ void BracketManager::setBracketMode(BracketingMode mode)
     if (mState == STATE_STOPPED)
         mBracketing.mode = mode;
     else
-        LOGW("%s: attempt to change bracketing mode during capture", __FUNCTION__);
+        ALOGW("%s: attempt to change bracketing mode during capture", __FUNCTION__);
 }
 
 BracketingMode BracketManager::getBracketMode()
@@ -139,10 +139,10 @@ status_t BracketManager::initBracketing(int length, int skip, BracketImplMethod 
                     if (bracketValues[i] <= EV_MAX && bracketValues[i] >= EV_MIN) {
                         mBracketing.values[i] = bracketValues[i];
                     } else if (bracketValues[i] > EV_MAX) {
-                        LOGW("Too high exposure value: %.2f", bracketValues[i]);
+                        ALOGW("Too high exposure value: %.2f", bracketValues[i]);
                         mBracketing.values[i] = EV_MAX;
                     } else if (bracketValues[i] < EV_MIN) {
-                        LOGW("Too low exposure value: %.2f", bracketValues[i]);
+                        ALOGW("Too low exposure value: %.2f", bracketValues[i]);
                         mBracketing.values[i] = EV_MIN;
                     }
                     LOG1("Setting exposure bracketing parameter %d EV value: %.2f", i, mBracketing.values[i]);
@@ -200,7 +200,7 @@ status_t BracketManager::startBracketing(int *expIdFrom)
     } else if (mBracketing.mode == BRACKET_FOCUS) {
         m3AControls->initAfBracketing(mBracketing.step, CAM_AF_BRACKETING_MODE_SYMMETRIC);
     } else {
-        LOGE("No braket mode specified for starting");
+        ALOGE("No braket mode specified for starting");
     }
 
     status = mBracketImpl->startBracketing(expIdFrom);
@@ -221,7 +221,7 @@ status_t BracketManager::stopBracketing()
         m3AControls->deinitAeBracketing();
     } else if (mBracketing.mode == BRACKET_FOCUS) {
     } else {
-        LOGE("No braket mode specified for stopping");
+        ALOGE("No braket mode specified for stopping");
     }
 
     status = mBracketImpl->stopBracketing();

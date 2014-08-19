@@ -239,13 +239,13 @@ AtomIspObserverManager::ObserverThread::waitForAndExecuteMessage()
             break;
 
         default:
-            LOGE("Invalid message");
+            ALOGE("Invalid message");
             status = BAD_VALUE;
             break;
     };
 
     if (status < NO_ERROR)
-        LOGE("%s: error handling message %d", mSubject->getName(), (int) msg.id);
+        ALOGE("%s: error handling message %d", mSubject->getName(), (int) msg.id);
 
     return status;
 }

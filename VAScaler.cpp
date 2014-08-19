@@ -33,7 +33,7 @@
 #define CHECK_VASTATUS(str) \
     do { \
         if (vaStatus != VA_STATUS_SUCCESS) { \
-            LOGE("%s failed :%s\n", str, vaErrorStr(vaStatus)); \
+            ALOGE("%s failed :%s\n", str, vaErrorStr(vaStatus)); \
             return UNKNOWN_ERROR;}   \
     }while(0)
 
@@ -52,7 +52,7 @@ VAScaler::VAScaler():
     mOBuffers.clear();
 
     if (init()) {
-        LOGE("Fail to initialize VAScaler");
+        ALOGE("Fail to initialize VAScaler");
     }
 }
 
@@ -69,7 +69,7 @@ status_t VAScaler::init()
 
     mVA = new VideoVPPBase();
     if (!mVA) {
-        LOGE("Fail to construct VideoVPPBase");
+        ALOGE("Fail to construct VideoVPPBase");
         return NO_MEMORY;
     }
 
@@ -78,7 +78,7 @@ status_t VAScaler::init()
 
     mVPP = VPParameters::create(mVA);
     if (mVPP == NULL) {
-        LOGE("Fail to create VPParameters");
+        ALOGE("Fail to create VPParameters");
         return UNKNOWN_ERROR;
     }
 
@@ -113,12 +113,12 @@ status_t VAScaler::deInit()
     }
 
     if (!mIBuffers.isEmpty()) {
-        LOGW("Input buffer is not clear before destory");
+        ALOGW("Input buffer is not clear before destory");
         clearBuffers(mIBuffers);
     }
 
     if (!mOBuffers.isEmpty()) {
-        LOGW("Output buffer is not clear before destory");
+        ALOGW("Output buffer is not clear before destory");
         clearBuffers(mOBuffers);
     }
 
@@ -163,7 +163,7 @@ int VAScaler::processFrame(int inputBufferId, int outputBufferId)
     RenderTarget *out = mOBuffers.valueFor(outputBufferId);
 
     if (in == NULL || out == NULL) {
-        LOGE("Find error render target");
+        ALOGE("Find error render target");
         return -1;
     }
 
@@ -200,7 +200,7 @@ status_t VAScaler::mapGraphicFmtToVAFmt(int &vaRTFormat, int &vaFourcc, int grap
             vaFourcc   = VA_FOURCC_YUY2;
             break;
         default:
-            LOGE("Graphic format:%x is not supported", graphicFormat);
+            ALOGE("Graphic format:%x is not supported", graphicFormat);
             return BAD_VALUE;
     }
 
@@ -213,7 +213,7 @@ int VAScaler::addOutputBuffer(buffer_handle_t *pBufHandle, int width, int height
 
     RenderTarget *rt = new RenderTarget();
     if (rt == NULL) {
-        LOGE("Fail to allocate RenderTarget");
+        ALOGE("Fail to allocate RenderTarget");
         return -1;
     }
 
@@ -221,7 +221,7 @@ int VAScaler::addOutputBuffer(buffer_handle_t *pBufHandle, int width, int height
     struct gralloc_module_t *gralloc_module;
     hw_get_module(GRALLOC_HARDWARE_MODULE_ID, &module);
     if (NULL == module) {
-        LOGE("Hw get module failed");
+        ALOGE("Hw get module failed");
         return -1;
     }
     gralloc_module = (struct gralloc_module_t*)module;
@@ -251,7 +251,7 @@ int VAScaler::addInputBuffer(buffer_handle_t *pBufHandle, int width, int height,
 
     RenderTarget *rt = new RenderTarget();
     if (rt == NULL) {
-        LOGE("Fail to allocate RenderTarget");
+        ALOGE("Fail to allocate RenderTarget");
         return -1;
     }
 
@@ -259,7 +259,7 @@ int VAScaler::addInputBuffer(buffer_handle_t *pBufHandle, int width, int height,
     struct gralloc_module_t *gralloc_module;
     hw_get_module(GRALLOC_HARDWARE_MODULE_ID, &module);
     if (NULL == module) {
-        LOGE("Hw get module failed");
+        ALOGE("Hw get module failed");
         return -1;
     }
     gralloc_module = (struct gralloc_module_t*)module;

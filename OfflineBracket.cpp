@@ -105,17 +105,17 @@ status_t OfflineBracket::getSnapshot(AtomBuffer &snapshotBuf, AtomBuffer &postvi
     status_t status = NO_ERROR;
 
     if (mState != STATE_BRACKETING) {
-        LOGE("@%s: wrong state (%d)", __FUNCTION__, mState);
+        ALOGE("@%s: wrong state (%d)", __FUNCTION__, mState);
         return INVALID_OPERATION;
     }
 
     if ((status = mISP->getSnapshot(&snapshotBuf, &postviewBuf)) != NO_ERROR) {
-        LOGE("Error in grabbing offline braketing frame!");
+        ALOGE("Error in grabbing offline braketing frame!");
         return status;
     }
 
     if (snapshotBuf.expId != mExpectedExpId) {
-        LOGW("get snapshot exp id:%d expected:%d", snapshotBuf.expId, mExpectedExpId);
+        ALOGW("get snapshot exp id:%d expected:%d", snapshotBuf.expId, mExpectedExpId);
     }
 
     // the next expected ID
@@ -130,13 +130,13 @@ status_t OfflineBracket::putSnapshot(AtomBuffer &snapshotBuf, AtomBuffer &postvi
     status_t status = NO_ERROR;
 
     if (mState != STATE_BRACKETING) {
-        LOGE("@%s: wrong state (%d)", __FUNCTION__, mState);
+        ALOGE("@%s: wrong state (%d)", __FUNCTION__, mState);
         status = INVALID_OPERATION;
     }
 
     status = mISP->putSnapshot(&snapshotBuf, &postviewBuf);
     if (status != NO_ERROR) {
-        LOGE("Error in offline bracketing putting buffer:%d", snapshotBuf.expId);
+        ALOGE("Error in offline bracketing putting buffer:%d", snapshotBuf.expId);
     }
     return status;
 }

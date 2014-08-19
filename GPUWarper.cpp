@@ -186,19 +186,19 @@ status_t GPUWarper::init(){
     status_t status;
 
     if (mIsInitialized) {
-        LOGI("GPUWarper already initialized");
+        ALOGI("GPUWarper already initialized");
         return NO_ERROR;
     }
 
     status = initGPU();
     if (status != NO_ERROR) {
-        LOGE("Failed to initialize GPU");
+        ALOGE("Failed to initialize GPU");
         return status;
     }
 
     status = setupWarper();
     if (status != NO_ERROR) {
-        LOGE("Failed to setup GPUWarper");
+        ALOGE("Failed to setup GPUWarper");
         return status;
     }
 
@@ -217,7 +217,7 @@ status_t GPUWarper::setupWarper() {
 
     // check if picture height exceeds maximally allowed texture size
     if (mMaxTextureSize < mHeight) {
-        LOGE("Failed to setup GPUWarper: input picture height exceeds parameter GL_MAX_TEXTURE_SIZE of the GPU.");
+        ALOGE("Failed to setup GPUWarper: input picture height exceeds parameter GL_MAX_TEXTURE_SIZE of the GPU.");
         return INVALID_OPERATION;
     }
 
@@ -259,23 +259,23 @@ status_t GPUWarper::initGPU() {
     DisplayInfo dinfo;
     status_t status = SurfaceComposerClient::getDisplayInfo(dtoken, &dinfo);
     if (status != NO_ERROR) {
-        LOGE("SurfaceComposerClient::getDisplayInfo failed\n");
+        ALOGE("SurfaceComposerClient::getDisplayInfo failed\n");
         return status;
     }
     sp<SurfaceComposerClient> session = new SurfaceComposerClient();
     if (session == NULL) {
-        LOGE("Failed to create new SurfaceComposerClient");
+        ALOGE("Failed to create new SurfaceComposerClient");
         return UNKNOWN_ERROR;
     }
-    LOGI("@createSurface()\n");
+    ALOGI("@createSurface()\n");
     sp<SurfaceControl> control = session->createSurface(String8("ULL GPU warping"), dinfo.w, dinfo.h, PIXEL_FORMAT_RGBA_8888);
-    LOGI("@openGlobalTransaction()\n");
+    ALOGI("@openGlobalTransaction()\n");
     SurfaceComposerClient::openGlobalTransaction();
-    LOGI("@setLayer()\n");
+    ALOGI("@setLayer()\n");
     control->setLayer(0x40000000);
-    LOGI("@closeGlobalTransaction()\n");
+    ALOGI("@closeGlobalTransaction()\n");
     SurfaceComposerClient::closeGlobalTransaction();
-    LOGI("@getSurface\n");
+    ALOGI("@getSurface\n");
     sp<Surface> s = control->getSurface();
 
     // finish EGL and GL init
@@ -286,14 +286,14 @@ status_t GPUWarper::initGPU() {
     eglChooseConfig_EC(mDisplay, attribs, &config, 1, &numConfigs);
     mSurface = eglCreateWindowSurface_EC(mDisplay, config, s.get(), NULL);
     if (mSurface == NULL) {
-        LOGE("eglCreateWindowSurface error");
+        ALOGE("eglCreateWindowSurface error");
         return UNKNOWN_ERROR;
     }
     mContext = eglCreateContext_EC(mDisplay, config, NULL, context_attribs);
     eglMakeCurrent_EC(mDisplay, mSurface, mSurface, mContext);
     eglQuerySurface_EC(mDisplay, mSurface, EGL_WIDTH, &w);
     eglQuerySurface_EC(mDisplay, mSurface, EGL_HEIGHT, &h);
-    LOGI("EGL window dimensions: %d x %d\n", w, h);
+    ALOGI("EGL window dimensions: %d x %d\n", w, h);
     gpuw_pzEglUtil_printGLString("Version", GL_VERSION);
     gpuw_pzEglUtil_printGLString("Vendor", GL_VENDOR);
     gpuw_pzEglUtil_printGLString("Renderer", GL_RENDERER);
@@ -301,7 +301,7 @@ status_t GPUWarper::initGPU() {
 
     GLint max = 1024;
     glGetIntegerv_EC(GL_MAX_TEXTURE_SIZE, &max);
-    LOGI("GL_MAX_TEXTURE_SIZE: %d\n", max);
+    ALOGI("GL_MAX_TEXTURE_SIZE: %d\n", max);
     mMaxTextureSize = max;
     mMaxTextureSizeX = (max < 4096) ? max : 4096;
 
@@ -581,7 +581,7 @@ status_t GPUWarper::createOutputGraficBuffer() {
     mGraphicBufferOut = new GraphicBuffer(mTileSizeX / 4, 3 * mTileSizeY / 2, PIXEL_FORMAT_RGBA_8888,
             GraphicBuffer::USAGE_HW_RENDER | GraphicBuffer::USAGE_SW_READ_OFTEN | GraphicBuffer::USAGE_HW_TEXTURE);
     if (!mGraphicBufferOut) {
-        LOGE("Error: creating output buffer\n");
+        ALOGE("Error: creating output buffer\n");
         return UNKNOWN_ERROR;
     }
 
@@ -590,7 +590,7 @@ status_t GPUWarper::createOutputGraficBuffer() {
     EGLClientBuffer buffer = mGraphicBufferOut->getNativeBuffer();
 
     if (!buffer) {
-        LOGE("Error: get native buffer from output buffer\n");
+        ALOGE("Error: get native buffer from output buffer\n");
         return UNKNOWN_ERROR;
     }
 
@@ -598,7 +598,7 @@ status_t GPUWarper::createOutputGraficBuffer() {
     mOutEGLImageNV12 = eglCreateImageKHR_EC(mDisplay, EGL_NO_CONTEXT, EGL_NATIVE_BUFFER_ANDROID, buffer, eglImageAttributes);
 
     if (mOutEGLImageNV12 == EGL_NO_IMAGE_KHR) {
-        LOGE("eglCreateImageKHR dest failed (err=0x%x)\n", eglGetError());
+        ALOGE("eglCreateImageKHR dest failed (err=0x%x)\n", eglGetError());
         return UNKNOWN_ERROR;
     }
 
@@ -613,7 +613,7 @@ status_t GPUWarper::createOutputGraficBuffer() {
     glClear_EC(GL_COLOR_BUFFER_BIT);
     GLenum glError = glCheckFramebufferStatus_EC(GL_FRAMEBUFFER);
     if (glError != GL_FRAMEBUFFER_COMPLETE) {
-        LOGE("glCheckFramebufferStatus generated error 0x%x\n", glError);
+        ALOGE("glCheckFramebufferStatus generated error 0x%x\n", glError);
         return UNKNOWN_ERROR;
     }
 
@@ -733,7 +733,7 @@ status_t GPUWarper::readOutputGraphicBuffer(GLuint indexX, GLuint indexY) {
     mGraphicBufferOut->lock(GraphicBuffer::USAGE_SW_READ_OFTEN, (void**) &pointerOut);
 
     if (!pointerOut) {
-        LOGE("Error: getting buffer address from output buffer\n");
+        ALOGE("Error: getting buffer address from output buffer\n");
         return UNKNOWN_ERROR;
     }
 
@@ -841,9 +841,9 @@ status_t GPUWarper::compileShader(const char **source, GLenum type, GLuint &shad
     GLint stat(0);
     glGetShaderiv_EC(shader, GL_COMPILE_STATUS, &stat);
     if (!stat) {
-        LOGE("Error: shader did not compile!\n");
+        ALOGE("Error: shader did not compile!\n");
         glGetShaderInfoLog_EC(shader, MAX_SH_INFO_LOG_SIZE, &llen, pInfoLog);
-        LOGE("%s\n", pInfoLog);
+        ALOGE("%s\n", pInfoLog);
         status = UNKNOWN_ERROR;
     }
 
@@ -859,7 +859,7 @@ status_t GPUWarper::createProgram(const char **fragmentShaderSource, GLuint &fra
 
     status = compileShader(fragmentShaderSource, GL_FRAGMENT_SHADER, fragmentShader);
     if (status != NO_ERROR) {
-        LOGE("Failed to compile fragment shader\n");
+        ALOGE("Failed to compile fragment shader\n");
         return status;
     }
     glAttachShader_EC(program, fragmentShader);
@@ -871,11 +871,11 @@ status_t GPUWarper::createProgram(const char **fragmentShaderSource, GLuint &fra
     GLint stat(0);
     glGetProgramInfoLog(program, MAX_SH_INFO_LOG_SIZE, &llen, pInfoLog);
     if (llen > 0)
-        LOGE("glLinkProgram log was %s", pInfoLog);
+        ALOGE("glLinkProgram log was %s", pInfoLog);
 
     glGetProgramiv_EC(program, GL_LINK_STATUS, &stat);
     if (!stat) {
-        LOGE("Error linking program:%d\n", stat);
+        ALOGE("Error linking program:%d\n", stat);
         status = UNKNOWN_ERROR;
     }
 
@@ -889,14 +889,14 @@ status_t GPUWarper::initShaders() {
     // vertex shader
     status = compileShader(static_cast<const char **>(&vertexShaderSource), GL_VERTEX_SHADER, mVertexShader);
     if (status != NO_ERROR) {
-        LOGE("Failed to compile vertex shader\n");
+        ALOGE("Failed to compile vertex shader\n");
         return status;
     }
 
     // Y St program
     status = createProgram(static_cast<const char **>(&fragmentShaderSourceStY), mFragmentShaderStY, mGlslProgramStY);
     if (status != NO_ERROR) {
-        LOGE("Failed to create program mGlslProgramStY\n");
+        ALOGE("Failed to create program mGlslProgramStY\n");
         return status;
     }
 
@@ -908,7 +908,7 @@ status_t GPUWarper::initShaders() {
     // UV St program
     status = createProgram(static_cast<const char **>(&fragmentShaderSourceStUV), mFragmentShaderStUV, mGlslProgramStUV);
     if (status != NO_ERROR) {
-        LOGE("Failed to create program mGlslProgramStUV\n");
+        ALOGE("Failed to create program mGlslProgramStUV\n");
         return status;
     }
 
@@ -920,7 +920,7 @@ status_t GPUWarper::initShaders() {
     // Y warping program
     status = createProgram(static_cast<const char **>(&fragmentShaderSourceY), mFragmentShaderY, mGlslProgramY);
     if (status != NO_ERROR) {
-        LOGE("Failed to create program mGlslProgramY\n");
+        ALOGE("Failed to create program mGlslProgramY\n");
         return status;
     }
 
@@ -931,7 +931,7 @@ status_t GPUWarper::initShaders() {
     // UV warping program
     status = createProgram(static_cast<const char **>(&fragmentShaderSourceUV), mFragmentShaderUV, mGlslProgramUV);
     if (status != NO_ERROR) {
-        LOGE("Failed to create program mGlslProgramUV\n");
+        ALOGE("Failed to create program mGlslProgramUV\n");
         return status;
     }
 
@@ -942,7 +942,7 @@ status_t GPUWarper::initShaders() {
     // Program used to combine Y and UV textures into NV12 texture
     status = createProgram(static_cast<const char **>(&fragmentShaderSourceNV12), mFragmentShaderNV12, mGlslProgramNV12);
     if (status != NO_ERROR) {
-        LOGE("Failed to create program mGlslProgramNV12\n");
+        ALOGE("Failed to create program mGlslProgramNV12\n");
         return status;
     }
 
@@ -1037,7 +1037,7 @@ status_t GPUWarper::allocateHostArrays() {
     mGlVertices = new GLfloat[mNGridPointsX * mNGridPointsY * 5]; // 3 for vertex coordinates, and 2 for texture cordinates
     mGlIndices = new GLushort[(mNGridPointsX - 1) * (mNGridPointsY - 1) * 2 * 3]; // 2 triangles per quad, and 3 vertices per triangle
     if (mGlVertices == NULL || mGlIndices == NULL) {
-        LOGE("Host memory allocation failed\n");
+        ALOGE("Host memory allocation failed\n");
         delete[] mGlVertices;
         delete[] mGlIndices;
         status = NO_MEMORY;
@@ -1056,7 +1056,7 @@ status_t GPUWarper::createInputGraficBuffers() {
     mGraphicBufferInY = new GraphicBuffer(mInBuffWidth / 4, mInBuffHeight, PIXEL_FORMAT_RGBA_8888,
             GraphicBuffer::USAGE_HW_RENDER | GraphicBuffer::USAGE_SW_WRITE_OFTEN | GraphicBuffer::USAGE_HW_TEXTURE);
     if (!mGraphicBufferInY) {
-        LOGE("Error: creating input buffer\n");
+        ALOGE("Error: creating input buffer\n");
         return UNKNOWN_ERROR;
     }
 
@@ -1065,7 +1065,7 @@ status_t GPUWarper::createInputGraficBuffers() {
     EGLClientBuffer bufferY = mGraphicBufferInY->getNativeBuffer();
 
     if (!bufferY) {
-        LOGE("Error: get native buffer from input buffer\n");
+        ALOGE("Error: get native buffer from input buffer\n");
         return UNKNOWN_ERROR;
     }
 
@@ -1073,7 +1073,7 @@ status_t GPUWarper::createInputGraficBuffers() {
     mInEGLImageY = eglCreateImageKHR_EC(mDisplay, EGL_NO_CONTEXT, EGL_NATIVE_BUFFER_ANDROID, bufferY, eglImageAttributes);
 
     if (mInEGLImageY == EGL_NO_IMAGE_KHR) {
-        LOGE("eglCreateImageKHR source failed (err=0x%x)\n", eglGetError());
+        ALOGE("eglCreateImageKHR source failed (err=0x%x)\n", eglGetError());
         return UNKNOWN_ERROR;
     }
 
@@ -1088,21 +1088,21 @@ status_t GPUWarper::createInputGraficBuffers() {
     mGraphicBufferInUV = new GraphicBuffer(mInBuffWidth / 4, mInBuffHeight / 2, PIXEL_FORMAT_RGBA_8888,
             GraphicBuffer::USAGE_HW_RENDER | GraphicBuffer::USAGE_SW_WRITE_OFTEN | GraphicBuffer::USAGE_HW_TEXTURE);
     if (!mGraphicBufferInUV) {
-        LOGE("Error: creating output buffer\n");
+        ALOGE("Error: creating output buffer\n");
         return UNKNOWN_ERROR;
     }
 
     EGLClientBuffer bufferUV = mGraphicBufferInUV->getNativeBuffer();
 
     if (!bufferUV) {
-        LOGE("Error: get native buffer from input buffer\n");
+        ALOGE("Error: get native buffer from input buffer\n");
         return UNKNOWN_ERROR;
     }
 
     mInEGLImageUV = eglCreateImageKHR_EC(mDisplay, EGL_NO_CONTEXT, EGL_NATIVE_BUFFER_ANDROID, bufferUV, eglImageAttributes);
 
     if (mInEGLImageUV == EGL_NO_IMAGE_KHR) {
-        LOGE("eglCreateImageKHR source failed (err=0x%x)\n", eglGetError());
+        ALOGE("eglCreateImageKHR source failed (err=0x%x)\n", eglGetError());
         return UNKNOWN_ERROR;
     }
 
@@ -1140,7 +1140,7 @@ status_t GPUWarper::fillInputGraphicBuffers(GLuint indexX, GLuint indexY, GLuint
     mGraphicBufferInY->lock(GraphicBuffer::USAGE_SW_WRITE_OFTEN, (void**) &pointerIn);
 
     if (!pointerIn) {
-        LOGE("Error: getting buffer address from input buffer\n");
+        ALOGE("Error: getting buffer address from input buffer\n");
         return UNKNOWN_ERROR;
     }
 
@@ -1155,7 +1155,7 @@ status_t GPUWarper::fillInputGraphicBuffers(GLuint indexX, GLuint indexY, GLuint
     mGraphicBufferInUV->lock(GraphicBuffer::USAGE_SW_WRITE_OFTEN, (void**) &pointerIn);
 
     if (!pointerIn) {
-        LOGE("Error: getting buffer address from input buffer\n");
+        ALOGE("Error: getting buffer address from input buffer\n");
         return UNKNOWN_ERROR;
     }
 

@@ -112,7 +112,7 @@ size_t SensorHW::enumerateInputs(Vector<struct cameraInfo> &inputs)
         if (ret != NO_ERROR) {
             if (ret == INVALID_OPERATION || ret == BAD_INDEX)
                 break;
-            LOGE("Device input enumeration failed for sensor input %d", i);
+            ALOGE("Device input enumeration failed for sensor input %d", i);
         } else {
             sCamInfo.index = i;
             strncpy(sCamInfo.name, (const char *)input.name, sizeof(sCamInfo.name)-1);
@@ -140,7 +140,7 @@ void SensorHW::getPadFormat(sp<V4L2DeviceBase> &subdev, int padIndex, int &width
     subdevFormat.which = V4L2_SUBDEV_FORMAT_ACTIVE;
     ret = pxioctl(subdev, VIDIOC_SUBDEV_G_FMT, &subdevFormat);
     if (ret < 0) {
-        LOGE("Failed VIDIOC_SUBDEV_G_FMT");
+        ALOGE("Failed VIDIOC_SUBDEV_G_FMT");
     } else {
         width = subdevFormat.format.width;
         height = subdevFormat.format.height;
@@ -168,11 +168,11 @@ status_t SensorHW::selectActiveSensor(sp<V4L2VideoNode> &device)
     mInitialModeDataValid = false;
 
     if (numCameras < (size_t) PlatformData::numberOfCameras()) {
-        LOGE("Number of detected sensors not matching static Platform data!");
+        ALOGE("Number of detected sensors not matching static Platform data!");
     }
 
     if (numCameras < 1) {
-        LOGE("No detected sensors!");
+        ALOGE("No detected sensors!");
         return UNKNOWN_ERROR;
     }
 
@@ -194,7 +194,7 @@ status_t SensorHW::selectActiveSensor(sp<V4L2VideoNode> &device)
             targetPort = ATOMISP_CAMERA_PORT_TERTIARY;
             break;
         default :
-            LOGE("Invalid camera id %d!", mCameraId);
+            ALOGE("Invalid camera id %d!", mCameraId);
             return BAD_VALUE;
         }
 
@@ -214,7 +214,7 @@ status_t SensorHW::selectActiveSensor(sp<V4L2VideoNode> &device)
         }
 
         if (i == numCameras) {
-            LOGE("No sensor with right port!");
+            ALOGE("No sensor with right port!");
             return UNKNOWN_ERROR;
         }
     }
@@ -232,7 +232,7 @@ status_t SensorHW::selectActiveSensor(sp<V4L2VideoNode> &device)
         Vector<v4l2_fmtdesc> formats;
         status = mDevice->queryCapturePixelFormats(formats);
         if (status != NO_ERROR) {
-            LOGW("Cold not query capture formats from sensor: %s", mCameraInput.name);
+            ALOGW("Cold not query capture formats from sensor: %s", mCameraInput.name);
             status = NO_ERROR;   // This is not critical
         }
         sensorStoreRawFormat(formats);
@@ -240,7 +240,7 @@ status_t SensorHW::selectActiveSensor(sp<V4L2VideoNode> &device)
 
     status = initializeExposureFilter();
     if (status != NO_ERROR)
-        LOGE("Failed to configure exposure filter");
+        ALOGE("Failed to configure exposure filter");
 
     return status;
 }
@@ -278,13 +278,13 @@ status_t SensorHW::getIspDevicePath(char *ispDevPath, int size)
     sp<V4L2DeviceBase> mediaCtl = new V4L2DeviceBase("/dev/media0", 0);
     status = mediaCtl->open();
     if (status != NO_ERROR) {
-        LOGE("Failed to open media device");
+        ALOGE("Failed to open media device");
         goto exit_clean_mem;
     }
 
     if (!ispDevPath) {
         status = UNKNOWN_ERROR;
-        LOGE("ispDevPath is NULL, return");
+        ALOGE("ispDevPath is NULL, return");
         goto exit_clean_mem;
     }
 
@@ -292,13 +292,13 @@ status_t SensorHW::getIspDevicePath(char *ispDevPath, int size)
     ret = pxioctl(mediaCtl, MEDIA_IOC_DEVICE_INFO, &mediaDeviceInfo);
     if (ret < 0) {
         status = UNKNOWN_ERROR;
-        LOGE("Failed to get media device information");
+        ALOGE("Failed to get media device information");
         goto exit;
     }
 
     status = findMediaEntityByName(mediaCtl, mCameraInput.name, mediaEntityDesc);
     if (status != NO_ERROR) {
-        LOGE("Failed to find sensor subdevice");
+        ALOGE("Failed to find sensor subdevice");
         goto exit;
     }
 
@@ -306,7 +306,7 @@ status_t SensorHW::getIspDevicePath(char *ispDevPath, int size)
     status = findConnectedEntityByName(mediaCtl, mediaEntityDesc, mediaEntityDescTmp, sinkPadIndex, mIspSubDevName, MAX_SENSOR_NAME_LENGTH, depth);
 
     if (status != NO_ERROR) {
-        LOGE("Unable to find connected ISP subdevice!");
+        ALOGE("Unable to find connected ISP subdevice!");
         goto exit;
     }
 
@@ -315,14 +315,14 @@ status_t SensorHW::getIspDevicePath(char *ispDevPath, int size)
     ret = readlink(devName, sysName, size);
     if (ret < 0) {
         status = UNKNOWN_ERROR;
-        LOGE("Unable to find subdevice node");
+        ALOGE("Unable to find subdevice node");
         goto exit;
     } else {
         sysName[ret] = 0;
         char *lastSlash = strrchr(sysName, '/');
         if (lastSlash == NULL) {
             status = UNKNOWN_ERROR;
-            LOGE("Invalid sysfs subdev path devName %s sysName %s", devName, sysName);
+            ALOGE("Invalid sysfs subdev path devName %s sysName %s", devName, sysName);
             goto exit;
         }
         val += snprintf(devName, (size - val), "/dev/%s", lastSlash + 1);
@@ -374,14 +374,14 @@ status_t SensorHW::openSubdevices()
     sp<V4L2DeviceBase> mediaCtl = new V4L2DeviceBase("/dev/media0", 0);
     status = mediaCtl->open();
     if (status != NO_ERROR) {
-        LOGE("Failed to open media device");
+        ALOGE("Failed to open media device");
         return status;
     }
 
     CLEAR(mediaDeviceInfo);
     ret = pxioctl(mediaCtl, MEDIA_IOC_DEVICE_INFO, &mediaDeviceInfo);
     if (ret < 0) {
-        LOGE("Failed to get media device information");
+        ALOGE("Failed to get media device information");
         mediaCtl.clear();
         return UNKNOWN_ERROR;
     }
@@ -391,13 +391,13 @@ status_t SensorHW::openSubdevices()
 
     status = findMediaEntityByName(mediaCtl, mCameraInput.name, mediaEntityDesc);
     if (status != NO_ERROR) {
-        LOGE("Failed to find sensor subdevice");
+        ALOGE("Failed to find sensor subdevice");
         return status;
     }
 
     status = openSubdevice(mSensorSubdevice, mediaEntityDesc.v4l.major, mediaEntityDesc.v4l.minor);
     if (status != NO_ERROR) {
-        LOGE("Failed to open sensor subdevice");
+        ALOGE("Failed to open sensor subdevice");
         return status;
     }
 
@@ -406,13 +406,13 @@ status_t SensorHW::openSubdevices()
     status = findConnectedEntityByName(mediaCtl, mediaEntityDesc, mediaEntityDescTmp, sinkPadIndex, mIspSubDevName, MAX_SENSOR_NAME_LENGTH, depth);
 
     if (status != NO_ERROR) {
-        LOGE("Unable to find connected ISP subdevice!");
+        ALOGE("Unable to find connected ISP subdevice!");
         return status;
     }
 
     status = openSubdevice(mIspSubdevice, mediaEntityDescTmp.v4l.major, mediaEntityDescTmp.v4l.minor);
     if (status != NO_ERROR) {
-        LOGE("Failed to open sensor subdevice");
+        ALOGE("Failed to open sensor subdevice");
         return status;
     }
 
@@ -490,7 +490,7 @@ status_t SensorHW::findConnectedEntity(sp<V4L2DeviceBase> &mediaCtl,
 
     ret = pxioctl(mediaCtl, MEDIA_IOC_ENUM_LINKS, &links);
     if (ret < 0) {
-        LOGE("Failed to query any links");
+        ALOGE("Failed to query any links");
     } else {
         for (int i = 0; i < mediaEntityDescSrc.links; i++) {
             if (links.links[i].sink.entity != mediaEntityDescSrc.id) {
@@ -545,7 +545,7 @@ status_t SensorHW::findConnectedEntityByName(sp<V4L2DeviceBase> &mediaCtl,
 
     ret = mediaCtl->xioctl(MEDIA_IOC_ENUM_LINKS, &links);
     if (ret < 0) {
-        LOGE("Failed to query any links");
+        ALOGE("Failed to query any links");
     } else {
         if( mediaEntityDescSrc.links == 0)
             goto exit;
@@ -597,12 +597,12 @@ status_t SensorHW::openSubdevice(sp<V4L2DeviceBase> &subdev, int major, int mino
     sprintf(devname, "/sys/dev/char/%u:%u", major, minor);
     ret = readlink(devname, sysname, sizeof(sysname));
     if (ret < 0) {
-        LOGE("Unable to find subdevice node");
+        ALOGE("Unable to find subdevice node");
     } else {
         sysname[ret] = 0;
         char *lastSlash = strrchr(sysname, '/');
         if (lastSlash == NULL) {
-            LOGE("Invalid sysfs subdev path");
+            ALOGE("Invalid sysfs subdev path");
             return status;
         }
         sprintf(devname, "/dev/%s", lastSlash + 1);
@@ -611,7 +611,7 @@ status_t SensorHW::openSubdevice(sp<V4L2DeviceBase> &subdev, int major, int mino
         subdev = new V4L2DeviceBase(devname, 0);
         status = subdev->open();
         if (status != NO_ERROR) {
-            LOGE("Failed to open subdevice");
+            ALOGE("Failed to open subdevice");
             subdev.clear();
         }
     }
@@ -658,7 +658,7 @@ status_t SensorHW::prepare(bool preQueuedExposure)
     // Sensor is configured, readout the initial mode info
     ret = getModeInfo(&mInitialModeData);
     if (ret != 0)
-        LOGW("Reading initial sensor mode info failed!");
+        ALOGW("Reading initial sensor mode info failed!");
 
     if (mInitialModeData.frame_length_lines != 0 &&
         mInitialModeData.binning_factor_y != 0 &&
@@ -712,7 +712,7 @@ status_t SensorHW::start()
         if (ret < 0) {
             ret = mIspSubdevice->subscribeEvent(FRAME_SYNC_EOF);
             if (ret < 0) {
-                LOGE("Failed to subscribe to frame sync event!");
+                ALOGE("Failed to subscribe to frame sync event!");
                 return UNKNOWN_ERROR;
             } else {
                 mFrameSyncSource = FRAME_SYNC_EOF;
@@ -790,13 +790,13 @@ void SensorHW::getMotorData(sensorPrivateData *sensor_data)
     rc = pxioctl(mDevice, ATOMISP_IOC_G_MOTOR_PRIV_INT_DATA, &motorPrivateData);
     LOG2("%s IOCTL ATOMISP_IOC_G_MOTOR_PRIV_INT_DATA to get motor private data size ret: %d\n", __FUNCTION__, rc);
     if (rc != 0 || motorPrivateData.size == 0) {
-        LOGD("Failed to get motor private data size. Error: %d", rc);
+        ALOGD("Failed to get motor private data size. Error: %d", rc);
         return;
     }
 
     motorPrivateData.data = malloc(motorPrivateData.size);
     if (motorPrivateData.data == NULL) {
-        LOGD("Failed to allocate memory for motor private data.");
+        ALOGD("Failed to allocate memory for motor private data.");
         return;
     }
 
@@ -805,7 +805,7 @@ void SensorHW::getMotorData(sensorPrivateData *sensor_data)
     LOG2("%s IOCTL ATOMISP_IOC_G_MOTOR_PRIV_INT_DATA to get motor private data ret: %d\n", __FUNCTION__, rc);
 
     if (rc != 0 || motorPrivateData.size == 0) {
-        LOGD("Failed to read motor private data. Error: %d", rc);
+        ALOGD("Failed to read motor private data. Error: %d", rc);
         free(motorPrivateData.data);
         return;
     }
@@ -844,13 +844,13 @@ void SensorHW::getSensorData(sensorPrivateData *sensor_data)
         rc = pxioctl(mDevice, ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA, &otpdata);
         LOG2("%s IOCTL ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA to get OTP data size ret: %d\n", __FUNCTION__, rc);
         if (rc != 0 || otpdata.size == 0) {
-            LOGD("Failed to get OTP size. Error: %d", rc);
+            ALOGD("Failed to get OTP size. Error: %d", rc);
             return;
         }
 
         otpdata.data = calloc(otpdata.size, 1);
         if (otpdata.data == NULL) {
-            LOGD("Failed to allocate memory for OTP data.");
+            ALOGD("Failed to allocate memory for OTP data.");
             return;
         }
 
@@ -859,7 +859,7 @@ void SensorHW::getSensorData(sensorPrivateData *sensor_data)
         LOG2("%s IOCTL ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA to get OTP data ret: %d\n", __FUNCTION__, rc);
 
         if (rc != 0 || otpdata.size == 0) {
-            LOGD("Failed to read OTP data. Error: %d", rc);
+            ALOGD("Failed to read OTP data. Error: %d", rc);
             free(otpdata.data);
             return;
         }
@@ -1100,7 +1100,7 @@ status_t SensorHW::setFramerate(int fps)
     subdevFrameInterval.interval.denominator = fps;
     ret = pxioctl(mSensorSubdevice, VIDIOC_SUBDEV_S_FRAME_INTERVAL, &subdevFrameInterval);
     if (ret < 0){
-        LOGE("Failed to set framerate to sensor subdevice");
+        ALOGE("Failed to set framerate to sensor subdevice");
         return UNKNOWN_ERROR;
     }
     return NO_ERROR;
@@ -1137,7 +1137,7 @@ float SensorHW::getFramerate() const
     float fps = 0.0;
     ret = mDevice->getFramerate(&fps, mOutputWidth, mOutputHeight, mRawBayerFormat);
     if (ret < 0) {
-        LOGW("Failed to query the framerate");
+        ALOGW("Failed to query the framerate");
         return 30.0;
     }
     LOG1("Using framerate provided by main video node");
@@ -1165,7 +1165,7 @@ void SensorHW::getFrameSizes(Vector<v4l2_subdev_frame_size_enum> &sizes)
     }
 
     if (fsize.index == 0 && ret != 0)
-        LOGW("unable to get enumerated frame sizes");
+        ALOGW("unable to get enumerated frame sizes");
 }
 
 /**
@@ -1180,14 +1180,14 @@ status_t SensorHW::observe(IAtomIspObserver::Message *msg)
 
     ret = mIspSubdevice->poll(FRAME_SYNC_POLL_TIMEOUT);
     if (ret <= 0) {
-        LOGE("FrameSync poll failed (%s), waiting recovery..", (ret == 0) ? "timeout" : "error");
+        ALOGE("FrameSync poll failed (%s), waiting recovery..", (ret == 0) ? "timeout" : "error");
         ret = -1;
     } else {
         // poll was successful, dequeue the event right away
         do {
             ret = mIspSubdevice->dequeueEvent(&event);
             if (ret < 0) {
-                LOGE("Dequeue FrameSync event failed");
+                ALOGE("Dequeue FrameSync event failed");
                 break;
             }
         } while (event.pending > 0);
@@ -1272,9 +1272,9 @@ status_t SensorHW::initializeExposureFilter()
     if (gainLag == exposureLag) {
         LOG1("Gain/Exposure re-aligning not needed");
     } else if (gainLag > exposureLag) {
-        LOGE("Check sensor latencies configuration, not supported");
+        ALOGE("Check sensor latencies configuration, not supported");
     } else if (gainLag > 0 && !useExposureSync) {
-        LOGW("Analog gain re-aligning without synchronization!");
+        ALOGW("Analog gain re-aligning without synchronization!");
         // TODO: applying of final delayed gain not implemented
         gainDelay = exposureLag - gainLag;
     } else {
@@ -1328,7 +1328,7 @@ int SensorHW::setExposureGroup(struct atomisp_exposure exposures[], int depth)
         if (numItemNotApplied) {
             item = mExposureHistory->peek(numItemNotApplied - 1);
             if (item == NULL) {
-                LOGE("Has item that has not been applied but peek NULL");
+                ALOGE("Has item that has not been applied but peek NULL");
                 continue;
             }
             item->exposure = exposures[i];
@@ -1453,7 +1453,7 @@ void SensorHW::updateExposureEstimate(nsecs_t timestamp)
     // This assertion failure would mean that applyExposureFromHistory() was
     // not called
     if (item == NULL) {
-        LOGE("getPrevAppliedItem error");
+        ALOGE("getPrevAppliedItem error");
         return;
     }
 
@@ -1463,7 +1463,7 @@ void SensorHW::updateExposureEstimate(nsecs_t timestamp)
     mActiveItemIndex = prevItemIdx + mExposureLag;
     activeItem = mExposureHistory->peek(mActiveItemIndex);
     if (activeItem == NULL) {
-        LOGE("peek active exposure error");
+        ALOGE("peek active exposure error");
         return;
     }
 
@@ -1621,7 +1621,7 @@ void SensorHW::processExposureHistory(nsecs_t ts)
         if (item == NULL) {
             // No initials from 3A or FiFo has been filled with
             // new exposures in between FrameSyncs.
-            LOGW("No initial exposure set by 3A!");
+            ALOGW("No initial exposure set by 3A!");
             struct atomisp_exposure dummyExposure;
             CLEAR(dummyExposure);
             // TODO: Could use sensor initials here
@@ -1635,7 +1635,7 @@ void SensorHW::processExposureHistory(nsecs_t ts)
             // Keep rolling and pick delayd gain
             item = produceExposureHistory(&item->exposure, 0);
             if (item == NULL) {
-                LOGE("produceExposureHistory error");
+                ALOGE("produceExposureHistory error");
                 return;
             }
             unsigned int prevGain = item->exposure.gain[0];
@@ -1656,7 +1656,7 @@ void SensorHW::processExposureHistory(nsecs_t ts)
         applyToSensor = true;
         item = mExposureHistory->peek(itemsToApply - 1);
         if (item == NULL) {
-            LOGE("peek %d exposure history error", itemsToApply-1);
+            ALOGE("peek %d exposure history error", itemsToApply-1);
             return;
         }
     }
@@ -1664,7 +1664,7 @@ void SensorHW::processExposureHistory(nsecs_t ts)
     if (applyToSensor) {
         ret = setSensorExposure(&item->exposure);
         if (ret != 0) {
-            LOGE("Setting sensor exposure failed!");
+            ALOGE("Setting sensor exposure failed!");
         }
         item->applied = true;
     }

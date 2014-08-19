@@ -403,7 +403,7 @@ status_t CallbacksThread::sendError(int id)
 
 status_t CallbacksThread::handleMessageSendError(MessageError *msg)
 {
-    LOGE("@%s: id %d", __FUNCTION__,msg->id);
+    ALOGE("@%s: id %d", __FUNCTION__,msg->id);
     mCallbacks->cameraError(msg->id);
     return NO_ERROR;
 }
@@ -446,7 +446,7 @@ void CallbacksThread::facesDetected(extended_frame_metadata_t *extended_face_met
 
     int num_faces;
     if (extended_face_metadata->number_of_faces > MAX_FACES_DETECTABLE) {
-        LOGW("@%s: %d faces detected, limiting to %d", __FUNCTION__,
+        ALOGW("@%s: %d faces detected, limiting to %d", __FUNCTION__,
                 extended_face_metadata->number_of_faces, MAX_FACES_DETECTABLE);
         num_faces = MAX_FACES_DETECTABLE;
     } else {
@@ -580,7 +580,7 @@ status_t CallbacksThread::handleMessageJpegDataReady(MessageCompressed *msg)
     mPictureDoneCallback->encodingDone(&snapshotBuf, &postviewBuf);
 
     if (jpegBuf.dataPtr == NULL) {
-        LOGW("@%s: returning raw frames used in failed encoding", __FUNCTION__);
+        ALOGW("@%s: returning raw frames used in failed encoding", __FUNCTION__);
         mPictureDoneCallback->pictureDone(&snapshotBuf, &postviewBuf);
         return NO_ERROR;
     }
@@ -601,7 +601,7 @@ status_t CallbacksThread::handleMessageJpegDataReady(MessageCompressed *msg)
 
         mCallbacks->compressedFrameDone(&jpegBuf);
         if (jpegBuf.buff == NULL) {
-            LOGW("CallbacksThread received NULL jpegBuf.buff, which should not happen");
+            ALOGW("CallbacksThread received NULL jpegBuf.buff, which should not happen");
         } else {
             LOG1("Releasing jpegBuf @%p", jpegBuf.dataPtr);
             MemoryUtils::freeAtomBuffer(jpegBuf);
@@ -705,7 +705,7 @@ status_t CallbacksThread::handleMessageUllJpegDataReady(MessageCompressed *msg)
     --mULLRequested;
 
     if (jpegBuf.dataPtr == NULL) {
-        LOGW("@%s: returning raw frames used in failed encoding", __FUNCTION__);
+        ALOGW("@%s: returning raw frames used in failed encoding", __FUNCTION__);
         mPictureDoneCallback->pictureDone(&snapshotBuf, &postviewBuf);
         return NO_ERROR;
     }
@@ -726,7 +726,7 @@ status_t CallbacksThread::handleMessageUllJpegDataReady(MessageCompressed *msg)
     mCallbacks->allocateMemory(&jpegAndMeta, jpegBuf.size + sizeof(camera_ull_metadata_t));
 
     if (jpegAndMeta.buff == NULL) {
-        LOGE("Failed to allocate memory for buffer jpegAndMeta");
+        ALOGE("Failed to allocate memory for buffer jpegAndMeta");
         return UNKNOWN_ERROR;
     }
 
@@ -742,7 +742,7 @@ status_t CallbacksThread::handleMessageUllJpegDataReady(MessageCompressed *msg)
     MemoryUtils::freeAtomBuffer(jpegBuf);
 
     if (jpegAndMeta.buff == NULL) {
-        LOGW("NULL jpegAndMeta buffer, while reaching freeAtomBuffer().");
+        ALOGW("NULL jpegAndMeta buffer, while reaching freeAtomBuffer().");
         return UNKNOWN_ERROR;
     } else {
         LOG1("Releasing jpegAndMeta.buff %p, dataPtr %p", jpegAndMeta.buff, jpegAndMeta.dataPtr);

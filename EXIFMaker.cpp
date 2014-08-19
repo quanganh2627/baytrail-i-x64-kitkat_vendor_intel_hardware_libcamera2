@@ -82,7 +82,7 @@ void EXIFMaker::setFaceData(const ia_face_state &faceState)
                     faceState.faces[i].face_area.bottom);
         }
         if (i != faceState.num_faces)
-            LOGW("Face information is too large, only save first %d groups of face data", i);
+            ALOGW("Face information is too large, only save first %d groups of face data", i);
     }
     LOG1("Face information written to Exif = %s\n", exifAttributes.user_comment);
 }
@@ -104,7 +104,7 @@ void EXIFMaker::setDriverData(const atomisp_makernote_info &ispData)
         exifAttributes.max_aperture.num = exifAttributes.fnumber.num;
         exifAttributes.max_aperture.den = exifAttributes.fnumber.den;
     } else {
-        LOGW("Invalid fnumber %u from driver", ispData.f_number_curr);
+        ALOGW("Invalid fnumber %u from driver", ispData.f_number_curr);
     }
 
     LOG1("EXIF: fnumber=%u (num=%d, den=%d)", ispData.f_number_curr,
@@ -116,7 +116,7 @@ void EXIFMaker::setDriverData(const atomisp_makernote_info &ispData)
         exifAttributes.focal_length.num = ispData.focal_length >> 16;
         exifAttributes.focal_length.den = ispData.focal_length & 0xffff;
     } else {
-        LOGW("Invalid focal length %u from driver", ispData.focal_length);
+        ALOGW("Invalid focal length %u from driver", ispData.focal_length);
     }
 
     LOG1("EXIF: focal length=%u (num=%d, den=%d)", ispData.focal_length,
@@ -156,7 +156,7 @@ void EXIFMaker::pictureTaken(void)
         exifAttributes.brightness.den = 100;
         LOG1("EXIF: brightness = %.2f", brightness);
     } else {
-        LOGW("EXIF: Could not query brightness!");
+        ALOGW("EXIF: Could not query brightness!");
     }
 
     // set the exposure program mode
@@ -190,7 +190,7 @@ void EXIFMaker::pictureTaken(void)
     if (m3AControls->getManualIso(&isoSpeed) == NO_ERROR) {
         exifAttributes.iso_speed_rating = isoSpeed;
     } else {
-        LOGW("EXIF: Could not query ISO speed!");
+        ALOGW("EXIF: Could not query ISO speed!");
         exifAttributes.iso_speed_rating = DEFAULT_ISO_SPEED;
     }
     LOG1("EXIF: ISO=%d", isoSpeed);
@@ -326,7 +326,7 @@ void EXIFMaker::pictureTaken(void)
         strftime((char *)exifAttributes.date_time, sizeof(exifAttributes.date_time), "%Y:%m:%d %H:%M:%S", timeinfo);
         // fields: tm_sec, tm_min, tm_hour, tm_mday, tm_mon, tm_year, tm_wday, tm_yday, tm_isdst, tm_gmtoff, tm_zone
     } else {
-        LOGW("NULL timeinfo from localtime(), using defaults...");
+        ALOGW("NULL timeinfo from localtime(), using defaults...");
         struct tm tmpTime = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "UTC"};
         strftime((char *)exifAttributes.date_time, sizeof(exifAttributes.date_time), "%Y:%m:%d %H:%M:%S", &tmpTime);
     }
@@ -554,7 +554,7 @@ void EXIFMaker::initializeLocation(const CameraParameters &params)
         if (timestamp >= LONG_MAX || timestamp <= LONG_MIN)
         {
             timestamp = 0;
-            LOGW("invalid timestamp was provided, defaulting to 0 (i.e. 1970)");
+            ALOGW("invalid timestamp was provided, defaulting to 0 (i.e. 1970)");
         }
         gmtime_r(&timestamp, &time);
         time.tm_year += 1900;
@@ -675,7 +675,7 @@ void EXIFMaker::setSensorAeConfig(const SensorAeConfig& aeConfig)
             exifAttributes.exposure_bias.den = 100;
             LOG1("EXIF: Ev = %.2f", aeConfig.evBias);
         } else {
-            LOGW("EXIF: Invalid Ev!");
+            ALOGW("EXIF: Invalid Ev!");
         }
     } else {
         if (aeConfig.expTime > 0) {
@@ -767,7 +767,7 @@ void EXIFMaker::setThumbnail(unsigned char *data, size_t size)
     exifAttributes.widthThumb = thumbWidth;
     exifAttributes.heightThumb = thumbHeight;
     if (encoder.setThumbData(data, size) != EXIF_SUCCESS) {
-        LOGE("Error in setting EXIF thumbnail");
+        ALOGE("Error in setting EXIF thumbnail");
     }
 }
 
@@ -780,7 +780,7 @@ size_t EXIFMaker::makeExif(unsigned char **data)
 {
     LOG1("@%s", __FUNCTION__);
     if (*data == NULL) {
-        LOGE("NULL pointer passed for EXIF. Cannot generate EXIF!");
+        ALOGE("NULL pointer passed for EXIF. Cannot generate EXIF!");
         return 0;
     }
     if (encoder.makeExif(*data, &exifAttributes, &exifSize) == EXIF_SUCCESS) {

@@ -100,7 +100,7 @@ int SensorHWExtIsp::setAfWindows(const CameraWindow *windows, int numWindows)
     retY = extIspIoctl(EXT_ISP_CID_TOUCH_POSY, y);
 
     if (retX != NO_ERROR || retY != NO_ERROR) {
-        LOGW("Failed setting AF windows, retvals %d, %d", retX, retY);
+        ALOGW("Failed setting AF windows, retvals %d, %d", retX, retY);
         return UNKNOWN_ERROR;
     }
 
@@ -117,7 +117,7 @@ int SensorHWExtIsp::setAeFlashMode(int mode)
     // TODO: can we use existing V4L2 std control instead? Would not need this hack then...
     ret = extIspIoctl(EXT_ISP_CID_FLASH_MODE, mode);
     if (ret != 0) {
-        LOGW("Failed setting flash mode, ret: %d", ret);
+        ALOGW("Failed setting flash mode, ret: %d", ret);
         return UNKNOWN_ERROR;
     }
 

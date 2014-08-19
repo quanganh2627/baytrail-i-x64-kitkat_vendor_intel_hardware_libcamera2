@@ -78,14 +78,14 @@ status_t AtomExtIsp3A::setAfMode(AfMode mode)
             modeTmp = EXT_ISP_FOCUS_MODE_NORMAL;
             break;
         default:
-            LOGW("Unsupported ext-ISP AF mode (%d), using PREVIEW_CAF", mode);
+            ALOGW("Unsupported ext-ISP AF mode (%d), using PREVIEW_CAF", mode);
             modeTmp = EXT_ISP_FOCUS_MODE_NORMAL;
             break;
     }
 
     int ret = mSensorCI->setAfMode(modeTmp);
     if (ret != 0) {
-        LOGE("Error setting AF  mode (%d) in the driver", modeTmp);
+        ALOGE("Error setting AF  mode (%d) in the driver", modeTmp);
         status = UNKNOWN_ERROR;
     }
 
@@ -123,7 +123,7 @@ AfMode AtomExtIsp3A::getAfMode()
     // AF to be really run..
 //     int ret = mSensorCI->getAfMode(&v4lMode);
 //     if (ret != 0) {
-//          LOGE("Error getting AF mode from the driver");
+//          ALOGE("Error getting AF mode from the driver");
 //         status = UNKNOWN_ERROR;
 //     }
 
@@ -200,7 +200,7 @@ status_t AtomExtIsp3A::setAfWindows(CameraWindow *windows, size_t numWindows, co
             drvModeToSet = EXT_ISP_FOCUS_MODE_TOUCH_CAF;
             break;
         default:
-            LOGW("Unsupported ext-ISP touch AF mode (%d), using NORMAL", afMode);
+            ALOGW("Unsupported ext-ISP touch AF mode (%d), using NORMAL", afMode);
             drvModeToSet = EXT_ISP_FOCUS_MODE_NORMAL;
             break;
     }
@@ -214,14 +214,14 @@ status_t AtomExtIsp3A::setAfWindows(CameraWindow *windows, size_t numWindows, co
 
     ret = mSensorCI->setAfWindows(windows, numWindows);
     if (ret != 0) {
-        LOGE("Error setting AF  window to driver");
+        ALOGE("Error setting AF  window to driver");
         return UNKNOWN_ERROR;
     }
 
     // We need to explicitly start the AF after coordinates are set,
     // so that the AF will actually execute...
     if (setAfEnabled(true) != 0)
-        LOGW("Failed to enable AF");
+        ALOGW("Failed to enable AF");
 
     return NO_ERROR;
 }
@@ -278,7 +278,7 @@ status_t AtomExtIsp3A::setAeFlashMode(FlashMode mode)
             modeTmp = EXT_ISP_LED_TORCH_ON;
             break;
         default:
-            LOGW("Unsupported Flash mode (%d), using OFF", mode);
+            ALOGW("Unsupported Flash mode (%d), using OFF", mode);
             modeTmp = EXT_ISP_FLASH_MODE_OFF;
             break;
     }
@@ -292,14 +292,14 @@ status_t AtomExtIsp3A::setAeFlashMode(FlashMode mode)
         ret = mSensorCI->setAeFlashMode(EXT_ISP_LED_TORCH_OFF);
 
     if (ret != 0) {
-        LOGE("Error setting torch to \"off\"");
+        ALOGE("Error setting torch to \"off\"");
         return UNKNOWN_ERROR;
     }
 
     // Set the requested flash mode:
     ret = mSensorCI->setAeFlashMode(modeTmp);
     if (ret != 0) {
-        LOGD("Error setting Flash mode (%d) in the driver", modeTmp);
+        ALOGD("Error setting Flash mode (%d) in the driver", modeTmp);
         status = UNKNOWN_ERROR;
     } else {
         mDrvFlashMode = modeTmp;
@@ -332,7 +332,7 @@ FlashMode AtomExtIsp3A::getAeFlashMode()
             mode = CAM_AE_FLASH_MODE_TORCH;
             break;
         default:
-            LOGW("Unsupported Flash mode got (%d), using NOT_SET", mDrvFlashMode);
+            ALOGW("Unsupported Flash mode got (%d), using NOT_SET", mDrvFlashMode);
             mode = CAM_AE_FLASH_MODE_NOT_SET;
             break;
     }
@@ -354,7 +354,7 @@ void AtomExtIsp3A::setFaceDetection(bool enabled)
         int ret = mSensorCI->setAfMode(EXT_ISP_FOCUS_MODE_FACE_CAF);
 
         if (ret != 0) {
-            LOGE("Error setting FACE AF mode in the driver");
+            ALOGE("Error setting FACE AF mode in the driver");
             return;
         }
 

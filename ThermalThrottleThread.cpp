@@ -50,13 +50,13 @@ status_t ThermalThrottleThread::openThermalThrottle()
 
     if ((mNotifyFd = ::open(SYSFS_THERMAL_THROTTLE_NOTIFY, O_RDONLY)) < 0)
     {
-        LOGW("Unable to open notify: %s", strerror(errno));
+        ALOGW("Unable to open notify: %s", strerror(errno));
         status = UNKNOWN_ERROR;
     }
 
     if ((mHandshakeFd = ::open(SYSFS_THERMAL_THROTTLE_HANDSHAKE, O_WRONLY)) < 0)
     {
-        LOGW("Unable to open handshake %s", strerror(errno));
+        ALOGW("Unable to open handshake %s", strerror(errno));
         ::close(mNotifyFd);
         status = UNKNOWN_ERROR;
     }
@@ -69,24 +69,24 @@ status_t ThermalThrottleThread::closeThermalThrottle()
     LOG1("@%s", __FUNCTION__);
 
     if (mNotifyFd < 0) {
-        LOGW("notify not opened!");
+        ALOGW("notify not opened!");
         return INVALID_OPERATION;
     }
 
     if (::close(mNotifyFd) < 0) {
-        LOGE("Close notify failed: %s", strerror(errno));
+        ALOGE("Close notify failed: %s", strerror(errno));
         return UNKNOWN_ERROR;
     }
 
     mNotifyFd = -1;
 
     if (mHandshakeFd < 0) {
-        LOGW("handshake not opened!");
+        ALOGW("handshake not opened!");
         return INVALID_OPERATION;
     }
 
     if (::close(mHandshakeFd) < 0) {
-        LOGE("Close handshake failed: %s", strerror(errno));
+        ALOGE("Close handshake failed: %s", strerror(errno));
         return UNKNOWN_ERROR;
     }
 
@@ -101,7 +101,7 @@ int ThermalThrottleThread::poll(int timeout)
     int ret = -1;
 
     if (mNotifyFd == -1) {
-        LOGW(" thermal throttling module already closed. Do nothing.");
+        ALOGW(" thermal throttling module already closed. Do nothing.");
         return ret;
     }
 
@@ -306,7 +306,7 @@ status_t ThermalThrottleThread::waitForAndExecuteMessage()
         case MESSAGE_ID_MMONITOR_NOTIFY:
             status = handleMessageMonitorNotify();
         default:
-            LOGE("Invalid message");
+            ALOGE("Invalid message");
             status = BAD_VALUE;
             break;
     };

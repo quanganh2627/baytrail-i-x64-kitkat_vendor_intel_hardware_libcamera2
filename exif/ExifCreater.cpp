@@ -64,7 +64,7 @@ exif_status ExifCreater::makeExif (void *exifOut,
                                         exif_attribute_t *exifInfo,
                                         unsigned int *size)
 {
-    LOGV("makeExif start");
+    ALOGV("makeExif start");
 
     unsigned char *pCur, *pApp1Start, *pIfdStart, *pGpsIfdPtr, *pNextIfdOffset;
     unsigned int tmp, LongerTagOffset = 0, LongerTagOffsetWithoutThumbnail;
@@ -316,7 +316,7 @@ exif_status ExifCreater::makeExif (void *exifOut,
     // backup LongerTagOffset, if the total exif size is > 64K, we will use it.
     LongerTagOffsetWithoutThumbnail = LongerTagOffset;
     if (LongerTagOffsetWithoutThumbnail >= EXIF_SIZE_LIMITATION) {
-        LOGE("line:%d, in the makeExif, the size exceeds 64K", __LINE__);
+        ALOGE("line:%d, in the makeExif, the size exceeds 64K", __LINE__);
         return EXIF_FAIL;
     }
 
@@ -342,7 +342,7 @@ exif_status ExifCreater::makeExif (void *exifOut,
     memcpy(pApp1Start, size_mm, 2);
     *size += 2; // APP1 marker size
 
-    LOGV("makeExif End");
+    ALOGV("makeExif End");
 
     return EXIF_SUCCESS;
 }
@@ -362,7 +362,7 @@ void ExifCreater::writeThumbData(unsigned char *pIfdStart,
     tmp += m_thumbSize;
 
     if(tmp > EXIF_SIZE_LIMITATION) {
-        LOGD("line:%d, in makeExif, exif total size(%d) > 64K, we'll disable thumbnail.", __LINE__, tmp);
+        ALOGD("line:%d, in makeExif, exif total size(%d) > 64K, we'll disable thumbnail.", __LINE__, tmp);
         m_thumbSize = 0;
         m_thumbBuf = NULL;
         tmp = 0;

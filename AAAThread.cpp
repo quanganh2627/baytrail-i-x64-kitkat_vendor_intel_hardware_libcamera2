@@ -62,7 +62,7 @@ AAAThread::AAAThread(ICallbackAAA *aaaDone, UltraLowLight *ull, I3AControls *aaa
     LOG1("@%s", __FUNCTION__);
     mFaceState.faces = new ia_face[MAX_FACES_DETECTABLE];
     if (mFaceState.faces == NULL) {
-        LOGE("Error allocation memory for face state");
+        ALOGE("Error allocation memory for face state");
     } else {
         memset(mFaceState.faces, 0, MAX_FACES_DETECTABLE * sizeof(ia_face));
     }
@@ -271,12 +271,12 @@ status_t AAAThread::setFaces(const ia_face_state& faceState)
     status_t status(NO_ERROR);
 
     if (mFaceState.faces == NULL) {
-        LOGE("face state not allocated");
+        ALOGE("face state not allocated");
         return NO_INIT;
     }
 
     if (faceState.num_faces > MAX_FACES_DETECTABLE) {
-        LOGW("@%s: %d faces detected, limiting to %d", __FUNCTION__,
+        ALOGW("@%s: %d faces detected, limiting to %d", __FUNCTION__,
             faceState.num_faces, MAX_FACES_DETECTABLE);
          mFaceState.num_faces = MAX_FACES_DETECTABLE;
     } else {
@@ -299,7 +299,7 @@ status_t AAAThread::getFaces(ia_face_state &faceState) const
     LOG1("@%s", __FUNCTION__);
 
     if (mFaceState.faces == NULL) {
-        LOGE("face state not allocated");
+        ALOGE("face state not allocated");
         return NO_INIT;
     }
 
@@ -310,7 +310,7 @@ status_t AAAThread::getFaces(ia_face_state &faceState) const
 
     faceState.num_faces = mFaceState.num_faces;
     if (faceState.num_faces > MAX_FACES_DETECTABLE) {
-        LOGW("@%s: %d faces detected, limiting to %d", __FUNCTION__,
+        ALOGW("@%s: %d faces detected, limiting to %d", __FUNCTION__,
                 faceState.num_faces, MAX_FACES_DETECTABLE);
         faceState.num_faces = MAX_FACES_DETECTABLE;
     }
@@ -519,7 +519,7 @@ AfStatus AAAThread::parseAfMeta(const AtomBuffer *buff)
             break;
         default:
             status = CAM_AF_STATUS_FAIL;
-            LOGW("Unknown AF/CAF state 0x%x, using CAM_AF_STATUS_FAIL", afState);
+            ALOGW("Unknown AF/CAF state 0x%x, using CAM_AF_STATUS_FAIL", afState);
             break;
     }
 
@@ -567,7 +567,7 @@ status_t AAAThread::handleMessageFlashStage(MessageFlashStage *msg)
     // handle enterFlashSequence()
     if (mFlashStage != FLASH_STAGE_NA) {
         status = ALREADY_EXISTS;
-        LOGE("Flash sequence already started");
+        ALOGE("Flash sequence already started");
         if (msg->value != FLASH_STAGE_NA)
             mMessageQueue.reply(MESSAGE_ID_FLASH_STAGE, status);
         return status;
@@ -577,7 +577,7 @@ status_t AAAThread::handleMessageFlashStage(MessageFlashStage *msg)
     if (mBlockForStage == FLASH_STAGE_SHOT_EXPOSED) {
         // TODO: Not receiving expose statuses for snapshot frames
         // ControlThread does snapshot capturing atm for this purpose.
-        LOGD("Not Implemented! its a deadlock");
+        ALOGD("Not Implemented! its a deadlock");
         mFlashStage = FLASH_STAGE_SHOT_WAITING;
     } else {
         // Enter pre-flash sequence by default
@@ -683,7 +683,7 @@ bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus, struct timeva
             } else if(mFramesTillExposed > FLASH_FRAME_TIMEOUT
                    || ( frameStatus != FRAME_STATUS_OK
                         && frameStatus != FRAME_STATUS_FLASH_PARTIAL) ) {
-                LOGW("PreFlash@Frame %d: FAILED     (stopping...)", mFramesTillExposed);
+                ALOGW("PreFlash@Frame %d: FAILED     (stopping...)", mFramesTillExposed);
                 status = UNKNOWN_ERROR;
                 m3AControls->setFlash(0);
                 break;
@@ -709,7 +709,7 @@ bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus, struct timeva
     }
 
     if (status != NO_ERROR) {
-        LOGD("Flash sequence failed!");
+        ALOGD("Flash sequence failed!");
         mFramesTillExposed = 0;
         mSkipForEv = 0;
         mFlashStage = FLASH_STAGE_NA;
@@ -784,7 +784,7 @@ status_t AAAThread::handleMessageNewStats(MessageNewStats *msgFrame)
     mMessageQueue.remove(MESSAGE_ID_NEW_STATS_READY, &messages);
     if(!messages.isEmpty()) {
         Vector<Message>::iterator it = messages.begin();
-        LOGW("%d frames in 3A process queue, handling timestamp "
+        ALOGW("%d frames in 3A process queue, handling timestamp "
              "%lld instead of %lld\n", messages.size(),
         ((long long)(it->data.stats.capture_timestamp.tv_sec)*1000000LL +
          (long long)(it->data.stats.capture_timestamp.tv_usec)),

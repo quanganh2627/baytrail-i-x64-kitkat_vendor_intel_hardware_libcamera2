@@ -293,7 +293,7 @@ static int parsePair(const char *str, int *first, int *second, char delim,
     int w = (int)strtol(str, &end, 10);
     // If a delimiter does not immediately follow, give up.
     if (*end != delim) {
-        LOGE("Cannot find delimiter (%c) in str=%s", delim, str);
+        ALOGE("Cannot find delimiter (%c) in str=%s", delim, str);
         return -1;
     }
 
@@ -351,7 +351,7 @@ static void parseSizesList(const char *sizesStr, Vector<Size> &sizes)
         int success = parsePair(sizeStartPtr, &width, &height, 'x',
                                  &sizeStartPtr);
         if (success == -1 || (*sizeStartPtr != ',' && *sizeStartPtr != '\0')) {
-            LOGE("Picture sizes string \"%s\" contains invalid character.", sizesStr);
+            ALOGE("Picture sizes string \"%s\" contains invalid character.", sizesStr);
             return;
         }
         sizes.push(Size(width, height));

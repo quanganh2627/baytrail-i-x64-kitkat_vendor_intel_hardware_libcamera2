@@ -101,7 +101,7 @@ status_t AtomSoc3A::setAeMode(AeMode mode)
             v4lMode = V4L2_EXPOSURE_APERTURE_PRIORITY;
             break;
         default:
-            LOGW("Unsupported AE mode (%d), using AUTO", mode);
+            ALOGW("Unsupported AE mode (%d), using AUTO", mode);
             v4lMode = V4L2_EXPOSURE_AUTO;
     }
 
@@ -109,7 +109,7 @@ status_t AtomSoc3A::setAeMode(AeMode mode)
 
     int ret = mSensorCI->setExposureMode(v4lMode);
     if (ret != 0) {
-        LOGE("Error setting AE mode (%d) in the driver", v4lMode);
+        ALOGE("Error setting AE mode (%d) in the driver", v4lMode);
         status = UNKNOWN_ERROR;
     }
 
@@ -131,7 +131,7 @@ AeMode AtomSoc3A::getAeMode()
 
     int ret = mSensorCI->getExposureMode(&v4lMode);
     if (ret != 0) {
-        LOGE("Error getting AE mode from the driver");
+        ALOGE("Error getting AE mode from the driver");
         status = UNKNOWN_ERROR;
     }
 
@@ -150,7 +150,7 @@ AeMode AtomSoc3A::getAeMode()
             mode = CAM_AE_MODE_APERTURE_PRIORITY;
             break;
         default:
-            LOGW("Unsupported AE mode (%d), using AUTO", v4lMode);
+            ALOGW("Unsupported AE mode (%d), using AUTO", v4lMode);
             mode = CAM_AE_MODE_AUTO;
     }
 
@@ -165,7 +165,7 @@ status_t AtomSoc3A::setEv(float bias)
 
     int ret = mSensorCI->setExposureBias(evValue);
     if (ret != 0) {
-        LOGE("Error setting EV in the driver");
+        ALOGE("Error setting EV in the driver");
         status = UNKNOWN_ERROR;
     }
 
@@ -180,7 +180,7 @@ status_t AtomSoc3A::getEv(float *bias)
 
     int ret = mSensorCI->getExposureBias(&evValue);
     if (ret != 0) {
-        LOGE("Error getting EV from the driver");
+        ALOGE("Error getting EV from the driver");
         status = UNKNOWN_ERROR;
     }
     *bias = ((float)evValue)/1000;
@@ -247,7 +247,7 @@ status_t AtomSoc3A::setAeSceneMode(SceneMode mode)
             v4lMode = V4L2_SCENE_MODE_BACKLIGHT;
             break;
         default:
-            LOGW("Unsupported scene mode (%d), using NONE", mode);
+            ALOGW("Unsupported scene mode (%d), using NONE", mode);
             v4lMode = V4L2_SCENE_MODE_NONE;
     }
 
@@ -255,7 +255,7 @@ status_t AtomSoc3A::setAeSceneMode(SceneMode mode)
 
     int ret = mSensorCI->setSceneMode(v4lMode);
     if (ret != 0) {
-        LOGE("Error setting scene mode in the driver");
+        ALOGE("Error setting scene mode in the driver");
         status = UNKNOWN_ERROR;
     }
 
@@ -276,7 +276,7 @@ SceneMode AtomSoc3A::getAeSceneMode()
 
     int ret = mSensorCI->getSceneMode(&v4lMode);
     if (ret != 0) {
-        LOGE("Error getting scene mode from the driver");
+        ALOGE("Error getting scene mode from the driver");
         status = UNKNOWN_ERROR;
     }
 
@@ -325,7 +325,7 @@ SceneMode AtomSoc3A::getAeSceneMode()
             mode = CAM_AE_SCENE_MODE_BACKLIGHT;
             break;
         default:
-            LOGW("Unsupported scene mode (%d), using AUTO", v4lMode);
+            ALOGW("Unsupported scene mode (%d), using AUTO", v4lMode);
             mode = CAM_AE_SCENE_MODE_AUTO;
     }
 
@@ -376,7 +376,7 @@ status_t AtomSoc3A::setAwbMode(AwbMode mode)
             v4lMode = V4L2_WHITE_BALANCE_INCANDESCENT;
             break;
         default:
-            LOGW("Unsupported AWB mode %d", mode);
+            ALOGW("Unsupported AWB mode %d", mode);
             v4lMode = V4L2_WHITE_BALANCE_AUTO;
     }
 
@@ -384,7 +384,7 @@ status_t AtomSoc3A::setAwbMode(AwbMode mode)
 
     int ret = mSensorCI->setWhiteBalance(v4lMode);
     if (ret != 0) {
-        LOGE("Error setting WB mode (%d) in the driver", v4lMode);
+        ALOGE("Error setting WB mode (%d) in the driver", v4lMode);
         status = UNKNOWN_ERROR;
     }
 
@@ -405,7 +405,7 @@ AwbMode AtomSoc3A::getAwbMode()
 
     int ret = mSensorCI->getWhiteBalance(&v4lMode);
     if (ret != 0) {
-        LOGE("Error getting WB mode from the driver");
+        ALOGE("Error getting WB mode from the driver");
         status = UNKNOWN_ERROR;
     }
 
@@ -436,7 +436,7 @@ AwbMode AtomSoc3A::getAwbMode()
             mode = CAM_AWB_MODE_SHADOW;
             break;
         default:
-            LOGW("Unsupported AWB mode %d", v4lMode);
+            ALOGW("Unsupported AWB mode %d", v4lMode);
             mode = CAM_AWB_MODE_AUTO;
     }
 
@@ -455,7 +455,7 @@ status_t AtomSoc3A::setManualIso(int iso)
 
     int ret = mSensorCI->setIso(iso);
     if (ret != 0) {
-        LOGE("Error setting ISO in the driver");
+        ALOGE("Error setting ISO in the driver");
         status = UNKNOWN_ERROR;
     }
 
@@ -474,7 +474,7 @@ status_t AtomSoc3A::getManualIso(int *iso)
 
     int ret = mSensorCI->getIso(iso);
     if (ret != 0) {
-        LOGE("Error getting ISO from the driver");
+        ALOGE("Error getting ISO from the driver");
         status = UNKNOWN_ERROR;
     }
 
@@ -488,7 +488,7 @@ status_t AtomSoc3A::setIsoMode(IsoMode mode)
 
     int ret = mSensorCI->setIsoMode(mode);
     if (ret != 0) {
-        LOGD("Error setting ISO mode in the driver");
+        ALOGD("Error setting ISO mode in the driver");
         status = UNKNOWN_ERROR;
     }
 
@@ -523,14 +523,14 @@ status_t AtomSoc3A::setAeMeteringMode(MeteringMode mode)
             v4lMode = V4L2_EXPOSURE_METERING_CENTER_WEIGHTED;
             break;
         default:
-            LOGW("Unsupported AE metering mode (%d), using AVERAGE", mode);
+            ALOGW("Unsupported AE metering mode (%d), using AVERAGE", mode);
             v4lMode = V4L2_EXPOSURE_METERING_AVERAGE;
             break;
     }
 
     int ret = mSensorCI->setAeMeteringMode(v4lMode);
     if (ret != 0) {
-        LOGE("Error setting AE metering mode (%d) in the driver", v4lMode);
+        ALOGE("Error setting AE metering mode (%d) in the driver", v4lMode);
         status = UNKNOWN_ERROR;
     }
 
@@ -551,7 +551,7 @@ MeteringMode AtomSoc3A::getAeMeteringMode()
 
     int ret = mSensorCI->getAeMeteringMode(&v4lMode);
     if (ret != 0) {
-        LOGE("Error getting AE metering mode from the driver");
+        ALOGE("Error getting AE metering mode from the driver");
         status = UNKNOWN_ERROR;
     }
 
@@ -567,7 +567,7 @@ MeteringMode AtomSoc3A::getAeMeteringMode()
             mode = CAM_AE_METERING_MODE_AUTO;
             break;
         default:
-            LOGW("Unsupported AE metering mode (%d), using AUTO", v4lMode);
+            ALOGW("Unsupported AE metering mode (%d), using AUTO", v4lMode);
             mode = CAM_AE_METERING_MODE_AUTO;
             break;
     }
@@ -604,7 +604,7 @@ status_t AtomSoc3A::set3AColorEffect(const char *effect)
     else if (effect == IntelCameraParameters::EFFECT_STILL_SKIN_WHITEN_HIGH)
         v4l2Effect = (v4l2_colorfx)V4L2_COLORFX_SKIN_WHITEN_HIGH;
     else if (strncmp(effect, CameraParameters::EFFECT_NONE, strlen(effect)) != 0){
-        LOGE("Color effect not found.");
+        ALOGE("Color effect not found.");
         status = -1;
         // Fall back to the effect NONE
     }
@@ -634,14 +634,14 @@ status_t AtomSoc3A::setAeFlickerMode(FlickerMode flickerMode)
         theMode = V4L2_CID_POWER_LINE_FREQUENCY_AUTO;
         break;
     default:
-        LOGE("unsupported light frequency mode(%d)", (int)flickerMode);
+        ALOGE("unsupported light frequency mode(%d)", (int)flickerMode);
         status = BAD_VALUE;
         return status;
     }
 
     int ret = mSensorCI->setAeFlickerMode(theMode);
     if (ret != 0) {
-        LOGE("Error setting AE flicker mode (%d) in the driver", theMode);
+        ALOGE("Error setting AE flicker mode (%d) in the driver", theMode);
         status = UNKNOWN_ERROR;
     }
 
@@ -657,7 +657,7 @@ void AtomSoc3A::getDefaultParams(CameraParameters *params, CameraParameters *int
 {
     LOG1("@%s", __FUNCTION__);
     if (!params) {
-        LOGE("params is null!");
+        ALOGE("params is null!");
         return;
     }
 
@@ -698,7 +698,7 @@ status_t AtomSoc3A::setAfMode(AfMode mode)
             v4lMode = V4L2_AUTO_FOCUS_RANGE_INFINITY;
             break;
         default:
-            LOGW("Unsupported AF mode (%d), using AUTO", mode);
+            ALOGW("Unsupported AF mode (%d), using AUTO", mode);
             v4lMode = V4L2_AUTO_FOCUS_RANGE_AUTO;
             break;
     }
@@ -707,7 +707,7 @@ status_t AtomSoc3A::setAfMode(AfMode mode)
 
     int ret = mSensorCI->setAfMode(v4lMode);
     if (ret != 0) {
-        LOGE("Error setting AF  mode (%d) in the driver", v4lMode);
+        ALOGE("Error setting AF  mode (%d) in the driver", v4lMode);
         status = UNKNOWN_ERROR;
     }
 
@@ -729,7 +729,7 @@ AfMode AtomSoc3A::getAfMode()
 
     int ret = mSensorCI->getAfMode(&v4lMode);
     if (ret != 0) {
-        LOGE("Error getting AF mode from the driver");
+        ALOGE("Error getting AF mode from the driver");
         status = UNKNOWN_ERROR;
     }
 
@@ -745,7 +745,7 @@ AfMode AtomSoc3A::getAfMode()
             mode = CAM_AF_MODE_INFINITY;
             break;
         default:
-            LOGW("Unsupported AF mode (%d), using AUTO", v4lMode);
+            ALOGW("Unsupported AF mode (%d), using AUTO", v4lMode);
             mode = CAM_AF_MODE_AUTO;
             break;
     }
@@ -781,7 +781,7 @@ status_t AtomSoc3A::setAfEnabled(bool enable)
 
     int ret = mSensorCI->setAfEnabled(enable);
     if (ret != 0) {
-        LOGE("Error setting Auto Focus (%d) in the driver", enable);
+        ALOGE("Error setting Auto Focus (%d) in the driver", enable);
         status = UNKNOWN_ERROR;
     }
 
@@ -795,7 +795,7 @@ int AtomSoc3A::get3ALock()
 
     int ret = mSensorCI->get3ALock(&aaaLock);
     if (ret != 0) {
-        LOGE("Error getting 3A Lock setting from the driver");
+        ALOGE("Error getting 3A Lock setting from the driver");
     }
 
     return aaaLock;
@@ -826,7 +826,7 @@ status_t AtomSoc3A::setAeLock(bool enable)
 
     int ret = mSensorCI->set3ALock(aaaLock);
     if (ret != 0) {
-        LOGE("Error setting AE lock (%d) in the driver", enable);
+        ALOGE("Error setting AE lock (%d) in the driver", enable);
         status = UNKNOWN_ERROR;
     }
 
@@ -858,7 +858,7 @@ status_t AtomSoc3A::setAfLock(bool enable)
 
     int ret = mSensorCI->set3ALock(aaaLock);
     if (ret != 0) {
-        LOGE("Error setting AF lock (%d) in the driver", enable);
+        ALOGE("Error setting AF lock (%d) in the driver", enable);
         status = UNKNOWN_ERROR;
     }
 
@@ -890,7 +890,7 @@ status_t AtomSoc3A::setAwbLock(bool enable)
 
     int ret = mSensorCI->set3ALock(aaaLock);
     if (ret != 0) {
-        LOGE("Error setting AWB lock (%d) in the driver", enable);
+        ALOGE("Error setting AWB lock (%d) in the driver", enable);
         status = UNKNOWN_ERROR;
     }
 
@@ -911,7 +911,7 @@ status_t AtomSoc3A::setManualShutter(float expTime)
 
     int ret = mSensorCI->setExposureTime(time);
     if (ret != 0) {
-        LOGE("Error setting Exposure time (%d) in the driver", time);
+        ALOGE("Error setting Exposure time (%d) in the driver", time);
         status = UNKNOWN_ERROR;
     }
 
@@ -941,14 +941,14 @@ status_t AtomSoc3A::setAeFlashMode(FlashMode mode)
             modeTmp = V4L2_FLASH_LED_MODE_TORCH;
             break;
         default:
-            LOGW("Unsupported Flash mode (%d), using OFF", mode);
+            ALOGW("Unsupported Flash mode (%d), using OFF", mode);
             modeTmp = V4L2_FLASH_LED_MODE_NONE;
             break;
     }
 
     int ret = mSensorCI->setAeFlashMode(modeTmp);
     if (ret != 0) {
-        LOGD("Error setting Flash mode (%d) in the driver", modeTmp);
+        ALOGD("Error setting Flash mode (%d) in the driver", modeTmp);
         status = UNKNOWN_ERROR;
     }
 
@@ -969,7 +969,7 @@ FlashMode AtomSoc3A::getAeFlashMode()
 
     int ret = mSensorCI->getAeFlashMode(&v4lMode);
     if (ret != 0) {
-        LOGD("Error getting Flash mode from the driver");
+        ALOGD("Error getting Flash mode from the driver");
         status = UNKNOWN_ERROR;
     }
 
@@ -985,7 +985,7 @@ FlashMode AtomSoc3A::getAeFlashMode()
             mode = CAM_AE_FLASH_MODE_TORCH;
             break;
         default:
-            LOGW("Unsupported Flash mode (%d), using OFF", v4lMode);
+            ALOGW("Unsupported Flash mode (%d), using OFF", v4lMode);
             mode = CAM_AE_FLASH_MODE_OFF;
             break;
     }

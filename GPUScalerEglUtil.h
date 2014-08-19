@@ -98,17 +98,17 @@ void pzEglUtil_printEGLConfiguration(EGLDisplay dpy, EGLConfig config) {
 
 void pzEglUtil_checkEglError(const char* op, EGLBoolean returnVal = EGL_TRUE) {
     if (returnVal != EGL_TRUE) {
-        LOGE("%s() returned %d\n", op, returnVal);
+        ALOGE("%s() returned %d\n", op, returnVal);
     }
     for (EGLint error = eglGetError(); error != EGL_SUCCESS; error =
             eglGetError()) {
-        LOGE("after %s() eglError %s (0x%x)\n", op, strerror(error), error);
+        ALOGE("after %s() eglError %s (0x%x)\n", op, strerror(error), error);
     }
 }
 
 void pzEglUtil_checkGlError(const char* op) {
     for (GLint error = glGetError(); error; error = glGetError()) {
-        LOGE("%s() glError (0x%x)\n", op, error);
+        ALOGE("%s() glError (0x%x)\n", op, error);
     }
 }
 

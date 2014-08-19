@@ -105,12 +105,12 @@ void AccManagerThread::previewBufferCallback(AtomBuffer* frame, ICallbackPreview
     LOG2("@%s", __FUNCTION__);
 
     if (t != ICallbackPreview::OUTPUT_WITH_DATA) {
-        LOGE("Unexpected preview buffer callback type!");
+        ALOGE("Unexpected preview buffer callback type!");
         return;
     }
 
     if (frame == NULL) {
-        LOGW("@%s: NULL AtomBuffer frame", __FUNCTION__);
+        ALOGW("@%s: NULL AtomBuffer frame", __FUNCTION__);
         return;
     }
 
@@ -142,7 +142,7 @@ status_t AccManagerThread::handleMessageFrame(MessageFrame msg)
 
         if (mFrameOne.inUse) {
             if (mFrameTwo.inUse) {
-                LOGE("Too many frames grabbed!");
+                ALOGE("Too many frames grabbed!");
                 msg.img.owner->returnBuffer(&msg.img);
                 return UNKNOWN_ERROR;
             }
@@ -156,7 +156,7 @@ status_t AccManagerThread::handleMessageFrame(MessageFrame msg)
             AtomBuffer tmpBuf;
             mCallbacks->allocateMemory(&tmpBuf, msg.img.size);
             if (!tmpBuf.buff) {
-                LOGE("getting memory failed\n");
+                ALOGE("getting memory failed\n");
                 msg.img.owner->returnBuffer(&msg.img);
                 return UNKNOWN_ERROR;
             }
@@ -211,7 +211,7 @@ status_t AccManagerThread::handleMessageReturnBuffer(const MessageReturn& msg)
         mFrameTwo.inUse = false;
         mFramesGrabbed--;
     } else {
-        LOGE("No frame with that frame counter grabbed: %d", msg.idx);
+        ALOGE("No frame with that frame counter grabbed: %d", msg.idx);
         return UNKNOWN_ERROR;
     }
 
@@ -235,7 +235,7 @@ status_t AccManagerThread::handleMessageAlloc(const MessageAlloc& msg)
     LOG1("@%s: size = %d", __FUNCTION__, msg.size);
 
     if (mArgumentBuffers.size() >= MAX_NUMBER_ARGUMENT_BUFFERS) {
-        LOGE("Cannot allocate more buffers!");
+        ALOGE("Cannot allocate more buffers!");
         return UNKNOWN_ERROR;
     }
 
@@ -243,7 +243,7 @@ status_t AccManagerThread::handleMessageAlloc(const MessageAlloc& msg)
 
     mCallbacks->allocateMemory(&tmpBuf, msg.size);
     if (!tmpBuf.buff) {
-        LOGE("getting memory failed\n");
+        ALOGE("getting memory failed\n");
         return UNKNOWN_ERROR;
     }
 
@@ -278,12 +278,12 @@ status_t AccManagerThread::handleMessageFree(const MessageBuffer& msg)
     LOG1("@%s: idx = %d", __FUNCTION__, msg.idx);
 
     if (mArgumentBuffers.size() <= msg.idx) {
-        LOGE("Argument buffer has not been allocated");
+        ALOGE("Argument buffer has not been allocated");
         return UNKNOWN_ERROR;
     }
 
     if (mArgumentBuffers[msg.idx].ptr != NULL) {
-        LOGE("Argument is still mapped!");
+        ALOGE("Argument is still mapped!");
         return UNKNOWN_ERROR;
     }
 
@@ -313,12 +313,12 @@ status_t AccManagerThread::handleMessageMap(const MessageMap& msg)
     status_t status = NO_ERROR;
 
     if (mArgumentBuffers.size() <= msg.idx) {
-        LOGE("Argument buffer has not been allocated");
+        ALOGE("Argument buffer has not been allocated");
         return UNKNOWN_ERROR;
     }
 
     if (mArgumentBuffers[msg.idx].ptr != NULL) {
-        LOGW("Argument is already mapped!");
+        ALOGW("Argument is already mapped!");
 
         // send ISP pointer to upper layers
         mCallbacksThread->accManagerPointer((int) mArgumentBuffers[msg.idx].ptr, msg.idx);
@@ -338,7 +338,7 @@ status_t AccManagerThread::handleMessageMap(const MessageMap& msg)
         // send ISP pointer to upper layers
         mCallbacksThread->accManagerPointer((int) ispPtr, msg.idx);
     } else {
-        LOGE("Could not map buffer, status: %d", status);
+        ALOGE("Could not map buffer, status: %d", status);
     }
 
     return status;
@@ -363,7 +363,7 @@ status_t AccManagerThread::handleMessageUnmap(const MessageMap& msg)
     status_t status = NO_ERROR;
 
     if (mArgumentBuffers[msg.idx].ptr == NULL) {
-        LOGE("Argument not mapped!");
+        ALOGE("Argument not mapped!");
         return UNKNOWN_ERROR;
     }
 
@@ -374,7 +374,7 @@ status_t AccManagerThread::handleMessageUnmap(const MessageMap& msg)
         // delete ISP pointer
         mArgumentBuffers.editItemAt(msg.idx).ptr = NULL;
     } else {
-        LOGE("Could not unmap buffer, status: %d", status);
+        ALOGE("Could not unmap buffer, status: %d", status);
     }
 
     return status;
@@ -397,7 +397,7 @@ status_t AccManagerThread::handleMessageSetArgToBeSend(const MessageMap& msg)
     LOG1("@%s: idx = %d", __FUNCTION__, msg.idx);
 
     if (mArgumentBuffers[msg.idx].ptr == NULL) {
-        LOGE("Argument not mapped!");
+        ALOGE("Argument not mapped!");
         return UNKNOWN_ERROR;
     }
 
@@ -419,7 +419,7 @@ status_t AccManagerThread::sendFirmwareArguments()
                                                            (unsigned long) mArgumentBuffers[i].ptr,
                                                            mArgumentBuffers[i].mem.size);
         if (status != NO_ERROR) {
-            LOGE("Could not sendargument, status:%d", status);
+            ALOGE("Could not sendargument, status:%d", status);
             return status;
         }
     }
@@ -448,21 +448,21 @@ status_t AccManagerThread::handleMessageConfigureIspStandalone(const MessageConf
     switch (msg.mode) {
         case STANDALONE_START:
             if (mFirmwareBuffer == NULL) {
-                LOGE("No firmware loaded!");
+                ALOGE("No firmware loaded!");
                 return UNKNOWN_ERROR;
             }
             if (mIspHandle->loadAccFirmware(mFirmwareBuffer, mFirmwareBufferSize, &fw_handle) != NO_ERROR) {
-                LOGE("Error loading standalone firmware!");
+                ALOGE("Error loading standalone firmware!");
                 return UNKNOWN_ERROR;
             }
             mFirmwareLoaded = true;
             mFirmwareHandle = fw_handle;
             if (sendFirmwareArguments() != NO_ERROR) {
-                LOGE("Error sending arguments to standalone firmware!");
+                ALOGE("Error sending arguments to standalone firmware!");
                 return UNKNOWN_ERROR;
             }
             if (mIspHandle->startFirmware(mFirmwareHandle) != NO_ERROR) {
-                LOGE("Error starting standalone firmware");
+                ALOGE("Error starting standalone firmware");
                 return UNKNOWN_ERROR;
             }
             break;
@@ -472,20 +472,20 @@ status_t AccManagerThread::handleMessageConfigureIspStandalone(const MessageConf
             break;
         case STANDALONE_ABORT:
             if (mIspHandle->abortFirmware(mFirmwareHandle, 0) != NO_ERROR) {
-                LOGE("Could not abort standalone firmware");
+                ALOGE("Could not abort standalone firmware");
                 return UNKNOWN_ERROR;
             }
             break;
         case STANDALONE_UNLOAD:
             if (mIspHandle->unloadAccFirmware(mFirmwareHandle) != NO_ERROR) {
-                LOGE("Could not unload standalone firmware");
+                ALOGE("Could not unload standalone firmware");
                 return UNKNOWN_ERROR;
             } else {
                 mFirmwareLoaded = false;
             }
             break;
         default:
-            LOGE("Invalid operation %d", msg.mode);
+            ALOGE("Invalid operation %d", msg.mode);
             return UNKNOWN_ERROR;
     }
 
@@ -509,7 +509,7 @@ status_t AccManagerThread::handleMessageLoad(const MessageFirmware& msg)
     LOG1("@%s", __FUNCTION__);
 
     if (mArgumentBuffers.size() <= msg.idx) {
-        LOGE("Firmware data not in buffer allocated by us!");
+        ALOGE("Firmware data not in buffer allocated by us!");
         return UNKNOWN_ERROR;
     }
 
@@ -537,7 +537,7 @@ status_t AccManagerThread::handleMessageLoadIspExtensions()
     unsigned int fw_handle;
 
     if (mFirmwareBuffer == NULL) {
-        LOGE("No firmware loaded!");
+        ALOGE("No firmware loaded!");
         status = UNKNOWN_ERROR;
     } else {
         if (mIspHandle->loadAccPipeFirmware(mFirmwareBuffer, mFirmwareBufferSize, &fw_handle) == NO_ERROR) {
@@ -545,7 +545,7 @@ status_t AccManagerThread::handleMessageLoadIspExtensions()
             mFirmwareHandle = fw_handle;
             sendFirmwareArguments();
         } else {
-            LOGE("Error loading firmware to pipeline!");
+            ALOGE("Error loading firmware to pipeline!");
             status = UNKNOWN_ERROR;
         }
     }
@@ -585,11 +585,11 @@ status_t AccManagerThread::handleMessageUnloadIspExtensions()
         if (mIspHandle->unloadAccFirmware(mFirmwareHandle) == NO_ERROR) {
             mFirmwareLoaded = false;
         } else {
-            LOGE("Error unloading firmware!");
+            ALOGE("Error unloading firmware!");
             status = UNKNOWN_ERROR;
         }
     } else {
-        LOGW("No firmware extension loaded!");
+        ALOGW("No firmware extension loaded!");
     }
 
     mMessageQueue.reply(MESSAGE_ID_UNLOAD_ISP_EXTENSIONS, status);
@@ -657,7 +657,7 @@ status_t AccManagerThread::waitForAndExecuteMessage()
             break;
     }
     if (status != NO_ERROR) {
-        LOGE("operation failed, ID = %d, status = %d", msg.id, status);
+        ALOGE("operation failed, ID = %d, status = %d", msg.id, status);
     }
     return status;
 }

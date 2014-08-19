@@ -172,7 +172,7 @@ status_t PostCaptureThread::waitForAndExecuteMessage()
             break;
     }
     if (status != NO_ERROR) {
-        LOGE("operation failed, ID = %d, status = %d", msg.id, status);
+        ALOGE("operation failed, ID = %d, status = %d", msg.id, status);
     }
     return status;
 }

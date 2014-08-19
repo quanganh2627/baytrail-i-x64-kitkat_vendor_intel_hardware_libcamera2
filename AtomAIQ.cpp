@@ -139,7 +139,7 @@ status_t AtomAIQ::_init3A()
     ia_binary_data cpfData;
     status = getAiqConfig(&cpfData);
     if (status != NO_ERROR) {
-        LOGE("Error retrieving sensor params");
+        ALOGE("Error retrieving sensor params");
         return status;
     }
 
@@ -172,10 +172,10 @@ status_t AtomAIQ::_init3A()
 
     mMkn = ia_mkn_init(ia_mkn_cfg_compression, 32000, 100000);
     if(mMkn == NULL)
-        LOGE("Error makernote init");
+        ALOGE("Error makernote init");
     ret = ia_mkn_enable(mMkn, true);
     if(ret != ia_err_none)
-        LOGE("Error makernote init");
+        ALOGE("Error makernote init");
 
     ia_cmc_t *cmc = ia_cmc_parser_init((ia_binary_data*)&(cpfData));
     m3aState.ia_aiq_handle = ia_aiq_init((ia_binary_data*)&(cpfData),
@@ -196,7 +196,7 @@ status_t AtomAIQ::_init3A()
     }
 
     if (mISPAdaptor == NULL) {
-        LOGE("Ambiguous CSS version used: %d.%d", mISP->getCssMajorVersion(), mISP->getCssMinorVersion());
+        ALOGE("Ambiguous CSS version used: %d.%d", mISP->getCssMajorVersion(), mISP->getCssMinorVersion());
         cameranvm_delete(aicNvm);
         return UNKNOWN_ERROR;
     }
@@ -335,7 +335,7 @@ status_t AtomAIQ::switchModeAndRate(AtomMode mode, float fps)
         break;
     default:
         isp_mode = ia_aiq_frame_use_preview;
-        LOGW("SwitchMode: Wrong sensor mode %d", mode);
+        ALOGW("SwitchMode: Wrong sensor mode %d", mode);
         break;
     }
 
@@ -511,7 +511,7 @@ status_t AtomAIQ::setAeSceneMode(SceneMode mode)
         mAwbInputParameters.manual_cct_range = &m3aState.cct_range;
         break;
     default:
-        LOGE("Get: invalid AE scene mode (%d).", mode);
+        ALOGE("Get: invalid AE scene mode (%d).", mode);
     }
     return NO_ERROR;
 }
@@ -621,7 +621,7 @@ status_t AtomAIQ::setAfMode(AfMode mode)
         setAfFocusRange(ia_aiq_af_range_extended);
         break;
     default:
-        LOGE("Set: invalid AF mode: %d. Using AUTO!", mode);
+        ALOGE("Set: invalid AF mode: %d. Using AUTO!", mode);
         mode = CAM_AF_MODE_AUTO;
         setAfFocusMode(ia_aiq_af_operation_mode_auto);
         setAfFocusRange(ia_aiq_af_range_normal);
@@ -664,7 +664,7 @@ status_t AtomAIQ::setAeFlashMode(FlashMode mode)
         wr_val = ia_aiq_flash_mode_auto;
         break;
     default:
-        LOGE("Set: invalid flash mode: %d. Using AUTO!", mode);
+        ALOGE("Set: invalid flash mode: %d. Using AUTO!", mode);
         mode = CAM_AE_FLASH_MODE_AUTO;
         wr_val = ia_aiq_flash_mode_auto;
     }
@@ -714,7 +714,7 @@ FlashStage AtomAIQ::getAeFlashNecessity()
             ret = CAM_FLASH_STAGE_MAIN;
             break;
         default:
-            LOGE("Unkown ae results flash status!");
+            ALOGE("Unkown ae results flash status!");
             ret = CAM_FLASH_STAGE_NONE;
             break;
         }
@@ -759,7 +759,7 @@ status_t AtomAIQ::setAwbMode (AwbMode mode)
         wr_val = ia_aiq_awb_operation_mode_auto;
         break;
     default:
-        LOGE("Set: invalid AWB mode: %d. Using AUTO!", mode);
+        ALOGE("Set: invalid AWB mode: %d. Using AUTO!", mode);
         mode = CAM_AWB_MODE_AUTO;
         wr_val = ia_aiq_awb_operation_mode_auto;
     }
@@ -804,7 +804,7 @@ status_t AtomAIQ::setAeMeteringMode(MeteringMode mode)
         wr_val = ia_aiq_ae_metering_mode_evaluative;
         break;
     default:
-        LOGE("Set: invalid AE metering mode: %d. Using AUTO!", mode);
+        ALOGE("Set: invalid AE metering mode: %d. Using AUTO!", mode);
         wr_val = ia_aiq_ae_metering_mode_evaluative;
     }
     mAeInputParameters.metering_mode = wr_val;
@@ -830,7 +830,7 @@ MeteringMode AtomAIQ::getAeMeteringMode()
         mode = CAM_AE_METERING_MODE_CENTER;
         break;
     default:
-        LOGE("Get: invalid AE metering mode: %d. Using SPOT!", rd_val);
+        ALOGE("Get: invalid AE metering mode: %d. Using SPOT!", rd_val);
         mode = CAM_AE_METERING_MODE_SPOT;
     }
 
@@ -884,7 +884,7 @@ AfStatus AtomAIQ::getCAFStatus()
 
     if (mStillAfStart != 0 && status == CAM_AF_STATUS_BUSY) {
         if (((systemTime() - mStillAfStart) / 1000000) > AIQ_MAX_TIME_FOR_AF) {
-            LOGW("Auto-focus sequence for still capture is taking too long. Cancelling!");
+            ALOGW("Auto-focus sequence for still capture is taking too long. Cancelling!");
             status = CAM_AF_STATUS_FAIL;
         }
     }
@@ -931,7 +931,7 @@ status_t AtomAIQ::set3AColorEffect(const char *effect)
     else if (strncmp(effect, IntelCameraParameters::EFFECT_VIVID, strlen(effect)) == 0)
         ispEffect = ia_isp_effect_vivid;
     else if (strncmp(effect, CameraParameters::EFFECT_NONE, strlen(effect)) != 0){
-        LOGE("Color effect not found.");
+        ALOGE("Color effect not found.");
         status = -1;
         // Fall back to the effect NONE
     }
@@ -1011,7 +1011,7 @@ AfStatus AtomAIQ::isStillAfComplete()
     LOG2("@%s", __FUNCTION__);
     if (mStillAfStart == 0) {
         // startStillAf wasn't called? return error
-        LOGE("Call startStillAf before calling %s!", __FUNCTION__);
+        ALOGE("Call startStillAf before calling %s!", __FUNCTION__);
         return CAM_AF_STATUS_FAIL;
     }
     AfStatus ret = getCAFStatus();
@@ -1115,17 +1115,17 @@ int AtomAIQ::applyEvGroup(float biases[], int depth, SensorAeConfig aeResults[])
 {
     struct atomisp_exposure exposures[depth];
     if (biases == NULL || aeResults == NULL || depth <= 1) {
-        LOGE("Invalid ev group setting");
+        ALOGE("Invalid ev group setting");
         return -1;
     }
 
     if (!m3aState.ia_aiq_handle) {
-        LOGE("Invalid aiq handle to apply ae group");
+        ALOGE("Invalid aiq handle to apply ae group");
         return -1;
     }
 
     if (!mBracketingRunning) {
-        LOGE("not allowed to apply group of Ev in normal mode");
+        ALOGE("not allowed to apply group of Ev in normal mode");
         return -1;
     } else {
         mAeBracketingInputParameters = mAeInputParameters;
@@ -1144,7 +1144,7 @@ int AtomAIQ::applyEvGroup(float biases[], int depth, SensorAeConfig aeResults[])
             exposures[i].gain[1] = mAEBracketingResult->exposures[0].sensor_exposure->digital_gain_global;
             exposures[i].aperture = 100;
 
-            LOGD("@%s I%d itime0:%d itime1:%d gain0:%d gain1:%d",__FUNCTION__, i,
+            ALOGD("@%s I%d itime0:%d itime1:%d gain0:%d gain1:%d",__FUNCTION__, i,
                     exposures[i].integration_time[0], exposures[i].integration_time[1],
                     exposures[i].gain[0], exposures[i].gain[1]);
             aeResults[i].expTime = 0;
@@ -1160,7 +1160,7 @@ int AtomAIQ::applyEvGroup(float biases[], int depth, SensorAeConfig aeResults[])
             else
                 aeResults[i].totalGain = (mAEBracketingResult->exposures[0].exposure)->digital_gain;
         } else {
-            LOGE("Invalid AE bracketing result");
+            ALOGE("Invalid AE bracketing result");
             return -1;
         }
     }
@@ -1279,7 +1279,7 @@ status_t AtomAIQ::getManualIso(int *ret)
         // in auto iso mode result current real iso values
         *ret = mAeState.ae_results->exposures[0].exposure->iso;
     } else {
-        LOGW("no ae result available for ISO value");
+        ALOGW("no ae result available for ISO value");
         *ret = 0;
         status = UNKNOWN_ERROR;
     }
@@ -1417,7 +1417,7 @@ status_t AtomAIQ::getSmartSceneMode(String8 &sceneMode, bool &sceneHdr)
         sceneMode.setTo("barcode");
         break;
     default:
-        LOGW("Unhandled detected scene mode: 0x%x", mDetectedSceneMode);
+        ALOGW("Unhandled detected scene mode: 0x%x", mDetectedSceneMode);
         sceneMode.setTo("auto");
         break;
    }
@@ -1449,7 +1449,7 @@ ia_binary_data *AtomAIQ::get3aMakerNote(ia_mkn_trg mknMode)
     ia_binary_data *makerNote;
     makerNote = (ia_binary_data *)malloc(sizeof(ia_binary_data));
     if (!makerNote) {
-        LOGE("Error allocation memory for mknote!");
+        ALOGE("Error allocation memory for mknote!");
         return NULL;
     }
     // detailed makernote data for RAW images
@@ -1463,7 +1463,7 @@ ia_binary_data *AtomAIQ::get3aMakerNote(ia_mkn_trg mknMode)
     {
         memcpy(makerNote->data, mkn_binary_data.data, makerNote->size);
     } else {
-        LOGE("Error allocation memory for mknote data!");
+        ALOGE("Error allocation memory for mknote data!");
         free(makerNote);
         return NULL;
     }
@@ -1686,7 +1686,7 @@ ia_aiq_ae_results* AtomAIQ::pickAeFeedbackResults()
     ia_aiq_ae_results *feedback_results = &mAeState.feedback_results.results;
     ia_aiq_ae_results *stored_results = peekAeStoredResults(mAeState.feedback_delay);
     if (stored_results == NULL) {
-        LOGE("Failed to pick AE results from history, delay %d", mAeState.feedback_delay);
+        ALOGE("Failed to pick AE results from history, delay %d", mAeState.feedback_delay);
         return NULL;
     } else {
         LOG2("Picked AE results from history, delay %d, depth %d",
@@ -1741,7 +1741,7 @@ int AtomAIQ::applyExposure(ia_aiq_exposure_sensor_parameters *sensor_exposure)
     /* Apply Sensor settings as exposure changes*/
     ret = mSensorCI->setExposure(&atomispExposure);
     if (ret != 0) {
-        LOGE("Exposure applying failed");
+        ALOGE("Exposure applying failed");
     }
 
     return ret;
@@ -1794,17 +1794,17 @@ bool AtomAIQ::changeSensorMode(void)
     CLEAR(sensor_mode_data);
 
     if (mSensorCI->getModeInfo(&sensor_mode_data) < 0) {
-        LOGE("Get mode info failed");
+        ALOGE("Get mode info failed");
         return false;
     }
 
     if (sensor_mode_data.binning_factor_y == 0) {
-        LOGE("error: binning factor y is zero!");
+        ALOGE("error: binning factor y is zero!");
         return false;
     }
 
     if (mISP->getIspParameters(&m3aState.results.isp_params) < 0) {
-        LOGE("get isp parameters failed");
+        ALOGE("get isp parameters failed");
         return false;
     }
 
@@ -1852,7 +1852,7 @@ bool AtomAIQ::changeSensorMode(void)
         m3aState.stats->grid_info = m3aState.curr_grid_info;
         m3aState.stats_valid  = false;
     } else {
-        LOGE("Statistics memory allocation failed");
+        ALOGE("Statistics memory allocation failed");
         return false;
     }
 
@@ -1867,9 +1867,9 @@ status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct, in
     PERFORMANCE_TRACES_AAA_PROFILER_START();
     ret = mISP->getIspStatistics(m3aState.stats);
     if (ret == -EAGAIN) {
-        LOGV("buffer for isp statistics reallocated according resolution changing\n");
+        ALOGV("buffer for isp statistics reallocated according resolution changing\n");
         if (changeSensorMode() == false)
-            LOGE("error in calling changeSensorMode()\n");
+            ALOGE("error in calling changeSensorMode()\n");
         ret = mISP->getIspStatistics(m3aState.stats);
     }
 
@@ -2207,7 +2207,7 @@ status_t AtomAIQ::runAeMain()
         }
 
         if (mAeState.ae_results == NULL) {
-           LOGE("Failed to store AE Results");
+           ALOGE("Failed to store AE Results");
            mAeState.ae_results = new_ae_results;
         }
     } else {
@@ -2536,12 +2536,12 @@ int AtomAIQ::dumpMknToFile()
         LOG2("filename:%s",  fileName.string());
         fp = fopen (fileName.string(), "w+");
         if (fp == NULL) {
-            LOGE("open file %s failed %s", fileName.string(), strerror(errno));
+            ALOGE("open file %s failed %s", fileName.string(), strerror(errno));
             put3aMakerNote(aaaMkNote);
             return -1;
         }
         if ((bytes = fwrite(aaaMkNote->data, aaaMkNote->size, 1, fp)) < (size_t)aaaMkNote->size)
-            LOGW("Write less mkn bytes to %s: %d, %d", fileName.string(), aaaMkNote->size, bytes);
+            ALOGW("Write less mkn bytes to %s: %d, %d", fileName.string(), aaaMkNote->size, bytes);
         fclose (fp);
     }
     return 0;
@@ -2550,7 +2550,7 @@ int AtomAIQ::dumpMknToFile()
 int AtomAIQ::enableFpn(bool enable)
 {
     // No longer supported, use CPF instead
-    LOGE("%s: ERROR, should not be in here", __FUNCTION__);
+    ALOGE("%s: ERROR, should not be in here", __FUNCTION__);
     return NO_ERROR;
 }
 
@@ -2614,7 +2614,7 @@ void AtomAIQ::getDefaultParams(CameraParameters *params, CameraParameters *intel
 {
     LOG2("@%s", __FUNCTION__);
     if (!params) {
-        LOGE("params is null!");
+        ALOGE("params is null!");
         return;
     }
 
@@ -2695,9 +2695,9 @@ void AtomAIQ::getSensorFrameParams(ia_aiq_frame_params *frame_params)
     // the driver gives incorrect values for the frame width or height
         frame_params->horizontal_scaling_numerator = 0;
         frame_params->vertical_scaling_numerator = 0;
-        LOGE("Invalid sensor frame parameters. Cropped image width: %d, cropped image height: %d",
+        ALOGE("Invalid sensor frame parameters. Cropped image width: %d, cropped image height: %d",
               frame_params->cropped_image_width, frame_params->cropped_image_height );
-        LOGE("This causes lens shading table not to be used.");
+        ALOGE("This causes lens shading table not to be used.");
     } else {
         frame_params->horizontal_scaling_numerator =
                 sensor_mode_data.output_width * 254 * sensor_mode_data.binning_factor_x/ frame_params->cropped_image_width;

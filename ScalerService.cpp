@@ -149,7 +149,7 @@ status_t ScalerService::handleMessageScaleAndZoom(MessageScaleAndZoom &msg)
     LOG2("@%s", __FUNCTION__);
 
     if (mHWScaler == NULL) {
-        LOGE("Process before register buffer, It should not happen.");
+        ALOGE("Process before register buffer, It should not happen.");
         mMessageQueue.reply(MESSAGE_ID_SCALE_AND_ZOOM, INVALID_OPERATION);
         return INVALID_OPERATION;
     }

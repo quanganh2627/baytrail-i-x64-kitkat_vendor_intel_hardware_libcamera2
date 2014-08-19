@@ -69,7 +69,7 @@ public:
      * \see system/core/include/android/log.h
      */
     void formattedTrace(const char* p, const char *f) {
-        LOGD("%s:%s, Time: %lld us, Diff: %lld us",
+        ALOGD("%s:%s, Time: %lld us, Diff: %lld us",
              p, f, timeUs(), mFilled ? lastTimeUs() : -1);
     }
 
@@ -160,10 +160,10 @@ void Launch2Preview::stop(int mFrameNum)
         if (gPnPBreakdown.isRunning())
             PnPBreakdown::step("Launch2Preview::stop");
         if (mFrameNum == 1) {
-            LOGD("LAUNCH time to the 1st preview frame show:\t%lld ms\n",
+            ALOGD("LAUNCH time to the 1st preview frame show:\t%lld ms\n",
                  gLaunch2Preview.timeUs() / 1000);
         } else {
-            LOGD("LAUNCH: skip %d frame, time to the 1st preview frame show:\t%lld ms\n",
+            ALOGD("LAUNCH: skip %d frame, time to the 1st preview frame show:\t%lld ms\n",
                  (mFrameNum - 1), gLaunch2Preview.timeUs() / 1000);
         }
 
@@ -198,7 +198,7 @@ void Launch2FocusLock::stop(void)
     if (gLaunch2FocusLock.isRunning()) {
         if (gPnPBreakdown.isRunning())
             PnPBreakdown::step("Launch2FocusLock::stop");
-        LOGD("LAUNCH time calculated from create instance to lock the focus frame:\t%lld ms\n",
+        ALOGD("LAUNCH time calculated from create instance to lock the focus frame:\t%lld ms\n",
              gLaunch2FocusLock.timeUs() / 1000);
         gLaunch2FocusLock.stop();
     }
@@ -240,7 +240,7 @@ void FaceLock::getCurFrameNum(const int mFrameNum)
 void FaceLock::stop(int mFaceNum)
 {
     if (gFaceLock.isRunning()) {
-        LOGD("FaceLock face num: %d , Need frame: %d , From preview frame got to face lock successfully:\t%lld ms\n",
+        ALOGD("FaceLock face num: %d , Need frame: %d , From preview frame got to face lock successfully:\t%lld ms\n",
              mFaceNum, gFaceLockFrame, gFaceLock.timeUs() / 1000);
         gFaceLock.mRequested = false;
         gFaceLock.stop();
@@ -270,7 +270,7 @@ void ShutterLag::takePictureCalled(void)
 void ShutterLag::snapshotTaken(struct timeval *ts)
 {
     if (gShutterLag.isRunning()) {
-        LOGD("ShutterLag from takePicture() to shot taken:\t%lldms\n",
+        ALOGD("ShutterLag from takePicture() to shot taken:\t%lldms\n",
              (((nsecs_t(ts->tv_sec)*1000000LL
              +  nsecs_t(ts->tv_usec))
              - gShutterLag.mStartAt/1000)/1000));
@@ -316,7 +316,7 @@ void Shot2Shot::stop(void)
     if (gShot2Shot.isRunning()) {
         if (gPnPBreakdown.isRunning())
             PnPBreakdown::step("Shot2Shot::stop");
-            LOGD("shot2shot latency: %lld us.", gShot2Shot.timeUs());
+            ALOGD("shot2shot latency: %lld us.", gShot2Shot.timeUs());
         gShot2Shot.stop();
     }
 }
@@ -347,7 +347,7 @@ void AAAProfiler::start(void)
 void AAAProfiler::stop(void)
 {
     if (gAAAProfiler.isRunning()) {
-        LOGD("3A profiling time::\t%lldms\n",
+        ALOGD("3A profiling time::\t%lldms\n",
              gAAAProfiler.timeUs() / 1000);
         gAAAProfiler.stop();
     }
@@ -406,13 +406,13 @@ void SwitchCameras::stop(void)
         if (gPnPBreakdown.isRunning())
             PnPBreakdown::step("Switch::stop");
         if (gSwitchCamerasOriginalVideoMode == gSwitchCamerasVideoMode) {
-            LOGD("Using %s mode, Switch from %s camera to %s camera, SWITCH time::\t%lldms\n",
+            ALOGD("Using %s mode, Switch from %s camera to %s camera, SWITCH time::\t%lldms\n",
                     (gSwitchCamerasVideoMode ? "video" : "camera"),
                     ((gSwitchCamerasOriginalCameraId == 0) ? "back" : "front"),
                     ((gSwitchCamerasOriginalCameraId == 1) ? "back" : "front"),
                     gSwitchCameras.timeUs() / 1000);
         } else {
-            LOGD("Using %s camera, Switch from %s mode to %s mode, SWITCH time::\t%lldms\n",
+            ALOGD("Using %s camera, Switch from %s mode to %s mode, SWITCH time::\t%lldms\n",
                     ((gSwitchCamerasOriginalCameraId == 0) ? "back" : "front"),
                     (gSwitchCamerasOriginalVideoMode ? "video" : "camera"),
                     (gSwitchCamerasVideoMode ? "video" : "camera"),
@@ -456,10 +456,10 @@ void PnPBreakdown::step(const char *func, const char* note, const int mFrameNum)
         if (!note)
             note = "";
         if (mFrameNum < 0)
-            LOGD("PnPBreakdown-step %s:%s, Time: %lld us, Diff: %lld us",
+            ALOGD("PnPBreakdown-step %s:%s, Time: %lld us, Diff: %lld us",
                  func, note, gPnPBreakdown.timeUs(), gPnPBreakdown.lastTimeUs());
         else
-            LOGD("PnPBreakdown-step %s:%s[%d], Time: %lld us, Diff: %lld us",
+            ALOGD("PnPBreakdown-step %s:%s[%d], Time: %lld us, Diff: %lld us",
                  func, note, mFrameNum, gPnPBreakdown.timeUs(), gPnPBreakdown.lastTimeUs());
    }
 }
@@ -512,7 +512,7 @@ void HDRShot2Preview::stop(void)
         gHDRCalled = false;
         if (gPnPBreakdown.isRunning())
             PnPBreakdown::step("HDRShot2Preview::stop");
-        LOGD("hdr shot2preview latency: %lld us", gHDRShot2Preview.timeUs());
+        ALOGD("hdr shot2preview latency: %lld us", gHDRShot2Preview.timeUs());
         gHDRShot2Preview.stop();
     }
 }
@@ -542,23 +542,23 @@ IOBreakdown::~IOBreakdown()
         mMemMutex.lock();
 
         if (mDbgFD < 0) {
-            LOGD("dgbopt isn't opened.");
+            ALOGD("dgbopt isn't opened.");
         } else {
             ::write(mDbgFD, DBG_CTRL, 3);
             if (mPipeFD < 0) {
-                LOGD("trace_pipe isn't opened.");
+                ALOGD("trace_pipe isn't opened.");
             } else {
                 int n;
                 do {
                     n = ::read(mPipeFD, memData, MEM_DATA_LEN - 1);
                 }while (n<=0);
-                LOGD("memory <%s,%d>:%s", mNote, n, memData);
+                ALOGD("memory <%s,%d>:%s", mNote, n, memData);
             }
         }
         mMemMutex.unlock();
     }
 
-    LOGD("IOBreakdown-step %s:%s, Time: %lld us, Diff: %lld us",
+    ALOGD("IOBreakdown-step %s:%s, Time: %lld us, Diff: %lld us",
              mFuncName, mNote, gIOBreakdown.timeUs(), gIOBreakdown.lastTimeUs());
 }
 
@@ -594,32 +594,32 @@ void IOBreakdown::start(void)
 
     if (mMemInfoEnabled) {
         if (stat (MEM_DBG, &st) == -1) {
-            LOGE("Error stat MEM_DBG: %s", strerror(errno));
+            ALOGE("Error stat MEM_DBG: %s", strerror(errno));
             return ;
         }
 
         if (stat (MEM_PIPE, &st) == -1) {
-            LOGE("Error stat MEM_PIPE: %s", strerror(errno));
+            ALOGE("Error stat MEM_PIPE: %s", strerror(errno));
             return ;
         }
 
         if (stat (MEM_PIPE_FLUSH, &st) == -1) {
-            LOGE("Error stat MEM_PIPE_FLUSH: %s", strerror(errno));
+            ALOGE("Error stat MEM_PIPE_FLUSH: %s", strerror(errno));
             return ;
         }
 
         if ((mDbgFD = ::open(MEM_DBG, O_WRONLY))<0) {
-            LOGD("Fail to open dbgopt:%s", strerror(errno));
+            ALOGD("Fail to open dbgopt:%s", strerror(errno));
         } else if ((mPipeFD = ::open(MEM_PIPE, O_RDONLY))<0) {
-            LOGD("Fail to open trace_pipe:%s", strerror(errno));
+            ALOGD("Fail to open trace_pipe:%s", strerror(errno));
         } else if ((mPipeflushFD = ::open(MEM_PIPE_FLUSH, O_WRONLY))<0) {
-            LOGD("Fail to open trace_pipe_flush:%s", strerror(errno));
+            ALOGD("Fail to open trace_pipe_flush:%s", strerror(errno));
         }
 
         if (mPipeflushFD >= 0) {
             ::write(mPipeflushFD, FLUSH_CTRL, 2);
             if (::close(mPipeflushFD) < 0)
-                LOGE("Close trace_pipe_flush error!");
+                ALOGE("Close trace_pipe_flush error!");
 
             mPipeflushFD = -1;
         }
@@ -639,11 +639,11 @@ void IOBreakdown::stop(void)
     if (mMemInfoEnabled) {
         if(mPipeFD >= 0)
             if (::close(mPipeFD) < 0)
-                LOGE("Close trace_pipe error!");
+                ALOGE("Close trace_pipe error!");
 
         if(mDbgFD >= 0)
             if (::close(mDbgFD) < 0)
-                LOGE("Close dbgopt error!");
+                ALOGE("Close dbgopt error!");
 
         mPipeFD = -1;
         mDbgFD = -1;

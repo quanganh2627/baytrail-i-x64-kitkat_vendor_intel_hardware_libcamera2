@@ -159,7 +159,7 @@ status_t GPUScaler::initGPU() {
     DisplayInfo dinfo;
     status_t status = SurfaceComposerClient::getDisplayInfo(dtoken, &dinfo);
     if (status) {
-        LOGE("SurfaceComposerClient::getDisplayInfo failed\n");
+        ALOGE("SurfaceComposerClient::getDisplayInfo failed\n");
         return status;
     }
     sp<SurfaceComposerClient> session = new SurfaceComposerClient();
@@ -187,7 +187,7 @@ status_t GPUScaler::initGPU() {
     eglChooseConfig_EC(mDisplay, attribs, &config, 1, &numConfigs);
     mSurface = eglCreateWindowSurface_EC(mDisplay, config, s.get(), NULL);
     if (mSurface == NULL) {
-        LOGE("eglCreateWindowSurface_EC error");
+        ALOGE("eglCreateWindowSurface_EC error");
         return UNKNOWN_ERROR;
     }
     mContext = eglCreateContext_EC(mDisplay, config, NULL, context_attribs);
@@ -307,7 +307,7 @@ int GPUScaler::addOutputBuffer(buffer_handle_t *pBufHandle, int width, int heigh
         dstEglImageHandle[bufferId][2] = eglCreateImageKHR_EC(eglGetDisplay(EGL_DEFAULT_DISPLAY), EGL_NO_CONTEXT,
                 EGL_NATIVE_BUFFER_ANDROID, mEglClientBuffer[bufferId], eglImageAttribsUV);
         if (dstEglImageHandle[1] == EGL_NO_IMAGE_KHR || dstEglImageHandle[2] == EGL_NO_IMAGE_KHR)
-            LOGE("eglCreateImageKHR dest failed (err=0x%x)\n", eglGetError());
+            ALOGE("eglCreateImageKHR dest failed (err=0x%x)\n", eglGetError());
 
         glGenRenderbuffers_EC(2, dstRenderBuffers[bufferId]);
         for (int i = 0; i < (MAX_EGL_IMAGE_HANDLE - 1); i++)
@@ -323,7 +323,7 @@ int GPUScaler::addOutputBuffer(buffer_handle_t *pBufHandle, int width, int heigh
             GLenum glError = glCheckFramebufferStatus_EC(GL_FRAMEBUFFER);
             if (glError != GL_FRAMEBUFFER_COMPLETE)
             {
-                LOGE("glCheckFramebufferStatus generated error 0x%x\n", glError);
+                ALOGE("glCheckFramebufferStatus generated error 0x%x\n", glError);
                 return (-1);
             }
             glClear_EC(GL_COLOR_BUFFER_BIT);
@@ -393,7 +393,7 @@ int GPUScaler::addInputBuffer(buffer_handle_t *pBufHandle, int width, int height
             bytesToPixels(V4L2_PIX_FMT_NV12, bpl), (native_handle_t *)*pBufHandle, 0);
 
     if (graphicBuffer == NULL) {
-        LOGE("Error: out of memory\n");
+        ALOGE("Error: out of memory\n");
         return (-1);
     }
     ANativeWindowBuffer *nativeWindow = graphicBuffer->getNativeBuffer();
@@ -417,7 +417,7 @@ int GPUScaler::addInputBuffer(buffer_handle_t *pBufHandle, int width, int height
     srcEglImageHandle[bufferId][2] = eglCreateImageKHR_EC(eglGetDisplay(EGL_DEFAULT_DISPLAY), EGL_NO_CONTEXT,
             EGL_NATIVE_BUFFER_ANDROID, nativeWindow, eglImageAttribsUV);
     if (srcEglImageHandle[bufferId][1] == EGL_NO_IMAGE_KHR || srcEglImageHandle[bufferId][2] == EGL_NO_IMAGE_KHR)
-        LOGE("eglCreateImageKHR source failed (err=0x%x)\n", eglGetError());
+        ALOGE("eglCreateImageKHR source failed (err=0x%x)\n", eglGetError());
 
     glGenTextures_EC((MAX_EGL_IMAGE_HANDLE - 1), srcTexNames[bufferId]);
     for (int i = 0; i < (MAX_EGL_IMAGE_HANDLE - 1); i++)
@@ -481,9 +481,9 @@ int GPUScaler::initShaders(void) {
     glCompileShader_EC(vertShader);
     glGetShaderiv_EC(vertShader, GL_COMPILE_STATUS, &stat);
     if (!stat) {
-        LOGE("Error: vertex shader did not compile!\n");
+        ALOGE("Error: vertex shader did not compile!\n");
         glGetShaderInfoLog_EC(vertShader, 8192, &llen, pInfoLog);
-        LOGE("%s\n", pInfoLog);
+        ALOGE("%s\n", pInfoLog);
         return (1);
     }
     static const char *fragShaderText = " #extension GL_OES_EGL_image_external : enable \n"
@@ -500,9 +500,9 @@ int GPUScaler::initShaders(void) {
     glCompileShader_EC(fragShader[2]);
     glGetShaderiv_EC(fragShader[2], GL_COMPILE_STATUS, &stat);
     if (!stat) {
-        LOGE("Error: fragment shader did not compile!\n");
+        ALOGE("Error: fragment shader did not compile!\n");
         glGetShaderInfoLog_EC(fragShader[2], 8192, &llen, pInfoLog);
-        LOGE("%s\n", pInfoLog);
+        ALOGE("%s\n", pInfoLog);
         return (1);
     }
     mP_NV12z = glCreateProgram_EC();
@@ -511,11 +511,11 @@ int GPUScaler::initShaders(void) {
     glLinkProgram_EC(mP_NV12z);
     glGetProgramInfoLog(mP_NV12z, 8192, &llen, pInfoLog);
     if(llen > 0)
-        LOGE("glLinkProgram log #2 was %s", pInfoLog);
+        ALOGE("glLinkProgram log #2 was %s", pInfoLog);
 
     glGetProgramiv_EC(mP_NV12z, GL_LINK_STATUS, &stat);
     if (!stat) {
-        LOGE("Error linking P2:%d\n", stat);
+        ALOGE("Error linking P2:%d\n", stat);
         return (1);
     }
     mH_vertex_pos[2] = glGetAttribLocation_EC( mP_NV12z, "a_position");

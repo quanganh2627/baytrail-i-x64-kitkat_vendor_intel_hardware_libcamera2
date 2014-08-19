@@ -154,21 +154,21 @@ status_t UltraLowLight::init( int w, int h, int aPreset, ia_binary_data *aiqb_da
         break;
 
     case ULL_STATE_NULL:
-        LOGE("Object creation failed. Could not allocate algorithm control block");
+        ALOGE("Object creation failed. Could not allocate algorithm control block");
         ret = NO_MEMORY;
         break;
 
     case ULL_STATE_PROCESSING:
     default:
         ret = INVALID_OPERATION;
-        LOGE("Trying to initialize ULL on an invalid state %d",aState);
+        ALOGE("Trying to initialize ULL on an invalid state %d",aState);
         break;
     }
 
     if (ret ==  NO_ERROR)
         setState(ULL_STATE_INIT);
     else
-        LOGE("Error initializing ULL");
+        ALOGE("Error initializing ULL");
     return ret;
 
 }
@@ -203,13 +203,13 @@ status_t UltraLowLight::deinit()
         break;
 
     case ULL_STATE_NULL:
-        LOGE("Object creation failed. Could not allocate algorithm control block");
+        ALOGE("Object creation failed. Could not allocate algorithm control block");
         ret = NO_MEMORY;
         break;
 
     case ULL_STATE_PROCESSING:
     default:
-        LOGW("De-initializing library in an invalid state: %d", getState());
+        ALOGW("De-initializing library in an invalid state: %d", getState());
         ret = INVALID_OPERATION;
         break;
     }
@@ -237,7 +237,7 @@ status_t UltraLowLight::addInputFrame(AtomBuffer *snap, AtomBuffer *pv)
         return INVALID_OPERATION;
 
     if ((snap->width != mWidth) || (snap->height != mHeight)) {
-        LOGE("Buffer dimension is not the same the library is configured for");
+        ALOGE("Buffer dimension is not the same the library is configured for");
         return INVALID_OPERATION;
     }
 
@@ -316,7 +316,7 @@ status_t UltraLowLight::getInputBuffers(Vector<AtomBuffer> *inputs)
     LOG1("@%s: size = %d", __FUNCTION__, mInputBuffers.size());
 
     if (inputs == NULL) {
-        LOGE("Invalid parameter");
+        ALOGE("Invalid parameter");
         return BAD_VALUE;
     }
 
@@ -339,7 +339,7 @@ status_t UltraLowLight::getInputBuffers(Vector<AtomBuffer> *inputs)
 status_t UltraLowLight::getPostviewBuffers(Vector<AtomBuffer> *postviews)
 {
     if (postviews == NULL) {
-        LOGE("@%s: Null vector given. Invalid.", __FUNCTION__);
+        ALOGE("@%s: Null vector given. Invalid.", __FUNCTION__);
         return BAD_VALUE;
     }
 
@@ -383,7 +383,7 @@ status_t UltraLowLight::cancelProcess()
    Mutex::Autolock lock(mStateMutex);
 
    if (mState != ULL_STATE_PROCESSING) {
-       LOGW("trying to cancel ULL when ULL is not in progress, ignoring request");
+       ALOGW("trying to cancel ULL when ULL is not in progress, ignoring request");
        return INVALID_OPERATION;
    }
 
@@ -461,7 +461,7 @@ status_t UltraLowLight::initIntelULL(int w, int h, ia_binary_data *aiqb_data)
 
     mIntelUllCfg = new ia_cp_ull_cfg;
     if (!mIntelUllCfg) {
-        LOGE("@%s: cannot allocate ULL configuration structure", __FUNCTION__);
+        ALOGE("@%s: cannot allocate ULL configuration structure", __FUNCTION__);
         return NO_MEMORY;
     }
 
@@ -470,7 +470,7 @@ status_t UltraLowLight::initIntelULL(int w, int h, ia_binary_data *aiqb_data)
 
     err = ia_cp_ull_init(w, h, aiqb_data, ia_cp_tgt_ia);
     if (err != ia_err_none) {
-        LOGE("@%s: failed to initialize ULL capture", __FUNCTION__);
+        ALOGE("@%s: failed to initialize ULL capture", __FUNCTION__);
         return ia_error_to_status_t(err);
     }
 
@@ -511,7 +511,7 @@ status_t UltraLowLight::initMorphoLib(int w, int h, int idx)
                                               mMorphoCtrl->workingBuffer,
                                               workingBufferSize );
     if (ret != MORPHO_OK) {
-        LOGE("Error initializing working buffer to library");
+        ALOGE("Error initializing working buffer to library");
         ret = NO_INIT;
         goto bailFree;
     }
@@ -545,12 +545,12 @@ void UltraLowLight::deinitIntelULL()
 
 void UltraLowLight::deinitMorphoLib()
 {
-    LOGE("@%s ", __FUNCTION__);
+    ALOGE("@%s ", __FUNCTION__);
     status_t ret;
 
     ret = morpho_ImageStabilizer3_finalize( &mMorphoCtrl->stab );
     if (ret != MORPHO_OK)
-       LOGW("Error closing the ImageSolid library");
+       ALOGW("Error closing the ImageSolid library");
 
     mWidth = 0;
     mHeight = 0;
@@ -570,7 +570,7 @@ status_t UltraLowLight::processIntelULL()
     ia_frame * input    = new ia_frame[mInputBuffers.size()];
     ia_frame * postview = new ia_frame[mInputBuffers.size()];
     if (input == NULL || postview == NULL) {
-        LOGE("ia_frame sequence allocation failed.");
+        ALOGE("ia_frame sequence allocation failed.");
         return NO_MEMORY;
     }
 
@@ -579,7 +579,7 @@ status_t UltraLowLight::processIntelULL()
     if (!genGraphicUsed) {
         mIntelUllCfg->imreg_fallback = new int[mInputBuffers.size()];
         if (mIntelUllCfg->imreg_fallback == NULL) {
-            LOGE("imreg_fallback array allocation failed.");
+            ALOGE("imreg_fallback array allocation failed.");
             delete[] input;
             input = NULL;
             delete[] postview;
@@ -598,7 +598,7 @@ status_t UltraLowLight::processIntelULL()
             if (i != 0) {
                 ret = gpuImageRegistration((AtomBuffer*) &mInputBuffers[0], (AtomBuffer*) &mInputBuffers[i], &(mIntelUllCfg->imreg_fallback[i]));
                 if (ret != NO_ERROR) {
-                    LOGE("GPU image registration failed.");
+                    ALOGE("GPU image registration failed.");
                     delete[] mIntelUllCfg->imreg_fallback;
                     mIntelUllCfg->imreg_fallback = NULL;
                     delete[] input;
@@ -635,7 +635,7 @@ status_t UltraLowLight::processIntelULL()
     LOG1("Intel ULL processing...");
     ia_err error = ia_cp_ull_compose(&out, &out_pv, input, postview, mInputBuffers.size(), mIntelUllCfg);
     if (error != ia_err_none) {
-        LOGE("Intel ULL failed with error status %d", error);
+        ALOGE("Intel ULL failed with error status %d", error);
         ret = ia_error_to_status_t(error);
     }
 
@@ -649,7 +649,7 @@ status_t UltraLowLight::processIntelULL()
            CameraDump::dumpAtom2File(&mOutputBuffer, yuvName.string());
         }
     } else {
-        LOGW("ULL was canceled during processing state = %d",getState());
+        ALOGW("ULL was canceled during processing state = %d",getState());
     }
 
     if (input != NULL) {
@@ -697,7 +697,7 @@ status_t UltraLowLight::processMorphoULL()
                                          &mMorphoCtrl->output_image,
                                          MAX_INPUT_BUFFERS );
     if (ret != MORPHO_OK) {
-        LOGE("Processing start failed %d", ret);
+        ALOGE("Processing start failed %d", ret);
         ret = UNKNOWN_ERROR;
         goto processComplete;
     }
@@ -713,7 +713,7 @@ status_t UltraLowLight::processMorphoULL()
                                                    &motion );
 
        if (ret != MORPHO_OK) {
-           LOGE("Processing detect Motion for buffer %d failed %d", i, ret);
+           ALOGE("Processing detect Motion for buffer %d failed %d", i, ret);
            ret = UNKNOWN_ERROR;
            goto processComplete;
        }
@@ -722,7 +722,7 @@ status_t UltraLowLight::processMorphoULL()
                                              &mMorphoCtrl->input_image[i],
                                              &motion );
        if (ret != MORPHO_OK) {
-           LOGE("Processing render for buffer %d failed %d", i, ret);
+           ALOGE("Processing render for buffer %d failed %d", i, ret);
            ret = UNKNOWN_ERROR;
            goto processComplete;
        }
@@ -731,7 +731,7 @@ status_t UltraLowLight::processMorphoULL()
     /* Noise Reduction */
     ret = morpho_ImageStabilizer3_reduceNoise( &mMorphoCtrl->stab );
     if (ret != MORPHO_OK) {
-        LOGE("Processing reduce noise failed %d", ret);
+        ALOGE("Processing reduce noise failed %d", ret);
         ret = UNKNOWN_ERROR;
     } else
         ret = NO_ERROR;
@@ -740,7 +740,7 @@ processComplete:
     /* Render final image */
     ret = morpho_ImageStabilizer3_finalize( &mMorphoCtrl->stab );
     if (ret != MORPHO_OK)
-       LOGW("Error closing the library");
+       ALOGW("Error closing the library");
 
     if (getState() == ULL_STATE_PROCESSING) {
         setState(ULL_STATE_DONE);
@@ -756,7 +756,7 @@ processComplete:
         // set postview buffer status to FRAME_STATUS_SKIPPED to indicate it's not ULL processed
         mOutputPostView.status = FRAME_STATUS_SKIPPED;
     } else {
-        LOGW("ULL was canceled during processing state = %d",getState());
+        ALOGW("ULL was canceled during processing state = %d",getState());
     }
 
     return ret;
@@ -772,7 +772,7 @@ void UltraLowLight::freeWorkingBuffer()
 }
 
 #define PRINT_ERROR_AND_BAIL(x)     if (ret != MORPHO_OK) {\
-                                        LOGE(x);\
+                                        ALOGE(x);\
                                         return NO_INIT;\
                                       }
 
@@ -941,7 +941,7 @@ status_t UltraLowLight::gpuImageRegistration(AtomBuffer *target, AtomBuffer *sou
         }
         status = mWarper->warpBackFrame(source, projective);
         if (status != NO_ERROR) {
-            LOGE("GPU warping failed.");
+            ALOGE("GPU warping failed.");
             return status;
         }
     }
@@ -992,7 +992,7 @@ AtomBuffer* UltraLowLight::getSnapshotCopyZoom(AtomBuffer *snapshotBuff)
         AtomToIaFrameBuffer(&mSnapshotCopy, &tmpFrame);
         error = ia_cp_zoom_frame(&tmpFrame, mZoomFactor);
         if (error != ia_err_none) {
-            LOGE("Zoom snapshot frame failed %d", error);
+            ALOGE("Zoom snapshot frame failed %d", error);
         }
     }
 
@@ -1011,7 +1011,7 @@ AtomBuffer* UltraLowLight::getPostviewCopyZoom(AtomBuffer *postviewBuff)
         AtomToIaFrameBuffer(&mPostviewCopy, &tmpFrame);
         error = ia_cp_zoom_frame(&tmpFrame, mZoomFactor);
         if (error != ia_err_none) {
-            LOGE("Zoom postview frame failed %d", error);
+            ALOGE("Zoom postview frame failed %d", error);
         }
     }
 
