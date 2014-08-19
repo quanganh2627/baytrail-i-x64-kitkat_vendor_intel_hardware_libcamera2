@@ -23,6 +23,7 @@
 #include "AtomCommon.h"
 #include "IFaceDetectionListener.h"
 #include "intel_camera_extensions.h"
+#include "FaceDetector.h" // for MAX_FACES_DETECTABLE
 
 namespace android {
 
@@ -43,7 +44,7 @@ class CallbacksThread :
     public IFaceDetectionListener {
 
 public:
-    CallbacksThread(Callbacks *callbacks, ICallbackPicture *pictureDone = NULL);
+    CallbacksThread(Callbacks *callbacks, int cameraId, ICallbackPicture *pictureDone = NULL);
     virtual ~CallbacksThread();
 
 // prevent copy constructor and assignment operator
@@ -69,7 +70,6 @@ public:
     status_t requestTakePicture(bool postviewCallback = false,
                                 bool rawCallback = false, bool waitRendering = false);
     status_t flushPictures();
-    status_t flushFaces();
     size_t   getQueuedBuffersNum() { return mBuffers.size(); }
     status_t sceneDetected(camera_scene_detection_metadata_t &metadata);
     void autoFocusActive(bool focusActive);
@@ -108,7 +108,6 @@ private:
         MESSAGE_ID_AUTO_FOCUS_DONE,
         MESSAGE_ID_FOCUS_MOVE,
         MESSAGE_ID_FLUSH,
-        MESSAGE_ID_FLUSH_FACES,
         MESSAGE_ID_FACES,
         MESSAGE_ID_SCENE_DETECTED,
         MESSAGE_ID_PREVIEW_DONE,
@@ -176,7 +175,9 @@ private:
     };
 
     struct MessageFaces {
-        extended_frame_metadata_t *meta_data;
+        int32_t numFaces;
+        int32_t needLLS;
+        camera_face_t faces[MAX_FACES_DETECTABLE];
     };
 
     struct MessageAutoFocusActive {
@@ -310,7 +311,6 @@ private:
     status_t handleMessageAutoFocusDone(MessageAutoFocusDone *msg);
     status_t handleMessageFocusMove(MessageFocusMove *msg);
     status_t handleMessageFlush();
-    status_t handleMessageFlushFaces();
     status_t handleMessageFaces(MessageFaces *msg);
     status_t handleMessageSceneDetected(MessageSceneDetected *msg);
     status_t handleMessagePreviewDone(MessageFrame *msg);
@@ -338,7 +338,6 @@ private:
     status_t waitForAndExecuteMessage();
 
     void convertGfx2Regular(AtomBuffer* aGfxBuf, AtomBuffer* aRegularBuf);
-    void deallocateFaceMeta(extended_frame_metadata_t *extended_face_metadata);
 
 // inherited from Thread
 private:
@@ -357,6 +356,7 @@ private:
     unsigned mULLid;
     bool mFocusActive;
     bool mWaitRendering;
+    Mutex mFaceReportingLock;
     int mLastReportedNumberOfFaces;
     bool mLastReportedNeedLLS;
     int mFaceCbCount;
@@ -370,7 +370,6 @@ private:
      * JPEG, RAW and POSTIVEW callbacks are sent to the camera client.
      */
     Vector<MessageCompressed> mBuffers;
-    extended_frame_metadata_t mFaceMetadata;
     int mCameraId;
     bool mPausePreviewCallbacks;
 

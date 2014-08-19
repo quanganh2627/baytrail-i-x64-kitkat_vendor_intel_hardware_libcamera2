@@ -17,7 +17,6 @@
 
 #include "PreviewThread.h"
 #include "LogHelper.h"
-#include "DebugFrameRate.h"
 #include "Callbacks.h"
 #include "ImageScaler.h"
 #include "CallbacksThread.h"

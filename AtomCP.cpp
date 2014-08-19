@@ -45,9 +45,22 @@ static void vinfo(const char *fmt, va_list ap)
 #ifdef ENABLE_INTEL_EXTRAS
 AtomCP::AtomCP(HWControlGroup &hwcg) :
     mISP(hwcg.mIspCI),
-    mIntelHdrCfg(NULL)
+    mIntelHdrCfg(NULL),
+    mInitIACP(false)
 {
     LOG1("@%s", __FUNCTION__);
+}
+
+AtomCP::~AtomCP()
+{
+    LOG1("@%s", __FUNCTION__);
+}
+
+void AtomCP::initIACP(void)
+{
+    if (mInitIACP)
+        return;
+
     int ispMinor, ispMajor;
 
     ispMinor = mISP->getCssMinorVersion();
@@ -88,14 +101,17 @@ AtomCP::AtomCP(HWControlGroup &hwcg) :
             mAccAPI.version_css.major, mAccAPI.version_css.minor,
             mAccAPI.version_isp.major, mAccAPI.version_isp.minor);
 
-    ia_cp_init(&mAccAPI, &mPrintFunctions);
+    ia_cp_init(&mAccAPI, &mPrintFunctions, NULL);
+
+    mInitIACP = true;
 }
 
-AtomCP::~AtomCP()
+void AtomCP::deinitIACP(void)
 {
-    LOG1("@%s", __FUNCTION__);
-    ia_cp_hdr_uninit();
-    ia_cp_uninit();
+    if (mInitIACP)
+        ia_cp_uninit();
+
+    mInitIACP = false;
 }
 
 status_t AtomCP::composeHDR(const CiUserBuffer& inputBuf, const CiUserBuffer& outputBuf, const ia_aiq_gbce_results gbce_results)

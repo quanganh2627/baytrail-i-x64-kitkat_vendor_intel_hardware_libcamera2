@@ -246,7 +246,7 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
                                     IntelCameraParameters::KEY_SUPPORTED_SLOW_MOTION_RATE,
                                     IntelCameraParameters::KEY_SUPPORTED_RECORDING_FRAME_RATES,
                                     IntelCameraParameters::KEY_SUPPORTED_HIGH_SPEED_RESOLUTION_FPS,
-                                    IntelCameraParameters::KEY_DUAL_VIDEO_SUPPORTED,
+                                    IntelCameraParameters::KEY_DUAL_MODE_SUPPORTED,
                                     IntelCameraParameters::KEY_SUPPORTED_DUAL_CAMERA_MODE,
                                     IntelCameraParameters::KEY_SUPPORTED_BURST_START_INDEX,
                                     IntelCameraParameters::KEY_MAX_BURST_LENGTH_WITH_NEGATIVE_START_INDEX,
@@ -562,9 +562,9 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
         return BAD_VALUE;
     }
 
-    // Dual video
-    if (!validateBoolParameter(IntelCameraParameters::KEY_DUAL_VIDEO, IntelCameraParameters::KEY_DUAL_VIDEO_SUPPORTED, params)) {
-        LOGE("bad value for dual video");
+    // Dual mode
+    if (!validateBoolParameter(IntelCameraParameters::KEY_DUAL_MODE, IntelCameraParameters::KEY_DUAL_MODE_SUPPORTED, params)) {
+        LOGE("bad value for dual mode");
         return BAD_VALUE;
     }
 

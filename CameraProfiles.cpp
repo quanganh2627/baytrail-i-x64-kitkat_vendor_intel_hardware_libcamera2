@@ -61,9 +61,10 @@ void CameraProfiles::checkField(CameraProfiles *profiles, const char *name, cons
         profiles->mCurrentDataField = FIELD_INVALID;
         return;
     } else if (strcmp(name, "Profiles") == 0
-            && strcmp(atts[0], "cameraId") == 0) {
+            && strcmp(atts[attIndex], "cameraId") == 0) {
         profiles->mSensorNum++;
-        profiles->mCurrentSensor = atoi(atts[1]);
+        profiles->mCurrentSensor = atoi(atts[attIndex+1]);
+        attIndex += 2;
         if (0 == profiles->mCurrentSensor || 1 == profiles->mCurrentSensor) {
             profiles->pCurrentCam = new CameraInfo;
             if (NULL == profiles->pCurrentCam) {
@@ -73,17 +74,19 @@ void CameraProfiles::checkField(CameraProfiles *profiles, const char *name, cons
             // Set sensor name if specified
             // XML is always parsed fully, but if sensor name does
             // not match it is discarded in endElement.
-            attIndex = 2;
-            if (atts[2] && strcmp(atts[2], "name") == 0) {
-                LOG1("@%s: xmlname = %s, currentSensor = %d", __FUNCTION__, atts[3], profiles->mCurrentSensor);
-                profiles->pCurrentCam->sensorName = atts[3];
-                attIndex = 4;
-            }
-            if (atts[attIndex] && strcmp(atts[attIndex], "extension") == 0) {
-                LOG1("@%s: extension = %s", __FUNCTION__, atts[attIndex+1]);
-                // TODO: generalize for other than "depth".
-                profiles->pCurrentCam->extendedCamera = strcmp(atts[attIndex+1], "depth") == 0;
-                profiles->mCurrentSensorIsExtendedCamera = pCurrentCam->extendedCamera;
+            while (atts[attIndex]) {
+                if (strcmp(atts[attIndex], "name") == 0) {
+                    LOG1("@%s: xmlname = %s, currentSensor = %d", __FUNCTION__, atts[attIndex+1], profiles->mCurrentSensor);
+                    profiles->pCurrentCam->sensorName = atts[attIndex+1];
+                } else if (strcmp(atts[attIndex], "extension") == 0) {
+                    LOG1("@%s: extension = %s", __FUNCTION__, atts[attIndex+1]);
+                    profiles->pCurrentCam->extendedCamera = true;
+                    profiles->pCurrentCam->extendedFeatureName = atts[attIndex+1];
+                    profiles->mCurrentSensorIsExtendedCamera = pCurrentCam->extendedCamera;
+                } else {
+                    LOGE("unknown attribute atts[%d] = %s", attIndex, atts[attIndex]);
+                }
+                attIndex += 2;
             }
         }
         if (0 == profiles->mCurrentSensor) {
@@ -151,8 +154,8 @@ void CameraProfiles::handleCommon(CameraProfiles *profiles, const char *name, co
         PlatformBase::mShutterLagCompensationMs = atoi(atts[1]);
     } else if (strcmp(name, "mPanoramaMaxSnapshotCount") == 0) {
         PlatformBase::mPanoramaMaxSnapshotCount = atoi(atts[1]);
-    } else if (strcmp(name, "supportDualVideo") == 0) {
-        PlatformBase::mSupportDualVideo = ((strcmp(atts[1], "true") == 0) ? true : false);
+    } else if (strcmp(name, "supportDualMode") == 0) {
+        PlatformBase::mSupportDualMode = ((strcmp(atts[1], "true") == 0) ? true : false);
     } else if (strcmp(name, "supportPreviewLimitation") == 0) {
         PlatformBase::mSupportPreviewLimitation
             = ((strcmp(atts[1], "false") == 0) ? false : true);
@@ -506,37 +509,48 @@ void CameraProfiles::endElement(void *userData, const char *name)
         profiles->mCurrentDataField = FIELD_INVALID;
         if (profiles->pCurrentCam) {
             // There may be multiple entries in xml.
+            // It must be in order like this:
+            // <Profiles cameraId="0" name="A1">
+            // <Profiles cameraId="0" name="A2">
+            // ...
+            // <Profiles cameraId="0" name="An">
+            // <Profiles cameraId="0"> <!unnamed entry-->
+            // <Profiles cameraId="1" name="B1">
+            // <Profiles cameraId="1" name="B2">
+            // ...
+            // <Profiles cameraId="1" name="Bn">
+            // <Profiles cameraId="1"> <!unnamed entry-->
+            // <Profiles cameraId="0" name="C1" extension="XXXX">
+            // ...
+            // <Profiles cameraId="1" name="D1" extension="XXXX">
+            // ...
             // 1. Use first entry that matches sensor name(s) from driver.
             // 2. Default to unnamed entry, if no match found.
             bool useEntry = true;
 
             // mCameras must be in order, and so does the XML file.
-            // So for example, it is not possible to add CameraId N
-            // before CameraId N-1 exists.
-            if (profiles->mCurrentSensor > profiles->mCameras.size()) {
-                LOGE("@%s: CameraId %d is out of order in camera_profiles.xml",
-                    __FUNCTION__, profiles->mCurrentSensor);
-                useEntry = false;
-            }
-
             // If name attribute was non-empty, it must match exactly.
-            // Loop through all sensors where CameraId == IspPort
+            // Loop through all sensors where CameraId == IspPort &&
+            // sensorName == one sensor name of sensors.
             if (useEntry && !profiles->pCurrentCam->sensorName.isEmpty()) {
                 useEntry = false;
                 for (unsigned int i = 0; i < profiles->mSensorNames.size(); ++i) {
-                    if (profiles->mCurrentSensor == profiles->mSensorNames[i].ispPort &&
-                        profiles->pCurrentCam->sensorName == profiles->mSensorNames[i].name) {
+                    if (profiles->mCurrentSensor == profiles->mSensorNames[i].ispPort
+                        && profiles->pCurrentCam->sensorName == profiles->mSensorNames[i].name) {
                         useEntry = true;
                         continue;
                     }
                 }
-            }
-
-            // Need to replace existing entry?
-            if (useEntry && profiles->mCameras.size() > profiles->mCurrentSensor) {
-                // Always replace an unnamed entry.
-                // Otherwise replace only if name matches.
-                // TODO for clean up later.
+            } else if (useEntry && !profiles->mCurrentSensorIsExtendedCamera) {
+                // for unnamed and non-extended senor
+                for (unsigned int i = 0; i < profiles->mCameras.size(); ++i) {
+                    for (unsigned int j = 0; j < profiles->mSensorNames.size(); ++j) {
+                        if (profiles->mCameras[i].sensorName == profiles->mSensorNames[j].name
+                            && profiles->mCurrentSensor == profiles->mSensorNames[j].ispPort) {
+                            useEntry = false;
+                        }
+                    }
+                }
             }
 
             if (useEntry) {
@@ -544,6 +558,7 @@ void CameraProfiles::endElement(void *userData, const char *name)
                     __FUNCTION__, profiles->mCurrentSensor,
                     profiles->pCurrentCam->sensorName.string());
 
+                // Extended camera must be at the end of camera_profiles.xml;
                 // Extended camera is pushed at the end always.
                 if (profiles->mCurrentSensorIsExtendedCamera) {
                     profiles->mCameras.push(*(profiles->pCurrentCam));
@@ -552,6 +567,7 @@ void CameraProfiles::endElement(void *userData, const char *name)
                     profiles->mExtendedCameraId = profiles->mCurrentSensor;
                     LOG1("@%s: Extended camera index = %d", __FUNCTION__, profiles->mCameras.size() - 1);
                 } else {
+                    // For non-extended camera, it should be in order by mCurrentSensor
                     profiles->mCameras.insertAt(*(profiles->pCurrentCam), profiles->mCurrentSensor);
                 }
             }

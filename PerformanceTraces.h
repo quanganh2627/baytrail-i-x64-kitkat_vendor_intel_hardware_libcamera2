@@ -39,67 +39,58 @@ namespace android {
  */
 namespace PerformanceTraces {
 
-  // this is a bit ugly but this is a compact way to define a no-op
-  // implementation in case LIBCAMERA_RD_FEATURES is not set
-#undef STUB_BODY
-#ifdef LIBCAMERA_RD_FEATURES
-#define STUB_BODY ;
-#else
-#define STUB_BODY {}
-#endif
-
   class Launch2Preview {
   public:
-    static void enable(bool set) STUB_BODY
-    static void start(void) STUB_BODY
-    static void stop(int mFrameNum) STUB_BODY
+    static void enable(bool set);
+    static void start(void);
+    static void stop(int mFrameNum);
   };
 
   class Launch2FocusLock {
   public:
-    static void enable(bool set) STUB_BODY
-    static void start(void) STUB_BODY
-    static void stop(void) STUB_BODY
+    static void enable(bool set);
+    static void start(void);
+    static void stop(void);
   };
 
   class FaceLock {
   public:
-    static void enable(bool set) STUB_BODY
-    static void start(int frameNum) STUB_BODY
-    static void getCurFrameNum(const int mFrameNum) STUB_BODY
-    static void stop(int mFaceNum = 0) STUB_BODY
+    static void enable(bool set);
+    static void start(int frameNum);
+    static void getCurFrameNum(const int mFrameNum);
+    static void stop(int mFaceNum = 0);
   };
 
 
   class Shot2Shot {
   public:
-    static void enable(bool set) STUB_BODY
-    static void start(void) STUB_BODY
-    static void takePictureCalled(void) STUB_BODY
-    static void stop(void) STUB_BODY
+    static void enable(bool set);
+    static void start(void);
+    static void takePictureCalled(void);
+    static void stop(void);
   };
 
   class ShutterLag {
   public:
-    static void enable(bool set) STUB_BODY
-    static void takePictureCalled(void) STUB_BODY
-    static void snapshotTaken(struct timeval *ts) STUB_BODY
+    static void enable(bool set);
+    static void takePictureCalled(void);
+    static void snapshotTaken(struct timeval *ts);
   };
 
   class AAAProfiler {
   public:
-    static void enable(bool set) STUB_BODY
-    static void start(void) STUB_BODY
-    static void stop(void) STUB_BODY
+    static void enable(bool set);
+    static void start(void);
+    static void stop(void);
   };
 
   class SwitchCameras {
   public:
-    static void enable(bool set) STUB_BODY
-    static void start(int cameraid) STUB_BODY
-    static void getOriginalMode(bool videomode) STUB_BODY
-    static void called(bool videomode) STUB_BODY
-    static void stop(void) STUB_BODY
+    static void enable(bool set);
+    static void start(int cameraid);
+    static void getOriginalMode(bool videomode);
+    static void called(bool videomode);
+    static void stop(void);
   };
 
 /**
@@ -108,29 +99,29 @@ namespace PerformanceTraces {
  */
   class PnPBreakdown {
   public:
-    static void start(void) STUB_BODY
-    static void enable(bool set) STUB_BODY
-    static void step(const char *func, const char* note = 0, const int mFrameNum = -1) STUB_BODY
-    static void stop(void) STUB_BODY
+    static void start(void);
+    static void enable(bool set);
+    static void step(const char *func, const char* note = 0, const int mFrameNum = -1);
+    static void stop(void);
   };
 
   class HDRShot2Preview {
   public:
-    static void start(void) STUB_BODY
-    static void enable(bool set) STUB_BODY
-    static void HDRCalled(void) STUB_BODY
-    static void stop(void) STUB_BODY
+    static void start(void);
+    static void enable(bool set);
+    static void HDRCalled(void);
+    static void stop(void);
   };
 
   class IOBreakdown {
   public:
-    IOBreakdown(const char*, const char*) STUB_BODY
-    ~IOBreakdown() STUB_BODY
+    IOBreakdown(const char*, const char*);
+    ~IOBreakdown();
   public:
-    static void start(void) STUB_BODY
-    static void enableBD(bool) STUB_BODY
-    static void enableMemInfo(bool) STUB_BODY
-    static void stop(void) STUB_BODY
+    static void start(void);
+    static void enableBD(bool);
+    static void enableMemInfo(bool);
+    static void stop(void);
   private:
     const char *mFuncName;
     const char *mNote;

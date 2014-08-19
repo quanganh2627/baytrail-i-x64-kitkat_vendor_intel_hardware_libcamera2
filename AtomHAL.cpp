@@ -386,7 +386,7 @@ static int ATOM_OpenCameraHardware(const hw_module_t* module, const char* name,
     Mutex::Autolock _l(atom_instance_lock);
 
     camera_device_t *camera_dev;
-    if ((!PlatformData::supportDualVideo() && atom_instances == 1) || atom_instances > MAX_HAL_INSTANCES-1) {
+    if ((!PlatformData::supportDualMode() && atom_instances == 1) || atom_instances > MAX_HAL_INSTANCES-1) {
         LOGE("error:only support maximum  %d instances for front/primary sensor", atom_instances);
         return -EINVAL;
     }

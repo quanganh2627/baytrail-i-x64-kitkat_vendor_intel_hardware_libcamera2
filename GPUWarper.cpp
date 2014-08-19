@@ -160,13 +160,23 @@ static const char *vertexShaderSource = "precision highp float; \n"
         "}";
 
 GPUWarper::GPUWarper(GLuint width, GLuint height, GLuint meshSize) :
-        mWidth(width)
+        mInFrame(NULL)
+        ,mOutFrame(NULL)
+        ,mWidth(width)
         ,mHeight(height)
         ,mStride(width)
         ,mMeshSize(meshSize)
+        ,mNGridPointsX(0)
+        ,mNGridPointsY(0)
+        ,mTileExpansionCoeff(0.0f)
+        ,mGraphicBufferOut(NULL)
+        ,mGraphicBufferInY(NULL)
+        ,mGraphicBufferInUV(NULL)
         ,mDisplay(EGL_NO_DISPLAY)
         ,mContext(EGL_NO_CONTEXT)
         ,mSurface(EGL_NO_SURFACE)
+        ,mGlVertices(NULL)
+        ,mGlIndices(NULL)
         ,mIsInitialized(false)
 {
 

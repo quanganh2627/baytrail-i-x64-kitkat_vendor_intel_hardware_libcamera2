@@ -113,6 +113,7 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService, Callbacks *callb
     ,mStatisticSkips(0)
     ,mDVSFrameSkips(0)
     ,mVideoZoomFrameSkips(0)
+    ,mIsFileInject(false)
     ,mSessionId(0)
     ,mLowLight(false)
     ,mXnr(0)
@@ -124,7 +125,12 @@ AtomISP::AtomISP(int cameraId, sp<ScalerService> scalerService, Callbacks *callb
     ,mColorEffect(V4L2_COLORFX_NONE)
     ,mScaler(scalerService)
     ,mObserverManager()
+    ,mCssMajorVersion(0)
+    ,mCssMinorVersion(0)
+    ,mIspHwMajorVersion(0)
+    ,mIspHwMinorVersion(0)
     ,mHALVideoStabilization(false)
+    ,mHALVideoNormal(false)
     ,mExtIspVideoHighSpeed(false)
     ,mNoiseReductionEdgeEnhancement(true)
     ,mFlashIsOn(false)
@@ -208,6 +214,7 @@ status_t AtomISP::initDevice()
     } else {
         LOGW("Failed to get isp device path! Failing back to XML config %s", PlatformData::getISPSubDeviceName());
         m3AEventSubdevice = new V4L2Subdevice(PlatformData::getISPSubDeviceName(), V4L2_ISP_SUBDEV);
+        status = NO_ERROR;
     }
 
     mSensorType = PlatformData::sensorType(mCameraId);
@@ -623,12 +630,12 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
     }
 
     /**
-     * DUAL VIDEO
+     * DUAL MODE
      */
-    if (PlatformData::supportDualVideo())
+    if (PlatformData::supportDualMode())
     {
-        intel_params->set(IntelCameraParameters::KEY_DUAL_VIDEO_SUPPORTED,"true");
-        intel_params->set(IntelCameraParameters::KEY_DUAL_VIDEO,"false");
+        intel_params->set(IntelCameraParameters::KEY_DUAL_MODE_SUPPORTED,"true");
+        intel_params->set(IntelCameraParameters::KEY_DUAL_MODE,"false");
     }
 
     /**
@@ -999,9 +1006,10 @@ status_t AtomISP::getIspParameters(struct atomisp_parm *isp_param) const
 void AtomISP::setExternalIspActionHint(ExtIspActionHint hint)
 {
     mHALVideoStabilization = hint & EXT_ISP_ACTION_HALVS;
+    mHALVideoNormal = hint & EXT_ISP_ACTION_NORMAL;
     mExtIspVideoHighSpeed  = hint & EXT_ISP_ACTION_VIDEOHS;
-    LOG1("@%s hal video stabilization:%d external ISP video high speed:%d",
-            __FUNCTION__, mHALVideoStabilization, mExtIspVideoHighSpeed);
+    LOG1("@%s hal video stabilization:%d, normal video: %d, external ISP video high speed:%d",
+            __FUNCTION__, mHALVideoStabilization, mHALVideoNormal, mExtIspVideoHighSpeed);
 }
 
 //Set device fps base on device mode and platform
@@ -1192,7 +1200,7 @@ status_t AtomISP::allocateBuffers(AtomMode mode)
         // intentional fall-through without break
     case MODE_CONTINUOUS_VIDEO:
     case MODE_VIDEO:
-        if (!mHALVideoStabilization) // no need to allocate in halVS mode which uses preview bufs for recording
+        if (!mHALVideoStabilization && !mHALVideoNormal) // no need to allocate in halVS mode which uses preview bufs for recording
             if ((status = allocateRecordingBuffers()) != NO_ERROR)
                 return status;
         if ((status = allocatePreviewBuffers()) != NO_ERROR)
@@ -1570,6 +1578,8 @@ status_t AtomISP::configureRecording()
         recordingConfig = &(mConfig.recording);
     }
 
+    configureDepthMode(PlatformData::isExtendedCameras());
+
     //open recording device
     ret = mRecordingDevice->open();
     if (ret < 0) {
@@ -1637,7 +1647,7 @@ status_t AtomISP::startRecording()
     int ret = 0;
     status_t status = NO_ERROR;
 
-    if (!mHALVideoStabilization) {
+    if (!mHALVideoStabilization && !mHALVideoNormal) {
         if ((mHALSDVEnabled && mUseMultiStreamsForSoC) || mMode == MODE_CONTINUOUS_JPEG_VIDEO) {
             ret = mMainDevice->start(mConfig.num_snapshot_buffers, mInitialSkips);
             if (ret < 0) {
@@ -1674,7 +1684,7 @@ status_t AtomISP::startRecording()
 
     mNumPreviewBuffersQueued = mConfig.num_preview_buffers;
 
-    if (!mHALVideoStabilization) {
+    if (!mHALVideoStabilization && !mHALVideoNormal) {
         mNumRecordingBuffersQueued = mConfig.num_recording_buffers;
     } else {
         mNumRecordingBuffersQueued = 0; // halVS doesn't use rec bufs
@@ -3153,13 +3163,18 @@ status_t AtomISP::setSnapshotFrameFormat(AtomBuffer& formatDescriptor)
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    if (formatDescriptor.width > mConfig.snapshotLimits.maxWidth || formatDescriptor.width < 0)
-        formatDescriptor.width = mConfig.snapshotLimits.maxWidth;
-    if (formatDescriptor.height > mConfig.snapshotLimits.maxHeight || formatDescriptor.height < 0)
-        formatDescriptor.height = mConfig.snapshotLimits.maxHeight;
+    // In raw capture mode, ISP is in copy mode and cannot crop the frame.
+    // Otherwise we obey the limits.
+    if (!CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW)) {
+        if (formatDescriptor.width > mConfig.snapshotLimits.maxWidth || formatDescriptor.width < 0)
+            formatDescriptor.width = mConfig.snapshotLimits.maxWidth;
+        if (formatDescriptor.height > mConfig.snapshotLimits.maxHeight || formatDescriptor.height < 0)
+            formatDescriptor.height = mConfig.snapshotLimits.maxHeight;
+    }
 
     mConfig.snapshot = formatDescriptor;
-    mConfig.snapshot.bpl = SGXandDisplayBpl(formatDescriptor.fourcc, formatDescriptor.bpl);
+    mConfig.snapshot.bpl = SGXandDisplayBpl(formatDescriptor.fourcc,
+        bytesToPixels(formatDescriptor.fourcc, formatDescriptor.bpl));
     mConfig.snapshot.size = frameSize(formatDescriptor.fourcc, bytesToPixels(formatDescriptor.fourcc, mConfig.snapshot.bpl), formatDescriptor.height);
     LOG1("width(%d), height(%d), bpl(%d), size(%d), fourcc(%s 0x%x)",
          formatDescriptor.width, formatDescriptor.height, mConfig.snapshot.bpl, mConfig.snapshot.size,v4l2Fmt2Str(formatDescriptor.fourcc), formatDescriptor.fourcc);
@@ -3503,7 +3518,7 @@ status_t AtomISP::setZoom(int zoom)
         return NO_ERROR;
 
     if ((mMode == MODE_VIDEO || mMode == MODE_CONTINUOUS_VIDEO) && mDvs && mCssMajorVersion == 2 && mSensorType == SENSOR_TYPE_RAW &&
-        !mHALVideoStabilization) {
+        !mHALVideoStabilization && !mHALVideoNormal) {
         mDvs->setZoom(zoom);
         if (mMode == MODE_CONTINUOUS_VIDEO) {
             int ret = atomisp_set_zoom(zoom);
@@ -4019,7 +4034,7 @@ status_t AtomISP::returnRecordingBuffers()
         for (int i = 0 ; i < mConfig.num_recording_buffers; i++) {
             if (mRecordingBuffers[i].shared)
                 return UNKNOWN_ERROR;
-            if (mRecordingBuffers[i].buff == NULL)
+            if (mRecordingBuffers[i].dataPtr == NULL)
                 return UNKNOWN_ERROR;
             // identifying already queued frames with negative id
             if (mRecordingBuffers[i].id == -1)
@@ -5506,7 +5521,7 @@ status_t AtomISP::allocateMetaDataBuffers(AtomBuffer *buffers, int numBuffers)
                 metaDataBuf->SetValue((uint32_t)*buffers[i].gfxInfo_rec.gfxBufferHandle);
             } else {
                 // TODO: Safe to combine to upper-level if-else ?
-                if (mHALVideoStabilization) {
+                if (mHALVideoStabilization || mHALVideoNormal) {
                     metaDataBuf->SetType(IntelMetadataBufferTypeGrallocSource);
                     metaDataBuf->SetValue((uint32_t)*buffers[i].gfxInfo.gfxBufferHandle);
                 } else if (mExtIspVideoHighSpeed) {
@@ -6701,12 +6716,10 @@ status_t AtomISP::AAAStatSource::observe(IAtomIspObserver::Message *msg)
         ret = -1;
     } else {
         // poll was successful, dequeue the event right away
-        do {
-            ret = mISP->m3AEventSubdevice->dequeueEvent(&event);
-            if (ret < 0) {
-                LOGE("Dequeue stats event failed");
-            }
-        } while (event.pending > 0);
+        ret = mISP->m3AEventSubdevice->dequeueEvent(&event);
+        if (ret < 0) {
+            LOGE("Dequeue stats event failed");
+        }
     }
 
     if (ret < 0) {

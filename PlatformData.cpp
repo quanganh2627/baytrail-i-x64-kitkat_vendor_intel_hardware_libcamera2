@@ -25,11 +25,12 @@
 #include "CameraProfiles.h"
 #include <utils/Log.h>
 #include "v4l2device.h"
+#include <sys/sysinfo.h>
 
 namespace android {
 
-
 static const int spIdLength = 4;
+static unsigned long sTotalRam = 0;
 
 PlatformBase* PlatformData::mInstance = 0;
 
@@ -38,6 +39,13 @@ HalConf PlatformData::HalConfig[MAX_CAMERAS];
 
 // Max width and height string length, like "1920x1080".
 const int MAX_WIDTH_HEIGHT_STRING_LENGTH = 25;
+
+__attribute__((constructor)) void initializeLoadTimePlatformData(void)
+{
+    struct sysinfo sysInfo;
+    sysinfo(&sysInfo);
+    sTotalRam = sysInfo.totalram;
+}
 
 status_t PlatformBase::getSensorInfo(Vector<SensorNameAndPort>& sensorInfo)
 {
@@ -119,6 +127,11 @@ PlatformBase* PlatformData::getInstance(void)
     }
 
     return mInstance;
+}
+
+unsigned long PlatformData::getTotalRam()
+{
+    return sTotalRam;
 }
 
 void PlatformData::setIntelligentMode(int cameraId, bool val)
@@ -1321,9 +1334,9 @@ int PlatformData::getMaxNumYUVBufferForBracket(int cameraId)
     return getInstance()->mCameras[getActiveCamIdx(cameraId)].maxNumYUVBufferForBracket;
 }
 
-bool PlatformData::supportDualVideo(void)
+bool PlatformData::supportDualMode(void)
 {
-    return getInstance()->mSupportDualVideo;
+    return getInstance()->mSupportDualMode;
 }
 
 bool PlatformData::supportPreviewLimitation(void)

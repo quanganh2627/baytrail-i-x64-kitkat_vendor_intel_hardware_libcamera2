@@ -556,7 +556,7 @@ status_t AccManagerThread::handleMessageLoadIspExtensions()
         mCallbacks->allocateMemory(&tmpBuf, sizeof(Frame));
         mFrameMetadataBuffer = *tmpBuf.buff;
         mFrameMetadata = (Frame*) mFrameMetadataBuffer.data;
-        memset(mFrameMetadata, 0, sizeof(mFrameMetadata));
+        memset(mFrameMetadata, 0, sizeof(Frame));
 
         // notify buffer for metadata sharing to upper layers
         mCallbacksThread->accManagerMetadataBuffer(tmpBuf.buff);

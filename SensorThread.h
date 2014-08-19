@@ -42,8 +42,12 @@ private:
     SensorLooperThread(const SensorLooperThread& other);
     SensorLooperThread& operator=(const SensorLooperThread& other);
 
+    void preventFastLooping();
+
 private:
     sp<Looper> mLooper;
+    uint64_t mLastPollTimestamp;
+    uint32_t mFastLoopCounter;
 };
 
 

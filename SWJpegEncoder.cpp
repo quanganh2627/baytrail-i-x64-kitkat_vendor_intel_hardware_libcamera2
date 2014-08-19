@@ -29,6 +29,7 @@ SWJpegEncoder::SWJpegEncoder() :
     ,mTotalWidth(0)
     ,mTotalHeight(0)
     ,mDstBuf(NULL)
+    ,mCPUCoresNum(1)
 {
     LOG1("@%s, line:%d", __FUNCTION__, __LINE__);
 }

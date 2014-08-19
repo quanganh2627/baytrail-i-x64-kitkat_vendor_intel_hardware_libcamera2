@@ -548,7 +548,7 @@ private:
     status_t processDynamicParameters(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamDvs(const CameraParameters *oldParams, CameraParameters *newParams);
-    status_t processParamDualVideo(const CameraParameters *oldParams,
+    status_t processParamDualMode(const CameraParameters *oldParams,
             CameraParameters *newParams, bool &restartPreview);
     status_t processParamDualCameraMode(CameraParameters *oldParams,
             CameraParameters *newParams);
@@ -590,6 +590,8 @@ private:
             CameraParameters *newParams, bool *restartNeeded);
     status_t processParamULL(const CameraParameters *oldParams,
             CameraParameters *newParams, bool *restartNeeded);
+    status_t processParamIntelligentMode(const CameraParameters *oldParams,
+            CameraParameters *newParams, bool &restartNeeded);
     status_t processParamExposureCompensation(const CameraParameters *oldParams,
             CameraParameters *newParams);
     status_t processParamAutoExposureMode(const CameraParameters *oldParams,
@@ -606,8 +608,6 @@ private:
             CameraParameters *newParams);
     status_t processParamShutter(const CameraParameters *oldParams,
             CameraParameters *newParams);
-    status_t processParamIntelligentMode(const CameraParameters *oldParams,
-        CameraParameters *newParams);
     status_t processParamRawDataFormat(const CameraParameters *oldParams,
             CameraParameters *newParams, bool &previewRestartNeeded);
     // NOTE: processParamPreviewFrameRate is deprecated since Android API level 9
@@ -814,7 +814,7 @@ private:
     float mPublicShutter;       /* Shutter set by application */
 
     bool mDvsEnable;
-    bool mDualVideo;
+    bool mDualMode;
 
     bool mJpegContinuousShootingRunning;
 
@@ -888,6 +888,9 @@ private:
                                                      pipe can't be retrieved safely. In camera HAL currently we need to skip
                                                      this frame to avoid getting old frame */
     int mContinuousPicsReady;                     /*!< number buffer ready*/
+
+    const static uint64_t REPEATING_TIMEOUT = 5000000000; /*!< time under which a timeout is considered repeating. In nanoseconds. */
+    uint64_t mTimeoutTimestamp;
 
     /*----------- Debugging helpers --------------------*/
     static const char* sCaptureSubstateStrings[STATE_CAPTURE_LAST];

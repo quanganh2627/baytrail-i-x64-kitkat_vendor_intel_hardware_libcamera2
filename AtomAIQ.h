@@ -250,6 +250,7 @@ private:
     void get3aStat();
     status_t populateFrameInfo(const struct timeval *frame_timestamp,
                                const struct timeval *sof_timestamp);
+    status_t init_weighting_map();
 
     //AIC
     status_t runAICMain();
@@ -433,6 +434,9 @@ private:
 
     //STATISTICS
     ia_aiq_statistics_input_params mStatisticsInputParameters;
+
+    //WEIGHT GRID
+    ia_aiq_hist_weight_grid mCustomExposureWeightGrid;
 
     //AF
     AfMode mAfMode;

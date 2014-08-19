@@ -22,23 +22,51 @@
 
 namespace android {
 
+static const uint64_t POLL_INTERVAL = 200000000; /* ns. equals 200ms. */
+
 SensorThread* SensorThread::sInstance = NULL;
 
 SensorLooperThread::SensorLooperThread(Looper* looper)
     : Thread(false)
-    , mLooper(looper)
+    ,mLooper(looper)
+    ,mLastPollTimestamp(0)
+    ,mFastLoopCounter(0)
 {
+    LOG1("@%s", __FUNCTION__);
 }
 
 SensorLooperThread::~SensorLooperThread()
 {
+    LOG1("@%s", __FUNCTION__);
     mLooper.clear();
 }
 
 
+void SensorLooperThread::preventFastLooping()
+{
+    // Sometimes it can happen that the threadLoop starts to run in a busy-loop kind of fashion.
+    // Therefore, check the timestamps and throttle down as the last resort, if
+    // this is happening.
+    uint64_t now = systemTime();
+    if (now - mLastPollTimestamp < POLL_INTERVAL / 2) {
+        if (++mFastLoopCounter > 2) {
+            // poll returned more than twice faster than it should, and it isn't
+            // just a couple of incidents like what happens during thread stopping,
+            // so throttle down
+            LOGW("@%s, loop running too fast, throttling down!", __FUNCTION__);
+            usleep(ns2us(POLL_INTERVAL / 2)); // sleep half of interval in microseconds
+        }
+    } else {
+        // all ok. reset counter.
+        mFastLoopCounter = 0;
+    }
+    mLastPollTimestamp = now;
+}
+
 bool SensorLooperThread::threadLoop()
 {
     mLooper->pollOnce(-1);
+    preventFastLooping();
     return true;
 }
 
@@ -121,16 +149,6 @@ SensorThread::SensorThread()
     } else {
         LOGE("sensorManager createEventQueue failed");
     }
-
-    mThread = new SensorLooperThread(mLooper.get());
-    if (mThread == NULL) {
-        LOGE("Sensor looper thread alloc failed");
-        return;
-    }
-
-    if (mThread->run("CamHAL_SENSOR") != NO_ERROR) {
-        LOGE("Error starting sensor thread!");
-    }
 }
 
 SensorThread::~SensorThread()
@@ -157,6 +175,19 @@ int SensorThread::registerOrientationListener(IOrientationListener* listener) {
 
     Mutex::Autolock lock(&mLock);
 
+    if (mThread == NULL) {
+        mThread = new SensorLooperThread(mLooper.get());
+        if (mThread == NULL) {
+            LOGE("Sensor looper thread alloc failed");
+            return NO_MEMORY;
+        }
+
+        if (mThread->run("CamHAL_SENSOR") != NO_ERROR) {
+            LOGE("Error starting sensor thread!");
+            return UNKNOWN_ERROR;
+        }
+    }
+
     if (mListeners.isEmpty()) {
         SensorManager& sensorManager(SensorManager::getInstance());
         Sensor const* sensor = sensorManager.getDefaultSensor(Sensor::TYPE_ACCELEROMETER);
@@ -166,7 +197,7 @@ int SensorThread::registerOrientationListener(IOrientationListener* listener) {
         }
 
         mSensorEventQueue->enableSensor(sensor);
-        mSensorEventQueue->setEventRate(sensor, ms2ns(200));
+        mSensorEventQueue->setEventRate(sensor, POLL_INTERVAL);
 
         LOGD("@%s: accelerometer sensor start %p (%s)", __FUNCTION__ , sensor, sensor->getName().string());
     }
@@ -184,6 +215,12 @@ void SensorThread::unRegisterOrientationListener(IOrientationListener* listener)
     mListeners.remove(listener);
 
     if (mListeners.isEmpty()) {
+        // need to request exit here, since in some crash cases calls to SensorManager will get stuck
+        if (mThread != NULL) {
+            mThread->requestExit();
+            mThread.clear();
+        }
+
         SensorManager& sensorManager(SensorManager::getInstance());
         Sensor const* sensor = sensorManager.getDefaultSensor(Sensor::TYPE_ACCELEROMETER);
         if (sensor == NULL) {

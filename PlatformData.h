@@ -715,6 +715,12 @@ class PlatformData {
     static const char* defaultPreviewUpdateMode(int cameraId);
 
     /**
+     * Returns total system ram amount
+     * \return the total ram amount
+     */
+    static unsigned long getTotalRam();
+
+    /**
      * Whether the slow motion playback in high speed recording mode is supported?
      * \return true if the slow motion playback is supported
      */
@@ -1035,11 +1041,11 @@ class PlatformData {
     static int getGFXHALPixelFormat(void);
 
     /**
-     * Whether dual video is supported?
+     * Whether dual mode is supported?
      *
      * \return true if supported
      */
-    static bool supportDualVideo(void);
+    static bool supportDualMode(void);
 
     /**
      * Whether preview limitation is supported
@@ -1289,7 +1295,7 @@ public:
         ,mMaxZoomFactor(64)
         ,mNumRecordingBuffers(9)
         ,mNumPreviewBuffers(6)
-        ,mSupportDualVideo(false)
+        ,mSupportDualMode(false)
         ,mSupportPreviewLimitation(true)
         ,mSensorGainLag(2)
         ,mSensorExposureLag(2)
@@ -1310,6 +1316,7 @@ protected:
         CameraInfo() {
             sensorName = "";
             extendedCamera = false;
+            extendedFeatureName = "";
             sensorType = SENSOR_TYPE_RAW;
             facing = CAMERA_FACING_BACK;
             orientation = 90;
@@ -1482,6 +1489,7 @@ protected:
 
         String8 sensorName;
         bool extendedCamera;
+        String8 extendedFeatureName;
         SensorType sensorType;
         int facing;
         int orientation;
@@ -1707,8 +1715,8 @@ protected:
 
     int mNumPreviewBuffers;
 
-    /* For Dual Video */
-    bool mSupportDualVideo;
+    /* For Dual Mode */
+    bool mSupportDualMode;
 
     /* For Preview Size Limitation*/
     bool mSupportPreviewLimitation;

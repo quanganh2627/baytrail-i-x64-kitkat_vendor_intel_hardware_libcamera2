@@ -245,7 +245,8 @@ enum AAAFlags {
 enum ExtIspActionHint {
     EXT_ISP_ACTION_NA = 0x0,
     EXT_ISP_ACTION_HALVS = 0x1,
-    EXT_ISP_ACTION_VIDEOHS = 0x2
+    EXT_ISP_ACTION_NORMAL = 0x2,
+    EXT_ISP_ACTION_VIDEOHS = 0x4
 };
 
 struct CameraWindow {
@@ -307,6 +308,30 @@ static int parsePair(const char *str, int *first, int *second, char delim,
     }
 
     return 0;
+}
+
+static double normalAspectRatioForResolution(int width, int height)
+{
+    double realRatio = ((double) (width)) / height;
+
+    // this is the deviation from the normal aspect, that we allow
+    double allowedDelta = 0.01;
+
+    // add more as needed
+    double normalAspectRatios[] = {
+            4.0  / 3.0,
+            16.0 / 9.0,
+            11.0 / 9.0,
+            3.0  / 2.0
+    };
+
+    for (uint32_t i = 0; i < sizeof(normalAspectRatios) / sizeof(double); i++) {
+        if (fabs(realRatio - normalAspectRatios[i]) < allowedDelta)
+            return normalAspectRatios[i];
+    }
+
+    // default
+    return realRatio;
 }
 
 /**
@@ -500,10 +525,8 @@ void mirrorBuffer(AtomBuffer *buffer, int currentOrientation, int cameraOrientat
 void flipBufferV(AtomBuffer *buffer);
 void flipBufferH(AtomBuffer *buffer);
 
-#ifdef LIBCAMERA_RD_FEATURES
 void trace_callstack();
 void inject(AtomBuffer *b, const char* name);
-#endif
 
 }
 #endif // ANDROID_LIBCAMERA_COMMON_H

@@ -82,12 +82,6 @@ public:
 
 };
 
-// To allow disabling all tracing infrastructure for non-R&D builds,
-// wrap everything in LIBCAMERA_RD_FEATURES (see Android.mk).
-// -----------------------------------------------------------------
-
-#ifdef LIBCAMERA_RD_FEATURES
-
 static PerformanceTimer gLaunch2Preview;
 static PerformanceTimer gLaunch2FocusLock;
 static PerformanceTimer gFaceLock;
@@ -656,12 +650,6 @@ void IOBreakdown::stop(void)
         mMemInfoEnabled = false;
     }
 }
-
-
-#else // LIBCAMERA_RD_FEATURES
-void reset(void) {}
-
-#endif // LIBCAMERA_RD_FEATURES
 
 } // namespace PerformanceTraces
 } // namespace android

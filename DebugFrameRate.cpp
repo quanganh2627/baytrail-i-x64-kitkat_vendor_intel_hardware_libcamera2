@@ -22,8 +22,6 @@
 
 namespace android {
 
-#ifdef LIBCAMERA_RD_FEATURES
-
 DebugFrameRate::DebugFrameRate() :
     Thread(false)
     ,mCount(0)
@@ -96,7 +94,5 @@ bool DebugFrameRate::threadLoop()
 
     return false;
 }
-
-#endif // ATOM_LIBCAMERA_DEBUG
 
 } // namespace android
