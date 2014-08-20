@@ -723,6 +723,15 @@ status_t ControlThread::stopPreview()
     if (mState == STATE_STOPPED) {
         return NO_ERROR;
     }
+
+    if (mState == STATE_RECORDING) {
+        LOGW("Application is trying to stop preview while recording. "
+             "This is not supported, recording must be stopped first. "
+             "Dropping the request, continuing recording!");
+        // see BZ: 217246
+        return NO_ERROR;
+    }
+
     // send message and block until thread processes message
     bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT);
     PerformanceTraces::SwitchCameras::getOriginalMode(videoMode);
