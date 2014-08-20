@@ -34,7 +34,6 @@
 #include <string.h>
 #include <stdbool.h>
 #include <utils/KeyedVector.h>
-#include <ui/FramebufferNativeWindow.h>
 #include <ui/GraphicBuffer.h>
 #include "IHWScaler.h"
 #include "VideoVPPBase.h"

@@ -36,7 +36,6 @@
 #include <GLES2/gl2ext.h>
 #include <utils/Timers.h>
 #include "LogHelper.h"
-#include <ui/FramebufferNativeWindow.h>
 #include <ui/GraphicBuffer.h>
 #include <gui/SurfaceComposerClient.h>
 #include <ui/DisplayInfo.h>
