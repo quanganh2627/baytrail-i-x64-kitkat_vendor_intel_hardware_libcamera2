@@ -22,9 +22,10 @@
  */
 #define LOG_TAG "Camera_ExifCreater"
 
-#include <utils/Log.h>
 #include <sys/mman.h>
 #include <fcntl.h>
+#include "LogHelper.h"
+#include "PlatformData.h"
 
 #include "ExifCreater.h"
 
@@ -43,6 +44,8 @@ ExifCreater::~ExifCreater()
 
 exif_status ExifCreater::setThumbData (const void *thumbBuf, unsigned int thumbSize)
 {
+    // TODO: Maybe we should take into account the rest of the EXIF data as well here,
+    // not just the thumbnail size.
     if (thumbSize >= EXIF_SIZE_LIMITATION) {
         m_thumbBuf = NULL;
         m_thumbSize = 0;
@@ -69,6 +72,10 @@ exif_status ExifCreater::makeExif (void *exifOut,
     unsigned char *pCur, *pApp1Start, *pIfdStart, *pGpsIfdPtr, *pNextIfdOffset;
     unsigned int tmp, LongerTagOffset = 0, LongerTagOffsetWithoutThumbnail;
     pApp1Start = pCur = (unsigned char *)exifOut;
+
+    // If we write the Makernote to APP2 segment,
+    // we need to skip some IFDs in the APP1 segment
+    bool makernoteToApp2 = PlatformData::extendedMakernote();
 
     // 2 Exif Identifier Code & TIFF Header
     pCur += 4;  // Skip 4 Byte for APP1 marker and length
@@ -136,8 +143,11 @@ exif_status ExifCreater::makeExif (void *exifOut,
         drop_num++;
     if (exifInfo->shutter_speed.den == 0)
         drop_num++;
-    if (exifInfo->makerNoteDataSize == 0)
+    if (exifInfo->makerNoteDataSize == 0 || makernoteToApp2) {
+        // skip the makernote IFD in APP1, when we don't have any,
+        // or if we want it to APP2
         drop_num++;
+    }
     tmp = NUM_0TH_IFD_EXIF - drop_num;
     memcpy(pCur, &tmp, NUM_SIZE);
     pCur += NUM_SIZE;
@@ -215,8 +225,9 @@ exif_status ExifCreater::makeExif (void *exifOut,
              1, exifInfo->saturation);
     writeExifIfd(&pCur, EXIF_TAG_SHARPNESS, EXIF_TYPE_SHORT,
              1, exifInfo->sharpness);
-    // Save MakerNote data
-    if (exifInfo->makerNoteDataSize > 0) {
+
+    // Save MakerNote data to APP1, unless we want it APP2
+    if (exifInfo->makerNoteDataSize > 0 && !makernoteToApp2) {
         writeExifIfd(
             &pCur,
             EXIF_TAG_MAKER_NOTE,
@@ -333,16 +344,101 @@ exif_status ExifCreater::makeExif (void *exifOut,
     memcpy(pApp1Start, App1Marker, 2);
     pApp1Start += 2;
 
-    // calc and fill the exif total size, 2 is length; 6 is ExifIdentifierCode
+    // calc and fill the APP1 segment total size, 2 is length; 6 is ExifIdentifierCode
     *size = 2 + 6 + LongerTagOffset;
-    unsigned char size_mm[2] = {
-        static_cast<unsigned char>((*size >> 8) & 0xFF),
-        static_cast<unsigned char>(*size & 0xFF) };
 
-    memcpy(pApp1Start, size_mm, 2);
+    writeMarkerSizeToBuf(pApp1Start, *size);
+
+    unsigned app2StartOffset = *size;
     *size += 2; // APP1 marker size
 
+    exif_status status = EXIF_SUCCESS;
+
+    if (makernoteToApp2) {
+        LOG1("Makernote goes to APP2 segment.");
+        status = makeApp2((pApp1Start + app2StartOffset), *size, exifInfo);
+    }
+
+    if (status != EXIF_SUCCESS)
+        LOGW("Failed to create EXIF APP2 section");
+
     ALOGV("makeExif End");
+    return status;
+}
+
+void ExifCreater::writeMarkerSizeToBuf(unsigned char *ptrTo, unsigned int size)
+{
+    unsigned char size_mm[2] = {
+        static_cast<unsigned char>((size >> 8) & 0xFF),
+        static_cast<unsigned char>(size & 0xFF) };
+
+    memcpy(ptrTo, size_mm, 2);
+}
+
+exif_status ExifCreater::makeApp2(void* pStartApp2, unsigned int& size, exif_attribute_t *exifInfo)
+{
+    LOG1("@%s", __FUNCTION__);
+
+    // APP2 marker will be written starting from the pos pointed to by
+    // pStartApp2
+
+    if (exifInfo->makerNoteDataSize <= 0)
+        return EXIF_SUCCESS;
+
+    int bytesLeftForSegment = EXIF_SIZE_LIMITATION - SIZEOF_LENGTH_FIELD;
+    int bytesToWrite = exifInfo->makerNoteDataSize;
+
+    unsigned char *pCur = NULL, *pApp2Start = NULL;
+    unsigned char App2Marker[SIZEOF_APP2_MARKER] = { 0xff, 0xe2 };
+    int writeCount = 0;
+    int app2SegmentSize = 0;
+    unsigned char *toWrite = exifInfo->makerNoteData;
+
+    pCur = static_cast<unsigned char*>(pStartApp2);
+
+    // Write Makernote up to ~64kB, then split to a new
+    // APP2 segment, if needed
+    while (bytesToWrite > 0) {
+        pApp2Start = pCur;
+        pCur += 4;  // Skip 4 bytes for APP2 marker and length
+
+        memcpy(pCur, MAKERNOTE_ID, sizeof(MAKERNOTE_ID));
+        pCur += sizeof(MAKERNOTE_ID);
+        size += sizeof(MAKERNOTE_ID);
+
+        // Overhead for one APP2 segment:
+        bytesLeftForSegment -= (sizeof(MAKERNOTE_ID) + sizeof(App2Marker) + SIZEOF_LENGTH_FIELD);
+
+        if (bytesToWrite > bytesLeftForSegment) {
+            // More data to write than what fits to one APP2 marker
+            writeCount = bytesLeftForSegment;
+        } else {
+            // All data fits to one APP2 segment
+            writeCount = bytesToWrite;
+        }
+
+        bytesToWrite -= writeCount;
+
+        memcpy(pCur, toWrite, writeCount);
+        pCur += writeCount;
+        toWrite += writeCount;
+        size += writeCount;
+
+        // Last, put the APP2 marker to the beginning of the segment
+        memcpy(pApp2Start, App2Marker, sizeof(App2Marker));
+        pApp2Start += sizeof(App2Marker);
+
+        // Length field goes after the APP2 marker
+        app2SegmentSize = writeCount + sizeof(MAKERNOTE_ID) + SIZEOF_LENGTH_FIELD; // Raw data written + overhead
+
+        writeMarkerSizeToBuf(pApp2Start, app2SegmentSize);
+
+        // add the 2 bytes for both length field and APP2 marker, the caller has to know the total size
+        size += sizeof(App2Marker) + SIZEOF_LENGTH_FIELD;
+
+        // Reset byte counts for another APP2 segment, if needed
+        bytesLeftForSegment = EXIF_SIZE_LIMITATION - SIZEOF_LENGTH_FIELD;
+    }
 
     return EXIF_SUCCESS;
 }

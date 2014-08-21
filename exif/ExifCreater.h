@@ -95,6 +95,8 @@ public:
                                unsigned int *size);
 
 private:
+    exif_status makeApp2(void* pStartApp2, unsigned int& size, exif_attribute_t *exifInfo);
+    void writeMarkerSizeToBuf(unsigned char *ptrTo, unsigned int size);
 
     /*
         Every IFD has 12Bytes.
