@@ -69,6 +69,13 @@ namespace android {
 #define IMG_THUMB_START     (IMG_MAIN_START + JPG_FRAME_BUF_SIZE)
 /*******************************************************************************/
 
+const char MAKERNOTE_ID[] = { 0x49, 0x6e, 0x74, 0x65, 0x6c, 0x4d,
+                              0x6b, 0x6e, 0x6f, 0x74, 0x65, 0x0 /* "IntelMknote\0" */ };
+
+const unsigned SIZEOF_LENGTH_FIELD = 2;
+const unsigned SIZEOF_APP2_MARKER = 2;
+const unsigned SIZEOF_APP2_OVERHEAD = sizeof(MAKERNOTE_ID) + SIZEOF_APP2_MARKER + SIZEOF_LENGTH_FIELD;
+
 typedef enum {
     EXIF_FAIL = -1,
     EXIF_SUCCESS = 0

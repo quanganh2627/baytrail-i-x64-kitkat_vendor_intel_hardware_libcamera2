@@ -36,6 +36,7 @@ EXIFMaker::EXIFMaker(I3AControls *aaaControls) :
     ,initialized(false)
 {
     LOG1("@%s", __FUNCTION__);
+    CLEAR(exifAttributes);
 }
 
 EXIFMaker::~EXIFMaker()
@@ -54,6 +55,13 @@ void EXIFMaker::setMakerNote(const ia_binary_data &aaaMkNoteData)
         exifAttributes.makerNoteDataSize = aaaMkNoteData.size;
         exifAttributes.makerNoteData = (unsigned char*) aaaMkNoteData.data;
     }
+}
+
+uint32_t EXIFMaker::getMakerNoteDataSize() const
+{
+    LOG1("@%s", __FUNCTION__);
+    // overhead: MAKERNOTE_ID + APP2 marker + length field
+    return exifAttributes.makerNoteDataSize + SIZEOF_APP2_OVERHEAD;
 }
 
 /**
@@ -306,7 +314,7 @@ void EXIFMaker::pictureTaken(void)
  *
  * @arg params active Android HAL parameters
  */
-    void EXIFMaker::initialize(const CameraParameters &params, int zoomRatio)
+void EXIFMaker::initialize(const CameraParameters &params, int zoomRatio)
 {
     LOG1("@%s: params = %p", __FUNCTION__, &params);
     const char *p = NULL;
@@ -747,6 +755,10 @@ void EXIFMaker::clear()
 
     // the TIFF default is 1 (centered)
     exifAttributes.ycbcr_positioning = EXIF_DEF_YCBCR_POSITIONING;
+
+    // Clear the Intel 3A Makernote information
+    exifAttributes.makerNoteData = NULL;
+    exifAttributes.makerNoteDataSize = 0;
 
     initialized = false;
 }

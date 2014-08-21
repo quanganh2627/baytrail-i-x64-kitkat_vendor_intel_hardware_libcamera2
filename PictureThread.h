@@ -194,6 +194,8 @@ private:
     status_t allocatePostviewBuffers(const AtomBuffer& formatDescriptor, int numBufs, bool registerToScaler);
     void freePostviewBuffers();
 
+    status_t allocateExifBuffer();
+
     void unregisterFromGpuScalerAndFree(AtomBuffer bufferArray[], int numBuffs);
 
     int      encodeExifAndThumbnail(AtomBuffer *thumbnail, unsigned char* exifDst);

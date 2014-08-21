@@ -146,15 +146,17 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
     if (mOutBuf.dataPtr == NULL) {
         mCallbacks->allocateMemory(&mOutBuf, bufferSize);
     }
-    if (mExifBuf.dataPtr == NULL) {
-        mCallbacks->allocateMemory(&mExifBuf, EXIF_SIZE_LIMITATION + sizeof(JPEG_MARKER_SOI));
-    }
+
     if (mOutBuf.dataPtr == NULL) {
         ALOGE("Could not allocate memory for temp buffer!");
         return NO_MEMORY;
     }
+
     LOG1("Out buffer: @%p (%d bytes)", mOutBuf.dataPtr, mOutBuf.size);
-    LOG1("Exif buffer: @%p (%d bytes)", mExifBuf.dataPtr, mExifBuf.size);
+
+    status = allocateExifBuffer();
+    if (status != NO_ERROR)
+        return status;
 
     status = scaleMainPic(mainBuf);
     if (status == NO_ERROR) {
@@ -604,9 +606,9 @@ status_t PictureThread::assembleJpeg(AtomBuffer *mainBuf, AtomBuffer *mainBuf2)
     uint32_t thumbnailId(getU32fromFrame((uint8_t*)mainBuf->dataPtr,
                                          JPEG_INFO_START + JPEG_INFO_YUV_FRAME_ID_ADDR));
 
-    if (mExifBuf.dataPtr == NULL) {
-        mCallbacks->allocateMemory(&mExifBuf, EXIF_SIZE_LIMITATION + sizeof(JPEG_MARKER_SOI));
-    }
+    status = allocateExifBuffer();
+    if (status != NO_ERROR)
+        return status;
 
     /* Allocate Output buffer for thumbnail */
     if (mOutBuf.dataPtr == NULL) {
@@ -817,14 +819,16 @@ status_t PictureThread::handleMessageAllocBufs(MessageAllocBufs *msg)
     if (mOutBuf.dataPtr == NULL) {
         mCallbacks->allocateMemory(&mOutBuf, bufferSize);
     }
-    if (mExifBuf.dataPtr == NULL) {
-        mCallbacks->allocateMemory(&mExifBuf, EXIF_SIZE_LIMITATION + sizeof(JPEG_MARKER_SOI));
-    }
-    if (mOutBuf.dataPtr == NULL || mExifBuf.dataPtr == NULL) {
+
+    if (mOutBuf.dataPtr == NULL) {
         ALOGE("Could not allocate memory for output buffers!");
         status = NO_MEMORY;
         goto exit_fail;
     }
+
+    status = allocateExifBuffer();
+    if (status != NO_ERROR)
+        goto exit_fail;
 
     /* re-allocates array of input buffers into mInputBufferArray */
     freeInputBuffers();
@@ -1041,6 +1045,48 @@ void PictureThread::freePostviewBuffers()
     }
 }
 
+/**
+ * \brief Allocates a buffer for EXIF information
+ */
+status_t PictureThread::allocateExifBuffer()
+{
+    LOG1("@%s", __FUNCTION__);
+
+    status_t status = NO_ERROR;
+    int exifBufferSize = 0;
+
+    // Exif APPn segment size maximum is 64kB == EXIF_SIZE_LIMITATION
+    // General EXIF data goes to a single APP1 segment. We need to allocate
+    // space for possibly several APP2 markers for the Makernote binary data.
+    exifBufferSize = EXIF_SIZE_LIMITATION + mExifMaker->getMakerNoteDataSize();
+
+    if (exifBufferSize <= 0)
+        return INVALID_OPERATION;
+
+    // And let's round this up to align to EXIF_SIZE_LIMITATION (64kB for now)
+    // to make everything fit in. Need the space for JFIF SOI marker also.
+    unsigned remainder = exifBufferSize % EXIF_SIZE_LIMITATION;
+    exifBufferSize += (EXIF_SIZE_LIMITATION - remainder);
+    exifBufferSize += sizeof(JPEG_MARKER_SOI);
+
+    if (mExifBuf.dataPtr != NULL && exifBufferSize > mExifBuf.size) {
+        LOG1("Reallocating EXIF buffer due to size requirement.");
+        MemoryUtils::freeAtomBuffer(mExifBuf); // Sets dataPtr to NULL
+    }
+
+    if (mExifBuf.dataPtr == NULL) {
+        mCallbacks->allocateMemory(&mExifBuf, exifBufferSize);
+    }
+
+    LOG1("Exif buffer: @%p (%d bytes)", mExifBuf.dataPtr, mExifBuf.size);
+
+    if (mExifBuf.dataPtr == NULL) {
+        LOGE("Could not allocate EXIF buffer");
+        status = NO_MEMORY;
+    }
+
+    return status;
+}
 
 /**
  * Encode Thumbnail picture into mOutBuf
@@ -1134,6 +1180,8 @@ status_t PictureThread::handleMessageFlush()
     return status;
 }
 
+// now we make two copies: during call copy to parameter and then to msg.data
+// TODO: use a const reference param, to optimize a bit in the makernote copying
 void PictureThread::setMakerNote(atomisp_makernote_info makerNote)
 {
     LOG1("@%s", __FUNCTION__);

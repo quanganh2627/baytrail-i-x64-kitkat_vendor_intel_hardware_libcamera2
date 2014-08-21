@@ -44,6 +44,7 @@ public:
     void initialize(const CameraParameters &params, int zoomRatio);
     bool isInitialized() { return initialized; }
     void setMakerNote(const ia_binary_data &aaaMkNoteData);
+    uint32_t getMakerNoteDataSize() const;
     void setDriverData(const atomisp_makernote_info &ispData);
     void setFaceData(const ia_face_state &faceState);
     void setExtIspAeConfig(uint32_t iso, uint32_t exposureBias, uint32_t tv, uint32_t bv, uint32_t exposureTimeDenominator, uint16_t av);

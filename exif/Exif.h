@@ -323,7 +323,7 @@ typedef struct {
     uint16_t resolution_unit;
     uint16_t compression_scheme;
 
-    uint16_t makerNoteDataSize;
+    uint32_t makerNoteDataSize;
     unsigned char *makerNoteData;
 } exif_attribute_t;
 
