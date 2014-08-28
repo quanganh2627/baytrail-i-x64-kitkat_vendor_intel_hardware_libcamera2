@@ -167,6 +167,8 @@ void CameraProfiles::handleCommon(CameraProfiles *profiles, const char *name, co
         PlatformBase::mCacheLineSize = atoi(atts[1]);
     } else if (strcmp(name, "maxISPTimeoutCount") == 0) {
         PlatformBase::mMaxISPTimeoutCount = atoi(atts[1]);
+    } else if (strcmp(name, "extendedMakernote") == 0) {
+        PlatformBase::mExtendedMakernote = (strcmp(atts[1], "true") == 0);
     }
 }
 

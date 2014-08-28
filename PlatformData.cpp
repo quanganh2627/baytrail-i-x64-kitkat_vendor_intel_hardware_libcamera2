@@ -353,6 +353,12 @@ int PlatformData::getMaxISPTimeoutCount(void)
     return getInstance()->mMaxISPTimeoutCount;
 }
 
+bool PlatformData::extendedMakernote(void)
+{
+    return getInstance()->mExtendedMakernote;
+}
+
+
 bool PlatformData::renderPreviewViaOverlay(int cameraId)
 {
     if (!validCameraId(cameraId, __FUNCTION__)) {

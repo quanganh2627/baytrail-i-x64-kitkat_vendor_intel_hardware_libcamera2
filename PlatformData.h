@@ -1163,6 +1163,17 @@ class PlatformData {
     static int getMaxISPTimeoutCount(void);
 
     /**
+     * \brief Determines whether the extended Makernote is to be used
+     * Extended Makernote is to be used, if large amount of Makernote
+     * data is to be written into the EXIF. The extended Makernote
+     * will be written to APP2 segments in the EXIF, instead of the
+     * standard APP1 segment.
+     *
+     * \return true, if extended Makernote is to be used
+     */
+    static bool extendedMakernote(void);
+
+    /**
      * Retrns max number of preview buffer queue size for depth sensor
      *
      * \param cameraId identifier passed from android.hardware.Camera.open()
@@ -1303,6 +1314,7 @@ public:
         ,mFaceCallbackDivider(1)
         ,mCacheLineSize(64)
         ,mMaxISPTimeoutCount(60)
+        ,mExtendedMakernote(false)
     {}
 
 protected:
@@ -1740,6 +1752,10 @@ protected:
 
     // Max ISP timeout count
     int mMaxISPTimeoutCount;
+
+    // For extended Makernote data usage
+    bool mExtendedMakernote;
+
 private:
     static status_t getSensorInfo(Vector<SensorNameAndPort>& sensorInfo);
 };
