@@ -356,7 +356,7 @@ status_t ControlThread::init()
     }
 
     // DVS needs to be started after AIQ init.
-    if (!PlatformData::useHALVS(mCameraId)) {
+    if (!PlatformData::useHALVS(mCameraId) && !PlatformData::useMultiStreamsForSoC(mCameraId)) {
         status = mISP->initDVS();
         if (status != NO_ERROR) {
             LOGE("Error in initializing DVS");
@@ -2781,7 +2781,7 @@ status_t ControlThread::handleMessageTimeout()
         if (status != NO_ERROR) {
             LOGE("Error initializing ISP");
         } else {
-            if (!PlatformData::useHALVS(mCameraId)) {
+            if (!PlatformData::useHALVS(mCameraId) && !PlatformData::useMultiStreamsForSoC(mCameraId)) {
                 status = mISP->initDVS();
                 if (status != NO_ERROR) {
                     LOGE("Error in initializing DVS");

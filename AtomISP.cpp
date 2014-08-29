@@ -3805,7 +3805,8 @@ int AtomISP::atomisp_set_zoom (int zoom)
         m10mo_ctrl.id = EXT_ISP_CID_ZOOM;
         m10mo_ctrl.data = mZoomDriveTable[zoom];
         mMainDevice->xioctl(ATOMISP_IOC_EXT_ISP_CTRL, &m10mo_ctrl);
-    } else if (!mHALZSLEnabled && !mHALSDVEnabled) { // fix for driver zoom bug, prevent setting in HAL ZSL mode
+    } else if ((!mHALZSLEnabled && !mHALSDVEnabled)
+                || mUseMultiStreamsForSoC) { // fix for driver zoom bug, prevent setting in HAL ZSL mode
         int zoom_driver(mZoomDriveTable[zoom]);
         LOG1("set zoom %d to driver with %d", zoom, zoom_driver);
         ret = mMainDevice->setControl (V4L2_CID_ZOOM_ABSOLUTE, zoom_driver, "zoom");
