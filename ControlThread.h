@@ -737,6 +737,7 @@ private:
 
     void checkAndUpdateRawSize(AtomBuffer &formatDesc);
 
+    bool isVideoMode(const CameraParameters &params);
 // inherited from Thread
 private:
     virtual bool threadLoop();

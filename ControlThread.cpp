@@ -735,7 +735,7 @@ status_t ControlThread::stopPreview()
     }
 
     // send message and block until thread processes message
-    bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT);
+    bool videoMode = isVideoMode(mParameters);
     PerformanceTraces::SwitchCameras::getOriginalMode(videoMode);
 
     Message msg;
@@ -2676,7 +2676,7 @@ status_t ControlThread::handleMessageStartPreview()
         if (mPreviewThread->isWindowConfigured() || mISP->isFileInjectionEnabled()
             || mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_WINDOWLESS) {
             ALOGI("Preview windowless mode");
-            bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT);
+            bool videoMode = isVideoMode(mParameters);
             status = startPreviewCore(videoMode);
         } else {
             ALOGI("Preview window not set deferring start preview until then");
@@ -2822,7 +2822,7 @@ status_t ControlThread::handleMessageTimeout()
                     return status;
                 }
             }
-            bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
+            bool videoMode = isVideoMode(mParameters) ? true : false;
             status = startPreviewCore(videoMode);
             if (status)
                 ALOGE("%s: Restart Preview failed", __FUNCTION__);
@@ -2852,7 +2852,7 @@ status_t ControlThread::handleMessageSetPreviewWindow(MessagePreviewWindow *msg)
     if (mPreviewThread == NULL)
         return NO_INIT;
 
-    bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
+    bool videoMode = isVideoMode(mParameters) ? true : false;
     PreviewThread::PreviewState currentState = mPreviewThread->getPreviewState();
 
     if (currentState == PreviewThread::STATE_NO_WINDOW
@@ -5300,7 +5300,7 @@ status_t ControlThread::handleMessagePreviewStarted()
     /* Now that preview is started let's send the asynchronous msg to PictureThread
      * to start the allocation of snapshot buffers.
      */
-    bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
+    bool videoMode = isVideoMode(mParameters) ? true : false;
 
     // allocate snapshot buffers right after preview started
     allocateSnapshotAndPostviewBuffers(videoMode);
@@ -7778,7 +7778,7 @@ status_t ControlThread::processStaticParameters(CameraParameters *oldParams,
     float pictureAspectRatio = 0.0f;
     float videoAspectRatio = 0.0f;
     Vector<Size> sizes;
-    bool videoMode = android::isParameterSet(CameraParameters::KEY_RECORDING_HINT, *newParams) ? true : false;
+    bool videoMode = isVideoMode(*newParams) ? true : false;
     int oldWidth, newWidth;
     int oldHeight, newHeight;
     int previewWidth, previewHeight;
@@ -7894,7 +7894,9 @@ status_t ControlThread::processStaticParameters(CameraParameters *oldParams,
     if (status == NO_ERROR) {
         // IA CP library don't support multi-instance, if working in dual camera case,
         // just let main camera support HDR.
-        if ((!mDualMode && !PlatformData::isExtendedCamera(mCameraId)) || (mCameraId == 0))
+        // Don't support hdr feature in video mode
+        if (((!mDualMode && !PlatformData::isExtendedCamera(mCameraId)) || (mCameraId == 0))
+            && !videoMode)
             status = processParamHDR(oldParams, newParams);
     }
     if (mBurstLength != oldBurstLength || mFpsAdaptSkip != oldFpsAdaptSkip) {
@@ -8069,7 +8071,7 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
     String8 str_params(msg->params);
     newParams.unflatten(str_params);
 
-    bool videoMode = android::isParameterSet(CameraParameters::KEY_RECORDING_HINT, newParams) ? true : false;
+    bool videoMode = isVideoMode(newParams) ? true : false;
 
     // print all old and new params for comparison (debug)
     if (gLogLevel & CAMERA_DEBUG_LOG_LEVEL1) {
@@ -9530,6 +9532,17 @@ status_t ControlThread::handleMessageSetOrientation(MessageOrientation *msg)
     LOG1("@%s: orientation = %d", __FUNCTION__, msg->value);
     mCurrentOrientation = msg->value;
     return NO_ERROR;
+}
+
+bool ControlThread::isVideoMode(const CameraParameters &params)
+{
+    LOG1("@%s" , __FUNCTION__);
+    if (android::isParameterSet(CameraParameters::KEY_RECORDING_HINT, params)
+        || mState == STATE_PREVIEW_VIDEO || mState == STATE_RECORDING) {
+        return true;
+    }
+
+    return false;
 }
 
 } // namespace android
