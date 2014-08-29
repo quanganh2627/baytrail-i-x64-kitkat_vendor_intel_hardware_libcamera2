@@ -1,13 +1,11 @@
 ifeq ($(USE_CAMERA_STUB),false)
+ifeq ($(USE_CSS_1_5),true)
 ifeq ($(USE_CAMERA_HAL2),true)
 LOCAL_PATH:= $(call my-dir)
 
-ifeq ($(USE_CSS_1_5),true)
-$(info Building libmfldadvci_ctp for CTP&CSS15)
-include $(LOCAL_PATH)/libcamera2_ctp/Android.mk
-else
-
 include $(CLEAR_VARS)
+
+LOCAL_CFLAGS += -DATOMISP_CSS15
 
 ifeq ($(USE_INTEL_METABUFFER),true)
 LOCAL_CFLAGS += -DENABLE_INTEL_METABUFFER
@@ -15,10 +13,6 @@ endif
 
 ifeq ($(BOARD_GRAPHIC_IS_GEN),true)
 LOCAL_CFLAGS += -DGRAPHIC_IS_GEN
-endif
-
-ifeq ($(USE_CAMERA_IO_BREAKDOWN),true)
-LOCAL_CFLAGS += -DUSE_CAMERA_IO_BREAKDOWN
 endif
 
 # Intel camera extras (HDR, face detection, etc.)
@@ -32,13 +26,11 @@ LOCAL_SRC_FILES := \
 	VideoThread.cpp \
 	AAAThread.cpp \
 	AtomISP.cpp \
-	SensorEmbeddedMetaData.cpp \
 	DebugFrameRate.cpp \
 	PerformanceTraces.cpp \
 	Callbacks.cpp \
 	AtomAIQ.cpp \
 	AtomSoc3A.cpp \
-        AtomExtIsp3A.cpp \
 	AtomHAL.cpp \
 	CameraConf.cpp \
 	ColorConverter.cpp \
@@ -52,7 +44,6 @@ LOCAL_SRC_FILES := \
 	CameraProfiles.cpp \
 	IntelParameters.cpp \
 	exif/ExifCreater.cpp \
-	HALVideoStabilization.cpp \
 	PostProcThread.cpp \
 	PanoramaThread.cpp \
 	AtomCommon.cpp \
@@ -61,34 +52,21 @@ LOCAL_SRC_FILES := \
 	CameraDump.cpp \
 	CameraAreas.cpp \
 	BracketManager.cpp \
-	OnlineBracket.cpp \
-	OfflineBracket.cpp \
 	GPUScaler.cpp \
-	GPUWarper.cpp \
 	AtomAcc.cpp \
-	ThermalThrottleThread.cpp \
 	AtomIspObserverManager.cpp \
 	SensorThread.cpp \
 	ScalerService.cpp \
-	WarperService.cpp \
 	PostCaptureThread.cpp \
 	AccManagerThread.cpp \
 	SensorHW.cpp \
-        SensorHWExtIsp.cpp \
-	ValidateParameters.cpp \
 	v4l2dev/v4l2devicebase.cpp \
 	v4l2dev/v4l2videonode.cpp \
-	v4l2dev/v4l2subdevice.cpp \
-	AtomDvs2.cpp
+	v4l2dev/v4l2subdevice.cpp
 
 ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_SRC_FILES += \
 	JpegHwEncoder.cpp
-endif
-
-ifeq ($(BOARD_GRAPHIC_IS_GEN), true)
-LOCAL_SRC_FILES += \
-	VAScaler.cpp
 endif
 
 ifeq ($(USE_CSS_2_0), true)
@@ -120,7 +98,7 @@ LOCAL_C_INCLUDES += \
 	$(TARGET_OUT_HEADERS)/libtbd \
 	$(TARGET_OUT_HEADERS)/libmix_videoencoder \
 	$(TARGET_OUT_HEADERS)/cameralibs \
-	$(TARGET_OUT_HEADERS)/libmfldadvci \
+	$(TARGET_OUT_HEADERS)/libmfldadvci_ctp \
 	$(TARGET_OUT_HEADERS)/libCameraFaceDetection \
         $(TARGET_OUT_HEADERS)/libmix_imageencoder \
 	$(LOCAL_PATH)/v4l2dev/
@@ -156,11 +134,9 @@ LOCAL_SHARED_LIBRARIES := \
 	libia_isp_1_5 \
 	libia_isp_2_2 \
 	libia_cmc_parser \
-	libia_log \
-	libia_emd_decoder \
 	libui \
 	libia_mkn \
-	libia_dvs_2 \
+	libmfldadvci \
 	libia_nvm \
 	libtbd \
 	libsqlite \
@@ -169,14 +145,12 @@ LOCAL_SHARED_LIBRARIES := \
 	libGLESv2 \
 	libgui \
 	libexpat \
-	libia_panorama \
-	libhardware \
-	libcilkrts \
-	libia_face \
-	libiacp \
-	libia_exc
+	libia_panorama
 
-LOCAL_SHARED_LIBRARIES += libintlc libsvml libimf libirng
+ifeq ($(USE_SHARED_IA_FACE), true)
+LOCAL_SHARED_LIBRARIES += \
+	libia_face
+endif
 
 ifeq ($(USE_INTEL_METABUFFER),true)
 LOCAL_SHARED_LIBRARIES += \
@@ -193,13 +167,6 @@ LOCAL_SHARED_LIBRARIES += \
 	libmix_videovpp
 endif
 
-ifeq ($(BOARD_GRAPHIC_IS_GEN), true)
-LOCAL_SHARED_LIBRARIES += \
-	libva \
-	libva-tpi \
-	libva-android
-endif
-
 LOCAL_STATIC_LIBRARIES := \
 	libcameranvm \
 	gdctool \
@@ -210,10 +177,13 @@ ifeq ($(USE_INTEL_JPEG), true)
 LOCAL_CFLAGS += -DUSE_INTEL_JPEG
 endif
 
+
 LOCAL_CFLAGS += -Wunused-variable -Werror -Wno-unused-parameter -Wno-error=unused-parameter -Wno-error=sizeof-pointer-memaccess -Wno-error=cpp
 
-# This micro is used for file injection. Set it when file injection is needed.
-#LOCAL_CFLAGS += -DENABLE_FILE_INJECTION
+# enable R&D features only in R&D builds
+ifneq ($(filter userdebug eng tests, $(TARGET_BUILD_VARIANT)),)
+LOCAL_CFLAGS += -DLIBCAMERA_RD_FEATURES -Wunused-variable -Werror
+endif
 
 # The camera.<TARGET_DEVICE>.so will be built for each platform
 # (which should be unique to the TARGET_DEVICE environment)
@@ -230,3 +200,4 @@ include $(BUILD_SHARED_LIBRARY)
 endif  #ifeq ($(USE_CAMERA_HAL2),true)
 endif #ifeq ($(USE_CSS_1_5),true)
 endif #ifeq ($(USE_CAMERA_STUB),false)
+
