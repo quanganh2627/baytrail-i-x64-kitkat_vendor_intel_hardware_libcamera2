@@ -29,8 +29,9 @@
 #define IFD_SIZE                    12
 #define OFFSET_SIZE                 4
 
+// NOTE: Increment the below values if tags are added.
 #define NUM_0TH_IFD_TIFF            14
-#define NUM_0TH_IFD_EXIF            32
+#define NUM_0TH_IFD_EXIF            35
 #define NUM_0TH_IFD_GPS             12
 #define NUM_1TH_IFD_TIFF            9
 
@@ -48,7 +49,14 @@
 
 #define EXIF_FILE_SIZE              28800
 
-/* 0th IFD TIFF Tags */
+// TODO: Check the EXIF_TAG_* definitions
+// The byte order of the tags vary, some are in "Intel" format (TIFF/EXIF spec: 'II'),
+// others are in "Motorola" ('MM') format. Seems that parsers manage, though these are
+// written to EXIF data whichever way..
+
+/* 0th IFD TIFF Tags
+ * NOTE: If tags are added, increment NUM_0TH_IFD_TIFF
+ */
 #define EXIF_TAG_IMAGE_WIDTH                    0x0100
 #define EXIF_TAG_IMAGE_HEIGHT                   0x0101
 #define EXIF_TAG_IMAGE_DESCRIPTION              0x010e
@@ -64,7 +72,9 @@
 #define EXIF_TAG_EXIF_IFD_POINTER               0x8769
 #define EXIF_TAG_GPS_IFD_POINTER                0x8825
 
-/* 0th IFD Exif Private Tags */
+/* 0th IFD Exif Private Tags
+ * NOTE: If tags are added, increment NUM_0TH_IFD_EXIF
+*/
 #define EXIF_TAG_EXPOSURE_TIME                  0x829A
 #define EXIF_TAG_FNUMBER                        0x829D
 #define EXIF_TAG_EXPOSURE_PROGRAM               0x8822
@@ -85,6 +95,9 @@
 #define EXIF_TAG_FOCAL_LENGTH                   0x920A
 #define EXIF_TAG_MAKER_NOTE                     0x927C
 #define EXIF_TAG_USER_COMMENT                   0x9286
+#define EXIF_TAG_SUBSECTIME                     0x9290
+#define EXIF_TAG_SUBSECTIME_ORIGINAL            0x9291
+#define EXIF_TAG_SUBSECTIME_DIGITIZED           0x9292
 #define EXIF_TAG_FLASH_PIX_VERSION              0xA000
 #define EXIF_TAG_COLOR_SPACE                    0xA001
 #define EXIF_TAG_PIXEL_X_DIMENSION              0xA002
@@ -98,7 +111,9 @@
 #define EXIF_TAG_SATURATION                     0xA409
 #define EXIF_TAG_SHARPNESS                      0xA40A
 
-/* 0th IFD GPS Info Tags */
+/* 0th IFD GPS Info Tags
+ * NOTE: If tags are added, increment NUM_0TH_IFD_GPS
+ */
 #define EXIF_TAG_GPS_VERSION_ID                 0x0000
 #define EXIF_TAG_GPS_LATITUDE_REF               0x0001
 #define EXIF_TAG_GPS_LATITUDE                   0x0002
@@ -223,6 +238,9 @@ const uint8_t   EXIF_GPS_IMG_DIRECTION  = 0x20;
 #define EXIF_DEF_SOFTWARE       "Android"
 #define EXIF_DEF_EXIF_VERSION   "0220"
 #define EXIF_DEF_USERCOMMENTS   "  "
+#define EXIF_DEF_SUBSECTIME           "000"
+#define EXIF_DEF_SUBSECTIME_ORIGINAL  "000"
+#define EXIF_DEF_SUBSECTIME_DIGITIZED "000"
 #define EXIF_DEF_FLASHPIXVERSION "0100" /* Flashpix Format Version 1.0 */
 
 #define EXIF_DEF_YCBCR_POSITIONING  1   /* centered */
@@ -257,6 +275,7 @@ typedef struct {
     bool enableThumb;
 
     uint8_t image_description[32];
+    unsigned char subsectime[4];
     uint8_t flashpix_version[4];
     uint8_t components_configuration[4];
     uint8_t maker[32];

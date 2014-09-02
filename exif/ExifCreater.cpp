@@ -201,6 +201,12 @@ exif_status ExifCreater::makeExif (void *exifOut,
     memcpy(exifInfo->user_comment, code, sizeof(code));
     writeExifIfd(&pCur, EXIF_TAG_USER_COMMENT, EXIF_TYPE_UNDEFINED,
                  commentsLen + sizeof(code), exifInfo->user_comment, &LongerTagOffset, pIfdStart);
+    writeExifIfd(&pCur, EXIF_TAG_SUBSECTIME, EXIF_TYPE_ASCII,
+                 4, exifInfo->subsectime, &LongerTagOffset, pIfdStart);
+    writeExifIfd(&pCur, EXIF_TAG_SUBSECTIME_ORIGINAL, EXIF_TYPE_ASCII,
+                 4, exifInfo->subsectime, &LongerTagOffset, pIfdStart);
+    writeExifIfd(&pCur, EXIF_TAG_SUBSECTIME_DIGITIZED, EXIF_TYPE_ASCII,
+                 4, exifInfo->subsectime, &LongerTagOffset, pIfdStart);
     writeExifIfd(&pCur, EXIF_TAG_FLASH_PIX_VERSION, EXIF_TYPE_UNDEFINED,
                  4, exifInfo->flashpix_version);
     writeExifIfd(&pCur, EXIF_TAG_COLOR_SPACE, EXIF_TYPE_SHORT,

@@ -324,19 +324,25 @@ void EXIFMaker::initialize(const CameraParameters &params, int zoomRatio)
     clear();
 
     // Initialize the exifAttributes with specific values
-    // time information
-    time_t rawtime;
-    struct tm *timeinfo;
-    time(&rawtime);
-    timeinfo = localtime(&rawtime);
+    struct tm *timeinfo = NULL;
+    timeval timeWithSubSec;
+    gettimeofday(&timeWithSubSec, NULL);
+    timeinfo = localtime(&timeWithSubSec.tv_sec);
 
     if (timeinfo) {
         strftime((char *)exifAttributes.date_time, sizeof(exifAttributes.date_time), "%Y:%m:%d %H:%M:%S", timeinfo);
+        // In case we magically happen to get 0 usec value for the time,
+        // add a thousand usec to get one msec to the EXIF
+        if (timeWithSubSec.tv_usec == 0)
+            timeWithSubSec.tv_usec += 1000;
+        // msec part of the EXIF time
+        snprintf((char*)exifAttributes.subsectime, sizeof(exifAttributes.subsectime), "%3ld", timeWithSubSec.tv_usec*1000l);
         // fields: tm_sec, tm_min, tm_hour, tm_mday, tm_mon, tm_year, tm_wday, tm_yday, tm_isdst, tm_gmtoff, tm_zone
     } else {
         ALOGW("NULL timeinfo from localtime(), using defaults...");
         struct tm tmpTime = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "UTC"};
         strftime((char *)exifAttributes.date_time, sizeof(exifAttributes.date_time), "%Y:%m:%d %H:%M:%S", &tmpTime);
+        snprintf((char*)exifAttributes.subsectime, sizeof(exifAttributes.subsectime), "%3ld", 100l);
     }
 
     // conponents configuration.
@@ -734,6 +740,7 @@ void EXIFMaker::clear()
     strncpy((char*)exifAttributes.software, EXIF_DEF_SOFTWARE, sizeof(exifAttributes.software));
 
     memcpy(exifAttributes.exif_version, EXIF_DEF_EXIF_VERSION, sizeof(exifAttributes.exif_version));
+    memcpy(exifAttributes.subsectime, EXIF_DEF_SUBSECTIME, sizeof(exifAttributes.subsectime));
     memcpy(exifAttributes.flashpix_version, EXIF_DEF_FLASHPIXVERSION, sizeof(exifAttributes.flashpix_version));
 
     // initially, set default flash
