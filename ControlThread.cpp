@@ -7539,7 +7539,10 @@ status_t ControlThread::waitForAndExecuteMessage()
     // Note: MessageQueue::receive overrides msg in case of new message.
     // If no messages, we timeout in 5s and execute the timeout handler
     msg.id = MESSAGE_ID_TIMEOUT;
-    status = mMessageQueue.receive(&msg, MESSAGE_QUEUE_RECEIVE_TIMEOUT_MSEC);
+    if (!strncmp(mHwcg.mSensorCI->getSensorName(), "ov7736", sizeof("ov7736")-1)){
+        status = mMessageQueue.receive(&msg, 500);
+    } else
+        status = mMessageQueue.receive(&msg, MESSAGE_QUEUE_RECEIVE_TIMEOUT_MSEC);
 
     switch (msg.id) {
 
