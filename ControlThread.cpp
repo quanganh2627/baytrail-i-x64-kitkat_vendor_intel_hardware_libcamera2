@@ -8851,7 +8851,9 @@ status_t ControlThread::hdrCompose()
         // logic in handleMessagePictureDone(), so we make sure this frame is not added to the
         // pool of mAvailableSnapshotBuffers
         mHdr.outMainBuf.status = FRAME_STATUS_SKIPPED;
-        mHdr.outPostviewBuf.status = FRAME_STATUS_SKIPPED;
+        // recycling logic works based on the outMainBuf, but thumbnail gets
+        // created based on the outPostviewBuf status, so we set pv status OK.
+        mHdr.outPostviewBuf.status = FRAME_STATUS_OK;
         status = mPictureThread->encode(hdrPicMetaData, &mHdr.outMainBuf, &mHdr.outPostviewBuf, false);
         if (status == NO_ERROR) {
             doEncode = true;
