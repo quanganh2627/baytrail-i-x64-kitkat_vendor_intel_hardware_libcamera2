@@ -212,8 +212,8 @@ protected:
     /* [BEGIN] IHWFlashControl overloads, */
     status_t setFlash(int numFrames);
     status_t setFlashIndicator(int intensity);
-    status_t setTorch(int intensity);
-    int setFlashIntensity(int intensity);
+    status_t setTorch(int intensity, unsigned int torchId = 0);
+    int setFlashIntensity(int intensity, unsigned int flashId = 0);
 
     // Check if battery is too low for flash control
     BatteryStatus getBatteryStatus();
@@ -473,7 +473,7 @@ private:
     void getMaxVideoSize(int cameraId, int* width, int* height);
 
     status_t updateLowLight();
-    status_t setTorchHelper(int intensity);
+    status_t setTorchHelper(int intensity, int torchId = 0);
     status_t updateCaptureParams();
 
     int detectDeviceResolutions();

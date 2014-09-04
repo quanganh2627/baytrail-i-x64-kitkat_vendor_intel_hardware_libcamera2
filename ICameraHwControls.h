@@ -252,9 +252,9 @@ public:
 
     virtual status_t setFlash(int numFrames) = 0;
     virtual status_t setFlashIndicator(int intensity) = 0;
-    virtual status_t setTorch(int intensity) = 0;
+    virtual status_t setTorch(int intensity, unsigned int torchId = 0) = 0;
     /* Flash related controls */
-    virtual int setFlashIntensity(int intensity) = 0;
+    virtual int setFlashIntensity(int intensity, unsigned int flashId = 0) = 0;
     /* Check battery status for flash control */
     virtual BatteryStatus getBatteryStatus() = 0;
 };

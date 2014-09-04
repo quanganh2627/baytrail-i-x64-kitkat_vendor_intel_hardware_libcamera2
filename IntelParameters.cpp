@@ -311,6 +311,25 @@ namespace android {
         }
     }
 
+    /**
+     * parses a list from a string using strtok_r, inserts into Vector.
+     * Note that this modifies the first param "char *str".
+     */
+    void IntelCameraParameters::parseList(char *str, const char *delim, Vector<String8> &elements)
+    {
+        LOG1("@%s", __FUNCTION__);
+        if (str == 0) {
+            return;
+        }
+
+        char *saveptr = NULL;
+        char *token = strtok_r(str, delim, &saveptr);
+
+        while (token != NULL) {
+            elements.push_back(String8(token));
+            token = strtok_r(NULL, delim, &saveptr);
+        }
+    }
 
     status_t IntelCameraParameters::parseResolution(const char *p, int &width, int &height,
             char **endptr)

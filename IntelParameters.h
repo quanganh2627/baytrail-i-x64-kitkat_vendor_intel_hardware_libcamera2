@@ -284,6 +284,7 @@ namespace android {
     static const char* getSupportedPanoramaLivePreviewSizes(const CameraParameters &params);
     static void parseResolutionList(const char *sizeStr, Vector<Size> &sizes);
     static status_t parseResolution(const char *p, int &width, int &height, char **endptr = NULL);
+    static void parseList(char *str, const char *delim, Vector<String8> &elements);
   private:
       IntelCameraParameters(void) {}
 

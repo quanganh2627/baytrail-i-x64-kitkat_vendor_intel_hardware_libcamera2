@@ -42,6 +42,7 @@ namespace android {
 
 #define MAX_NUM_AF_WINDOW       9
 const unsigned int NUM_EXPOSURES = 1;
+const unsigned int MAX_FLASH = 10;
 
 typedef struct {
     struct atomisp_parm               isp_params;
@@ -70,7 +71,7 @@ typedef struct {
     ia_aiq_exposure_parameters        exposures[NUM_EXPOSURES];
     ia_aiq_exposure_sensor_parameters sensor_exposures[NUM_EXPOSURES];
     ia_aiq_ae_exposure_result         exposure_result_array[NUM_EXPOSURES];
-    ia_aiq_flash_parameters           flash;
+    ia_aiq_flash_parameters           flash[MAX_FLASH];
 } stored_ae_results;
 
 typedef struct {
@@ -229,6 +230,7 @@ private:
     int AeForFlash();
     int applyResults();
     bool changeSensorMode(void);
+    void setTorchHelper(int intensity);
 
     //staticstics
     status_t getStatistics(const struct timeval *frame_timestamp, int orientation);
@@ -457,6 +459,7 @@ private:
     AeMode mPublicAeMode;
     SceneMode mAeSceneMode;
     FlashMode mAeFlashMode;
+    int mFlashCount;
     ae_state mAeState;
     stored_ae_results mPreAssistLightAeResults;
     ia_coordinate mAeCoord;

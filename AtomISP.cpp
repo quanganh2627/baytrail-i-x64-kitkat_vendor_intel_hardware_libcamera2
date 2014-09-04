@@ -3448,11 +3448,16 @@ status_t AtomISP::setFlashIndicator(int intensity)
     return NO_ERROR;
 }
 
-status_t AtomISP::setTorchHelper(int intensity)
+status_t AtomISP::setTorchHelper(int intensity, int torchId)
 {
     if (intensity) {
-        if (mMainDevice->setControl(V4L2_CID_FLASH_TORCH_INTENSITY, intensity, "Torch Intensity") < 0)
+        // move the index to the second byte for the driver
+        torchId = torchId << 8;
+        // bitwise add the led index to the second byte of the intensity value
+        int intensityWithIndex = intensity | torchId;
+        if (mMainDevice->setControl(V4L2_CID_FLASH_TORCH_INTENSITY, intensityWithIndex, "Torch intensity") < 0)
             return UNKNOWN_ERROR;
+
         if (mMainDevice->setControl(V4L2_CID_FLASH_MODE, ATOMISP_FLASH_MODE_TORCH, "Flash Mode") < 0)
             return UNKNOWN_ERROR;
 
@@ -3468,7 +3473,7 @@ status_t AtomISP::setTorchHelper(int intensity)
     return NO_ERROR;
 }
 
-status_t AtomISP::setTorch(int intensity)
+status_t AtomISP::setTorch(int intensity, unsigned int torchId)
 {
     LOG1("@%s: intensity = %d", __FUNCTION__, intensity);
 
@@ -3477,7 +3482,7 @@ status_t AtomISP::setTorch(int intensity)
         return INVALID_OPERATION;
     }
 
-    setTorchHelper(intensity);
+    setTorchHelper(intensity, torchId);
 
     // closing the kernel device will not automatically turn off
     // flash light, so need to keep track in user-space
@@ -6754,9 +6759,16 @@ void AtomISP::getOutputSize(int *width, int *height, int *bpl)
         *bpl = bplTmp;
 }
 
-int AtomISP::setFlashIntensity(int intensity)
+/**
+ * \param intensity value between 0-100
+ * \param flashId the flash identifier. Starts from 0, up to e.g. led count -1.
+ */
+int AtomISP::setFlashIntensity(int intensity, unsigned int flashId)
 {
-    LOG2("@%s", __FUNCTION__);
+    LOG1("@%s", __FUNCTION__);
+    flashId = flashId << 8; // move the index to the second byte for the driver
+    intensity |= flashId;   // bitwise add the led index to the second byte of the intensity value
+    LOG1("flash intensity is: %x", intensity);
     return mMainDevice->setControl(V4L2_CID_FLASH_INTENSITY, intensity, "Set flash intensity");
 }
 
