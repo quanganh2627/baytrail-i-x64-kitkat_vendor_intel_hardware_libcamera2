@@ -2793,25 +2793,24 @@ status_t ControlThread::handleMessageTimeout()
     LOG2("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    uint64_t now = systemTime();
-    if (now - mTimeoutTimestamp < REPEATING_TIMEOUT) {
-        // this timeout is repeating, despite the recovery mechanism. What we
-        // can do at this point is just damage control - let's try to avoid
-        // need of rebooting the device, by shutting down the mediaserver as
-        // the last resort
-        ALOGE("Repeating timeout detected. Recovery is not working out. "
-             "Sending error to app and shutting down the mediaserver in hope of "
-             "avoiding need to reboot the device.");
-        mCallbacksThread->sendError(CAMERA_ERROR_SERVER_DIED);
-        // Call the stop and deinit, just in case.
-        mISP->stop();
-        mISP->deInitDevice();
-        // Close the mediaserver. It will hopefully respawn in a better shape.
-        abort();
-    }
-    mTimeoutTimestamp = now;
-
     if (!mISP->isDeviceInitialized()) {
+        uint64_t now = systemTime();
+        if (now - mTimeoutTimestamp < REPEATING_TIMEOUT) {
+            // this timeout is repeating, despite the recovery mechanism. What we
+            // can do at this point is just damage control - let's try to avoid
+            // need of rebooting the device, by shutting down the mediaserver as
+            // the last resort
+            ALOGE("Repeating timeout detected. Recovery is not working out. "
+                 "Sending error to app and shutting down the mediaserver in hope of "
+                 "avoiding need to reboot the device.");
+            mCallbacksThread->sendError(CAMERA_ERROR_SERVER_DIED);
+            sleep(2); // give the app some time for handling the shocking news
+            deinit();
+            // Close the mediaserver. It will hopefully respawn in a better shape.
+            abort();
+        }
+        mTimeoutTimestamp = now;
+
         status = mISP->init();
         if (status != NO_ERROR) {
             ALOGE("Error initializing ISP");
