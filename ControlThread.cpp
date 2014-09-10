@@ -5383,6 +5383,9 @@ status_t ControlThread::processParamSceneMode(CameraParameters *oldParams,
             } else {
                 LOG1("Unsupported %s: %s. Using AUTO!", CameraParameters::KEY_SCENE_MODE, newScene.string());
                 sceneMode = CAM_AE_SCENE_MODE_AUTO;
+                if (!strncmp(mHwcg.mSensorCI->getSensorName(), "ov7736", sizeof("ov7736")-1)){
+			needRestart = true;
+		}
             }
 
             if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
