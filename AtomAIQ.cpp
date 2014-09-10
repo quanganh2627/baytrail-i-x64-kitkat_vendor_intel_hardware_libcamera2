@@ -2780,6 +2780,7 @@ ia_err IaIsp15::calculateIspParams(const ispInputParameters *isp_input_params,
 IaIsp22::IaIsp22()
 {
     LOG1("@%s", __FUNCTION__);
+    CLEAR(mIaIsp22InputParams);
 }
 
 IaIsp22::~IaIsp22()
