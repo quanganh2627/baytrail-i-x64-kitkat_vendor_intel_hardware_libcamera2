@@ -1853,6 +1853,8 @@ bool AtomAIQ::changeSensorMode(void)
     LOG2("sensor descriptor: coarse_integration_time_max_margin %d", sd->coarse_integration_time_max_margin);
     LOG2("sensor descriptor: binning_factor_y %d", sensor_mode_data.binning_factor_y);
 
+    m3aState.lsc_update = true;
+
     if (m3aState.stats)
         freeStatistics(m3aState.stats);
 
@@ -2524,6 +2526,13 @@ status_t AtomAIQ::runAICMain()
         mIspInputParams.pa_results = pa_results;
         mIspInputParams.manual_brightness = 0;
         mIspInputParams.manual_hue = 0;
+
+        // Forces updating LSC in ISP on each ISP reset. It is assumed that
+        // changeSensorMode is invoked when ISP reset occurs.
+        if (m3aState.lsc_update) {
+            mIspInputParams.pa_results->lsc_update = true;
+            m3aState.lsc_update = false;
+        }
 
         ret = mISPAdaptor->calculateIspParams(&mIspInputParams, &((m3aState.results).isp_output));
 

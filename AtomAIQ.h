@@ -101,6 +101,7 @@ typedef struct {
     int                             boot_events;
     struct timespec                 lens_timestamp;
     aiq_results                     results;
+    bool                            lsc_update;
 } aaa_state;
 
 
