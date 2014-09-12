@@ -41,7 +41,7 @@ AAAThread::AAAThread(ICallbackAAA *aaaDone, UltraLowLight *ull, I3AControls *aaa
     ,mULL(ull)
     ,mCameraId(cameraId)
     ,m3ARunning(false)
-    ,mStartAF(false)
+    ,mStartAfSeqInMode(CAM_AF_MODE_NOT_SET)
     ,mWaitForScanStart(true)
     ,mStopAF(false)
     ,mPreviousCafStatus(CAM_AF_STATUS_IDLE)
@@ -349,7 +349,7 @@ status_t AAAThread::handleMessageEnableAeLock(MessageEnable* msg)
 
     // during AF, AE lock is controlled by AF, otherwise
     // set the value here
-    if (mStartAF != true)
+    if (mStartAfSeqInMode == CAM_AF_MODE_NOT_SET)
         m3AControls->setAeLock(msg->enable);
 
     mMessageQueue.reply(MESSAGE_ID_ENABLE_AE_LOCK, status);
@@ -364,7 +364,7 @@ status_t AAAThread::handleMessageEnableAwbLock(MessageEnable* msg)
 
     // during AF, AWB lock is controlled by AF, otherwise
     // set the value here
-    if (mStartAF != true)
+    if (mStartAfSeqInMode == CAM_AF_MODE_NOT_SET)
         m3AControls->setAwbLock(msg->enable);
 
     mMessageQueue.reply(MESSAGE_ID_ENABLE_AWB_LOCK, status);
@@ -377,19 +377,23 @@ status_t AAAThread::handleMessageAutoFocus()
     status_t status(NO_ERROR);
     AfMode currAfMode(m3AControls->getAfMode());
 
-   /**
-    * If we are in continuous focus mode we should return immediately with
-    * the current status if we are not busy.
-    */
-    AfStatus cafStatus = m3AControls->getCAFStatus();
-    if (currAfMode == CAM_AF_MODE_CONTINUOUS && cafStatus != CAM_AF_STATUS_BUSY) {
-        mCallbacksThread->autoFocusDone(cafStatus == CAM_AF_STATUS_SUCCESS);
-        return status;
-    }
+    // Run the "normal" still AF sequence
+    if (currAfMode == CAM_AF_MODE_AUTO ||
+        currAfMode == CAM_AF_MODE_MACRO ||
+        currAfMode == CAM_AF_MODE_CONTINUOUS ||
+        currAfMode == CAM_AF_MODE_CONTINUOUS_VIDEO) {
 
-    if (currAfMode != CAM_AF_MODE_INFINITY &&
-        currAfMode != CAM_AF_MODE_FIXED &&
-        currAfMode != CAM_AF_MODE_MANUAL) {
+        if (currAfMode == CAM_AF_MODE_CONTINUOUS ||
+            currAfMode == CAM_AF_MODE_CONTINUOUS_VIDEO) {
+            // If we are not busy in continuous-focus mode, we should
+            // return immediately with the current status
+            AfStatus cafStatus = m3AControls->getCAFStatus();
+            if (cafStatus != CAM_AF_STATUS_BUSY) {
+                m3AControls->setAfLock(true);
+                mCallbacksThread->autoFocusDone(cafStatus == CAM_AF_STATUS_SUCCESS);
+                return status;
+            }
+        }
 
         if (m3AControls->isIntel3A()) {
             m3AControls->setAfEnabled(true);
@@ -412,10 +416,11 @@ status_t AAAThread::handleMessageAutoFocus()
             m3AControls->startStillAf();
         }
 
-        mStartAF = true;
+        mStartAfSeqInMode = currAfMode;
         mStopAF = false;
     } else {
         // FIXME: Should be called immediately for SOC/fixed focus cameras
+        mStartAfSeqInMode = CAM_AF_MODE_NOT_SET;
         mCallbacksThread->autoFocusDone(true);
     }
 
@@ -451,7 +456,11 @@ status_t AAAThread::handleAutoFocusExtIsp(const AtomBuffer *buff)
         return NO_ERROR;
     }
 
-    if (mStartAF) {
+    if (mStartAfSeqInMode == CAM_AF_MODE_AUTO ||
+        mStartAfSeqInMode == CAM_AF_MODE_MACRO ||
+        mStartAfSeqInMode == CAM_AF_MODE_CONTINUOUS ||
+        mStartAfSeqInMode == CAM_AF_MODE_CONTINUOUS_VIDEO) {
+        // TODO: Check AF for ext-ISP, that it still works..
         // Status for normal AF sequence:
         if (afStatus == CAM_AF_STATUS_BUSY) {
             // metadata has indicated that AF is running:
@@ -477,8 +486,9 @@ status_t AAAThread::handleAutoFocusExtIsp(const AtomBuffer *buff)
             m3AControls->setAfEnabled(false);
             mCallbacksThread->autoFocusDone(afStatus == CAM_AF_STATUS_SUCCESS);
             // Some AF status was reached, stop the sequence:
-            mStartAF = false;
+            mStartAfSeqInMode = CAM_AF_MODE_NOT_SET;
             mWaitForScanStart = true;
+            m3AControls->setAfLock(true);
         }
     }
 
@@ -531,7 +541,7 @@ status_t AAAThread::handleMessageCancelAutoFocus()
     LOG1("@%s", __FUNCTION__);
     status_t status = NO_ERROR;
 
-    if (mStartAF) {
+    if (mStartAfSeqInMode != CAM_AF_MODE_NOT_SET) {
         // For ext-isp, only stop the AF
         if (mExtIsp) {
             m3AControls->setAfEnabled(false);
@@ -540,6 +550,9 @@ status_t AAAThread::handleMessageCancelAutoFocus()
         mStopAF = true;
         mWaitForScanStart = true;
     }
+
+    // Set AF lock off to enable continuous AF again
+    m3AControls->setAfLock(false);
 
     return status;
 }
@@ -609,14 +622,15 @@ bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus, struct timeva
         return false;
     }
 
-    if (mStartAF) {
+    if (mStartAfSeqInMode != CAM_AF_MODE_NOT_SET) {
         LOG1("AF running while entering flash sequence, stopping AF");
         // Stop the AF sequence in case we are running AF and are entering
         // pre-flash. We are skipping the statistics
         // event handling int the pre-flash sequence (see: handleMessageNewStats()),
         // which causes the still AF sequence to get stuck, when entering pre-flash.
         m3AControls->stopStillAf();
-        mStartAF = mStopAF = false;
+        mStartAfSeqInMode = CAM_AF_MODE_NOT_SET;
+        mStopAF = false;
     }
 
     LOG2("@%s : mFlashStage %d, FrameStatus %d", __FUNCTION__, mFlashStage, frameStatus);
@@ -798,8 +812,23 @@ status_t AAAThread::handleMessageNewStats(MessageNewStats *msgFrame)
         // Run 3A statistics
         status = m3AControls->apply3AProcess(true, &capture_timestamp, mOrientation);
 
-        // If auto-focus was requested, run auto-focus sequence
-        if (status == NO_ERROR && mStartAF) {
+        // Flag for not sendig CAF move callbacks during AF sequence.
+        // This is needed as AF sequence may be run, even when AF mode is CAF
+        bool afDuringCaf = false;
+
+        // If normal auto-focus was requested, run auto-focus sequence
+        if (status == NO_ERROR &&
+            (mStartAfSeqInMode == CAM_AF_MODE_AUTO ||
+             mStartAfSeqInMode == CAM_AF_MODE_MACRO ||
+             mStartAfSeqInMode == CAM_AF_MODE_CONTINUOUS ||
+             mStartAfSeqInMode == CAM_AF_MODE_CONTINUOUS_VIDEO)) {
+
+            if (mStartAfSeqInMode == CAM_AF_MODE_CONTINUOUS ||
+                mStartAfSeqInMode == CAM_AF_MODE_CONTINUOUS_VIDEO) {
+                // Enable the flag to skip focusMove() callback during AF sequence.
+                afDuringCaf = true;
+            }
+
             // Check for cancel-focus
             AfStatus afStatus = CAM_AF_STATUS_FAIL;
             if (mStopAF) {
@@ -830,26 +859,28 @@ status_t AAAThread::handleMessageNewStats(MessageNewStats *msgFrame)
                 m3AControls->setAeLock(mPublicAeLock);
                 m3AControls->setAwbLock(mPublicAwbLock);
                 m3AControls->setAfEnabled(false);
-                mStartAF = false;
+
+                if (mStartAfSeqInMode == CAM_AF_MODE_CONTINUOUS ||
+                    mStartAfSeqInMode == CAM_AF_MODE_CONTINUOUS_VIDEO) {
+                    m3AControls->setAfLock(true);
+                }
+
+                mStartAfSeqInMode = CAM_AF_MODE_NOT_SET;
                 mStopAF = false;
                 mFramesTillAfComplete = 0;
                 mCallbacksThread->autoFocusDone(afStatus == CAM_AF_STATUS_SUCCESS);
-                /**
-                 * Even if we complete AF, if the result was failure we keep
-                 * trying to focus if we are in continuous focus mode.
-                 *
-                 */
-                if((m3AControls->getAfMode() == CAM_AF_MODE_CONTINUOUS) &&
-                   (afStatus != CAM_AF_STATUS_SUCCESS) ) {
-                    m3AControls->setAfEnabled(true);
-                }
             }
+
         }
 
         AfMode currAfMode = m3AControls->getAfMode();
-        if (currAfMode == CAM_AF_MODE_CONTINUOUS) {
+        if (!m3AControls->getAfLock() && !afDuringCaf &&
+            (currAfMode == CAM_AF_MODE_CONTINUOUS ||
+             currAfMode == CAM_AF_MODE_CONTINUOUS_VIDEO)) {
+            // Inform app about the CAF move when the focus is *not* locked.
             AfStatus cafStatus = m3AControls->getCAFStatus();
             LOG2("CAF move lens status: %d", cafStatus);
+
             if (cafStatus != mPreviousCafStatus) {
                 bool focusMoving = false;
                 if (cafStatus == CAM_AF_STATUS_BUSY) {

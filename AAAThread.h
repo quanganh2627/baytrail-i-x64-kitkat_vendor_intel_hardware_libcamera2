@@ -232,7 +232,7 @@ private:
 
     int mCameraId;
     bool m3ARunning;
-    bool mStartAF;              // Indicates that autoFocus() command was issued by the app.
+    AfMode mStartAfSeqInMode;    // Indicates that autoFocus() command was issued by the app. Set to CAM_AF_MODE_NOT_SET when AF sequence not running.
     bool mWaitForScanStart;     // Indicates the waiting for information of AF sequence start. (ATM for ext-ISP only).
     bool mStopAF;
     AfStatus mPreviousCafStatus;
