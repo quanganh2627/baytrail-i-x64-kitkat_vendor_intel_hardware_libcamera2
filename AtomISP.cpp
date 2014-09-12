@@ -63,6 +63,7 @@ const int ZOOM_LINEAR_RATIO_STEP(10); // 0.1
 const int ZOOM_LINEAR_MIN_DRIVE(1);
 const int ZOOM_LINEAR_MAX_DRIVE(31);
 static const unsigned int MAX_NUMBER_PENDING_UPDATES(20);
+static const unsigned long MEM_2G = 2147483648U;
 
 ////////////////////////////////////////////////////////////////////
 //                          STATIC DATA
@@ -5323,7 +5324,10 @@ status_t AtomISP::allocateRecordingBuffers()
          * 2. Encoder is a bit premature to support graphic buffer well for all platforms.
          * FIXME: Unified use graphic buffer if above case are all resolved.
          */
-        MemoryUtils::allocateAtomBuffer(mRecordingBuffers[i], mConfig.recording, mCallbacks);
+        if (PlatformData::getTotalRam() > MEM_2G)
+            MemoryUtils::allocateGraphicBuffer(mRecordingBuffers[i], mConfig.recording);
+        else
+            MemoryUtils::allocateAtomBuffer(mRecordingBuffers[i], mConfig.recording, mCallbacks);
 #else
         //recording buffers use uncached memory
         MemoryUtils::allocateGraphicBuffer(mRecordingBuffers[i], mConfig.recording);
@@ -5531,10 +5535,14 @@ status_t AtomISP::allocateMetaDataBuffers(AtomBuffer *buffers, int numBuffers)
                 } else {
                     initMetaDataBuf(metaDataBuf);
 #ifdef INTEL_VIDEO_XPROC_SHARING
-                    // for cross-process sharing
-                    metaDataBuf->SetSessionFlag(mBufferSharingSessionID);
-                    sp<CameraHeapMemory> mem(static_cast<CameraHeapMemory *>(buffers[i].buff->handle));
-                    metaDataBuf->ShareValue(mem->mBuffers[0]);
+                    if (PlatformData::getTotalRam() > MEM_2G) {
+                        metaDataBuf->SetValue((uint32_t)buffers[i].dataPtr);
+                    } else {
+                        // for cross-process sharing
+                        metaDataBuf->SetSessionFlag(mBufferSharingSessionID);
+                        sp<CameraHeapMemory> mem(static_cast<CameraHeapMemory *>(buffers[i].buff->handle));
+                        metaDataBuf->ShareValue(mem->mBuffers[0]);
+                    }
 #else
                     // for video recording only
                     metaDataBuf->SetValue((uint32_t)buffers[i].dataPtr);
@@ -5592,6 +5600,9 @@ status_t AtomISP::allocateMetaDataBuffers()
             MemoryUtils::freeAtomBufferMetadata(mRecordingBuffers[i]);
 #ifdef INTEL_VIDEO_XPROC_SHARING
             IntelMetadataBuffer::ClearContext(mBufferSharingSessionID, true);
+#else
+            if (PlatformData::getTotalRam() > MEM_2G)
+                IntelMetadataBuffer::ClearContext(mBufferSharingSessionID, true);
 #endif
         }
     } else {
@@ -5638,6 +5649,9 @@ status_t AtomISP::freeRecordingBuffers()
 
 #ifdef INTEL_VIDEO_XPROC_SHARING
         if (mStoreMetaDataInBuffers)
+            IntelMetadataBuffer::ClearContext(mBufferSharingSessionID, true);
+#else
+        if (PlatformData::getTotalRam() > MEM_2G)
             IntelMetadataBuffer::ClearContext(mBufferSharingSessionID, true);
 #endif
 
@@ -6168,6 +6182,9 @@ exitFreeRec:
             MemoryUtils::freeAtomBufferMetadata(mRecordingBuffers[i]);
 #ifdef INTEL_VIDEO_XPROC_SHARING
             IntelMetadataBuffer::ClearContext(mBufferSharingSessionID, true);
+#else
+            if (PlatformData::getTotalRam() > MEM_2G)
+                IntelMetadataBuffer::ClearContext(mBufferSharingSessionID, true);
 #endif
         }
     }
