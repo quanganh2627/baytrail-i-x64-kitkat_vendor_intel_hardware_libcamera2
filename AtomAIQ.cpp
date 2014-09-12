@@ -712,7 +712,7 @@ FlashStage AtomAIQ::getAeFlashNecessity()
     FlashStage ret(CAM_FLASH_STAGE_NONE);
 
     if(mAeState.ae_results) {
-        switch(mAeState.ae_results->flash->status) {
+        switch(mAeState.ae_results->flashes->status) {
         case ia_aiq_flash_status_no:
             ret = CAM_FLASH_STAGE_NONE;
             break;
@@ -977,15 +977,15 @@ status_t AtomAIQ::startStillAf()
                 memcpy(&(mPreAssistLightAeResults.weight_grid), mAeState.ae_results->weight_grid, sizeof(ia_aiq_hist_weight_grid));
                 memcpy(&(mPreAssistLightAeResults.exposures[0]), mAeState.ae_results->exposures[0].exposure, sizeof(ia_aiq_exposure_parameters));
                 memcpy(&(mPreAssistLightAeResults.sensor_exposures[0]), mAeState.ae_results->exposures[0].sensor_exposure, sizeof(ia_aiq_exposure_sensor_parameters));
-                memcpy(mPreAssistLightAeResults.flash, mAeState.ae_results->flash, sizeof(ia_aiq_flash_parameters) * 1 /* TODO: num_flash */);
+                memcpy(mPreAssistLightAeResults.flash, mAeState.ae_results->flashes, sizeof(ia_aiq_flash_parameters) * mAeState.ae_results->num_flashes);
                 // fixes cross-dependencies for container
                 mPreAssistLightAeResults.results.weight_grid =  &mPreAssistLightAeResults.weight_grid;
                 mPreAssistLightAeResults.results.exposures = mPreAssistLightAeResults.exposure_result_array;
                 mPreAssistLightAeResults.results.exposures[0].exposure_index = 0;
                 mPreAssistLightAeResults.results.exposures[0].exposure =  &mPreAssistLightAeResults.exposures[0];
                 mPreAssistLightAeResults.results.exposures[0].sensor_exposure =  &mPreAssistLightAeResults.sensor_exposures[0];
-                mPreAssistLightAeResults.results.flash =  mPreAssistLightAeResults.flash;
-                LOG1("@%s: AE results copy to pre assist results. (flash status = %d)", __FUNCTION__, mPreAssistLightAeResults.results.flash->status);
+                mPreAssistLightAeResults.results.flashes =  mPreAssistLightAeResults.flash;
+                LOG1("@%s: AE results copy to pre assist results. (flash status = %d)", __FUNCTION__, mPreAssistLightAeResults.results.flashes->status);
             } else {
                 LOG1("@%s: No current AE results, clean pre assist light AE result.", __FUNCTION__ );
                 CLEAR(mPreAssistLightAeResults);
@@ -1627,11 +1627,11 @@ ia_aiq_ae_results* AtomAIQ::storeAeResults(ia_aiq_ae_results *ae_results, int up
         memcpy(&(new_stored_results->weight_grid), ae_results->weight_grid, sizeof(ia_aiq_hist_weight_grid));
         memcpy(&(new_stored_results->exposures[0]), ae_results->exposures[0].exposure, sizeof(ia_aiq_exposure_parameters));
         memcpy(&(new_stored_results->sensor_exposures[0]), ae_results->exposures[0].sensor_exposure, sizeof(ia_aiq_exposure_sensor_parameters));
-        memcpy(new_stored_results->flash, ae_results->flash, sizeof(ia_aiq_flash_parameters) * 1 /* TODO: num_flash */);
+        memcpy(new_stored_results->flash, ae_results->flashes, sizeof(ia_aiq_flash_parameters) * ae_results->num_flashes);
         // clean cross-dependencies for container
         store_results->weight_grid = NULL;
         store_results->exposures = NULL;
-        store_results->flash = NULL;
+        store_results->flashes = NULL;
     } else {
         memset(new_stored_results, 0, sizeof(stored_ae_results));
     }
@@ -1678,7 +1678,7 @@ ia_aiq_ae_results* AtomAIQ::peekAeStoredResults(unsigned int offset)
     ae_results->exposures[0].exposure_index = 0;
     ae_results->exposures[0].exposure = &stored_results_element->exposures[0];
     ae_results->exposures[0].sensor_exposure = &stored_results_element->sensor_exposures[0];
-    ae_results->flash = stored_results_element->flash;
+    ae_results->flashes = stored_results_element->flash;
 
     return ae_results;
 }
@@ -1717,12 +1717,12 @@ ia_aiq_ae_results* AtomAIQ::pickAeFeedbackResults()
         feedback_results->exposures[0].exposure_index = 0;
         feedback_results->exposures[0].exposure = &mAeState.feedback_results.exposures[0];
         feedback_results->exposures[0].sensor_exposure = &mAeState.feedback_results.sensor_exposures[0];
-        feedback_results->flash = mAeState.feedback_results.flash;
+        feedback_results->flashes = mAeState.feedback_results.flash;
         feedback_results->num_exposures = NUM_EXPOSURES;
         memcpy(feedback_results->weight_grid, stored_results->weight_grid, sizeof(ia_aiq_hist_weight_grid));
         memcpy(feedback_results->exposures[0].exposure, stored_results->exposures[0].exposure, sizeof(ia_aiq_exposure_parameters));
         memcpy(feedback_results->exposures[0].sensor_exposure, stored_results->exposures[0].sensor_exposure, sizeof(ia_aiq_exposure_sensor_parameters));
-        memcpy(feedback_results->flash, stored_results->flash, sizeof(ia_aiq_flash_parameters) * 1 /* TODO: num_flash */);
+        memcpy(feedback_results->flashes, stored_results->flashes, sizeof(ia_aiq_flash_parameters) * stored_results->num_flashes);
         return feedback_results;
     }
 }
@@ -2207,9 +2207,9 @@ status_t AtomAIQ::runAeMain()
             if (!apply_flash_intensity) {
                 // TODO: Verify that checking the power change is enough.
                 // Should status be checked (rer/pre/main).
-                ia_aiq_flash_parameters *prev_flash = mAeState.ae_results->flash;
-                ia_aiq_flash_parameters *new_flash = new_ae_results->flash;
-                for (int i = 0; i < 1 /* TODO: num_flash */; i++) {
+                ia_aiq_flash_parameters *prev_flash = mAeState.ae_results->flashes;
+                ia_aiq_flash_parameters *new_flash = new_ae_results->flashes;
+                for (unsigned int i = 0; i < mAeState.ae_results->num_flashes; i++) {
                     if (prev_flash[i].power_prc != new_flash[i].power_prc) {
                         apply_flash_intensity = true;
                         break;
@@ -2224,8 +2224,8 @@ status_t AtomAIQ::runAeMain()
 
         /* Apply Flash settings */
         if (apply_flash_intensity) {
-            for (int i = 0; i < 1 /*new_ae_results->flashCount*/; i++) {
-                ret |= mFlashCI->setFlashIntensity((int)(new_ae_results->flash[i]).power_prc, i);
+            for (unsigned int i = 0; i < new_ae_results->num_flashes; i++) {
+                ret |= mFlashCI->setFlashIntensity((int)(new_ae_results->flashes[i]).power_prc, i);
             }
         }
 
