@@ -1081,7 +1081,7 @@ status_t PictureThread::allocateExifBuffer()
     LOG1("Exif buffer: @%p (%d bytes)", mExifBuf.dataPtr, mExifBuf.size);
 
     if (mExifBuf.dataPtr == NULL) {
-        LOGE("Could not allocate EXIF buffer");
+        ALOGE("Could not allocate EXIF buffer");
         status = NO_MEMORY;
     }
 

@@ -78,7 +78,7 @@ status_t CameraAreas::scan(const char* stringArea, int maxSize)
     }
 
     if (stringArea == NULL) {
-        LOGE("No areas string");
+        ALOGE("No areas string");
         return BAD_VALUE;
     }
 
@@ -97,7 +97,7 @@ status_t CameraAreas::scan(const char* stringArea, int maxSize)
     int areaCount = 0;
 
     if (newAreas.setCapacity(maxSize) == NO_MEMORY) {
-        LOGE("Memory allocation failed");
+        ALOGE("Memory allocation failed");
         return NO_MEMORY;
     }
 
@@ -110,7 +110,7 @@ status_t CameraAreas::scan(const char* stringArea, int maxSize)
                        &newItem.y_bottom,
                        &newItem.weight);
         if (i != 5) {
-            LOGE("bad window format");
+            ALOGE("bad window format");
             return BAD_VALUE;
         }
 
@@ -123,7 +123,7 @@ status_t CameraAreas::scan(const char* stringArea, int maxSize)
             newItem.weight);
 
         if (!isValidArea(newItem)) {
-            LOGE("bad area %d (%d,%d,%d,%d,%d)",
+            ALOGE("bad area %d (%d,%d,%d,%d,%d)",
                  areaCount,
                  newItem.x_left,
                  newItem.y_top,
@@ -139,7 +139,7 @@ status_t CameraAreas::scan(const char* stringArea, int maxSize)
         argTail = strchr(argTail + 1, '(');
     }
     if (argTail) {
-        LOGE("Too many areas or bad format");
+        ALOGE("Too many areas or bad format");
         return BAD_VALUE;
     }
 

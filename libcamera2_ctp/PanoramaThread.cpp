@@ -76,7 +76,7 @@ void PanoramaThread::getDefaultParameters(CameraParameters *intel_params, int ca
 {
     LOG1("@%s", __FUNCTION__);
     if (!intel_params) {
-        LOGE("params is null!");
+        ALOGE("params is null!");
         assert(false);
         return;
     }
@@ -111,21 +111,21 @@ status_t PanoramaThread::handleMessageStartPanorama(void)
 
     mContext = ia_panorama_init(NULL);
     if (mContext == NULL) {
-        LOGE("fatal - error initializing panorama");
+        ALOGE("fatal - error initializing panorama");
         assert(false);
         return UNKNOWN_ERROR;
     }
 
     mPanoramaStitchThread = new PanoramaStitchThread(mCallbacks);
     if (mPanoramaStitchThread == NULL) {
-        LOGE("error creating PanoramaThread");
+        ALOGE("error creating PanoramaThread");
         assert(false);
         return NO_MEMORY;
     }
 
     status = mPanoramaStitchThread->run("CamHAL_PANOSTITCH");
     if (status != NO_ERROR) {
-        LOGE("Error starting PanoramaStitchThread!");
+        ALOGE("Error starting PanoramaStitchThread!");
     }
 
     return status;
@@ -296,7 +296,7 @@ status_t PanoramaThread::stitch(AtomBuffer *img, AtomBuffer *pv)
 {
     LOG1("@%s", __FUNCTION__);
     if (mState != PANORAMA_WAITING_FOR_SNAPSHOT) {
-        LOGE("Panorama stitch called in wrong state (%d)", mState);
+        ALOGE("Panorama stitch called in wrong state (%d)", mState);
         return INVALID_OPERATION;
     }
 
@@ -377,7 +377,7 @@ status_t PanoramaThread::handleMessageFinalize()
     }
 
     if (checkCnt == STITCH_CHECK_LIMIT) {
-        LOGE("Panorama stitching error: stitch check retries exceeded");
+        ALOGE("Panorama stitching error: stitch check retries exceeded");
         return UNKNOWN_ERROR;
     }
 
@@ -386,10 +386,10 @@ status_t PanoramaThread::handleMessageFinalize()
         Mutex::Autolock lock(mStitchLock);
 
         if (mStopInProgress) {
-            LOGD("ia_panorama_finalize() aborted, because of stop panorama in progress");
+            ALOGD("ia_panorama_finalize() aborted, because of stop panorama in progress");
             return NO_ERROR;
         } else {
-            LOGE("ia_panorama_finalize() failed");
+            ALOGE("ia_panorama_finalize() failed");
             return UNKNOWN_ERROR;
         }
     }
@@ -422,7 +422,7 @@ status_t PanoramaThread::handleMessageFinalize()
         pvImg.owner = this;
         mCallbacks->allocateMemory(&pvImg, pvImg.size);
         if (pvImg.dataPtr == NULL) {
-            LOGE("Failed to allocate panorama snapshot memory.");
+            ALOGE("Failed to allocate panorama snapshot memory.");
             return NO_MEMORY;
         }
 
@@ -503,7 +503,7 @@ void PanoramaThread::sendFrame(AtomBuffer &buf)
     frame.height = buf.height;
     frame.size = buf.size;
     if (AtomCP::setIaFrameFormat(&frame, buf.fourcc) != NO_ERROR) {
-        LOGE("@%s: setting ia_frame format failed", __FUNCTION__);
+        ALOGE("@%s: setting ia_frame format failed", __FUNCTION__);
     }
     Message msg;
     msg.id = MESSAGE_ID_FRAME;
@@ -541,7 +541,7 @@ status_t PanoramaThread::handleStitch(const MessageStitch &stitch)
     int ret = mPanoramaStitchThread->stitch(mContext, stitch.img, stitch.stitchId, mCameraId);
 
     if (ret < 0) {
-        LOGE("ia_panorama_stitch failed, error = %d", ret);
+        ALOGE("ia_panorama_stitch failed, error = %d", ret);
         return UNKNOWN_ERROR;
     }
 
@@ -558,7 +558,7 @@ status_t PanoramaThread::handleStitch(const MessageStitch &stitch)
     // allocate memory for the live preview callback.
     mCallbacks->allocateMemory(&postviewBuf, stitch.pv.size + sizeof(camera_panorama_metadata));
     if (postviewBuf.dataPtr == NULL) {
-        LOGE("fatal - out of memory for live preview callback");
+        ALOGE("fatal - out of memory for live preview callback");
         status =  NO_MEMORY;
     } else {
         // space for the metadata is reserved in the beginning of the buffer, copy it there
@@ -675,7 +675,7 @@ status_t PanoramaThread::PanoramaStitchThread::stitch(ia_panorama_state* mContex
     do {
         mCallbacks->allocateMemory(&copy, size);
         if (!copy.dataPtr) {
-            LOGW("Failed to allocate panorama snapshot memory, sleeping %d milliseconds and retrying!", retrySleepMillis);
+            ALOGW("Failed to allocate panorama snapshot memory, sleeping %d milliseconds and retrying!", retrySleepMillis);
             usleep(1000 * retrySleepMillis);
             retryTimeMillis -= retrySleepMillis;
         }
@@ -683,7 +683,7 @@ status_t PanoramaThread::PanoramaStitchThread::stitch(ia_panorama_state* mContex
 
     if (!copy.dataPtr) {
         // could not allocate at all
-        LOGE("Failed to allocate panorama snapshot memory - aborting!");
+        ALOGE("Failed to allocate panorama snapshot memory - aborting!");
         // since capturing and stitching is done without user interaction,
         // and the device is unable to release resources, it is time to give up
         abort();
@@ -714,7 +714,7 @@ status_t PanoramaThread::PanoramaStitchThread::handleMessageStitch(MessageStitch
     iaFrame.format = ia_frame_format_nv12;
 
     if (iaFrame.stride == 0) {
-        LOGW("panorama stitch hack - snapshot frame stride zero, replacing with width %d", iaFrame.width);
+        ALOGW("panorama stitch hack - snapshot frame stride zero, replacing with width %d", iaFrame.width);
         iaFrame.stride = iaFrame.width;
     }
     int ret = OK;
@@ -770,7 +770,7 @@ status_t PanoramaThread::PanoramaStitchThread::waitForAndExecuteMessage()
             break;
     }
     if (status != NO_ERROR) {
-        LOGE("operation failed, ID = %d, status = %d", msg.id, status);
+        ALOGE("operation failed, ID = %d, status = %d", msg.id, status);
     }
     return status;
 }
@@ -819,7 +819,7 @@ status_t PanoramaThread::waitForAndExecuteMessage()
             break;
     }
     if (status != NO_ERROR) {
-        LOGE("operation failed, ID = %d, status = %d", msg.id, status);
+        ALOGE("operation failed, ID = %d, status = %d", msg.id, status);
     }
     return status;
 }

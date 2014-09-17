@@ -74,12 +74,12 @@ CameraBlob::CameraBlob(const CameraBlob& refBlob, const int offset, const int si
     mSize = 0;
     mPtr = 0;
     if (refBlob.mBlob == 0) {
-        LOGE("ERROR referring to null object!");
+        ALOGE("ERROR referring to null object!");
         return;
     }
     // Must refer only to memory allocated by reference object
     if (refBlob.size() < offset + size) {
-        LOGE("ERROR illegal allocation!");
+        ALOGE("ERROR illegal allocation!");
         return;
     }
     mBlob = refBlob.mBlob;
@@ -92,13 +92,13 @@ CameraBlob::CameraBlob(const CameraBlob& refBlob, void * const ptr, const int si
     mSize = 0;
     mPtr = 0;
     if (refBlob.mBlob == 0) {
-        LOGE("ERROR referring to null object!");
+        ALOGE("ERROR referring to null object!");
         return;
     }
     // Must refer only to memory allocated by reference object
     int offset = (char *)(ptr) - (char *)(refBlob.ptr());
     if ((offset < 0) || (offset + size > refBlob.size())) {
-        LOGE("ERROR illegal allocation!");
+        ALOGE("ERROR illegal allocation!");
         return;
     }
     mBlob = refBlob.mBlob;
@@ -133,13 +133,13 @@ void CameraBlob::clear()
     case BAD_VALUE:                                                 \
     case BAD_TYPE:                                                  \
     default:                                                        \
-        LOGE("ERROR %d in %s, for tag %d of type 0x%08x!", status, __FUNCTION__, tag, type); \
+        ALOGE("ERROR %d in %s, for tag %d of type 0x%08x!", status, __FUNCTION__, tag, type); \
     case OK:                                                        \
         break;                                                      \
     case NO_INIT:                                                   \
     case NAME_NOT_FOUND:                                            \
         if (warn_if_fail) {                                         \
-            LOGW("WARNING %d in %s, using default value for tag %d!", status, __FUNCTION__, tag); \
+            ALOGW("WARNING %d in %s, using default value for tag %d!", status, __FUNCTION__, tag); \
         }                                                           \
     }                                                               \
                                                                     \
@@ -310,7 +310,7 @@ CpfStore::CpfStore(const int cameraId)
     // and terminate the camera (some cameras may not have any CPF at all)
 
     if (mCameraId >= PlatformData::numberOfCameras()) {
-        LOGE("ERROR bad camera index!");
+        ALOGE("ERROR bad camera index!");
         mCameraId = -1;
         return;
     }
@@ -383,8 +383,8 @@ status_t CpfStore::initFileNames(String8& cpfPathName, String8& sysfsPathName)
     const char *sysfsPath = "/sys/class/i2c-dev/i2c-%d/device/%d-%04x/sensordata";
     sysfsPathName = String8::format(sysfsPath, i2cBus, i2cBus, i2cAddress);
 
-    LOGD("cpf config file name: %s", cpfPathName.string());
-    LOGD("cpf sysfs file name: %s", sysfsPathName.string());
+    ALOGD("cpf config file name: %s", cpfPathName.string());
+    ALOGD("cpf sysfs file name: %s", sysfsPathName.string());
 
     return ret;
 }
@@ -402,7 +402,7 @@ status_t CpfStore::initDriverList()
     const char *mcPathName = "/dev/media0";
     int fd = open(mcPathName, O_RDONLY);
     if (fd == -1) {
-        LOGE("ERROR in opening media controller: %s!", strerror(errno));
+        ALOGE("ERROR in opening media controller: %s!", strerror(errno));
         return ENXIO;
     }
 
@@ -417,11 +417,11 @@ status_t CpfStore::initDriverList()
                 // Will simply 'break' if everything was ok
                 if (RegisteredDrivers.size() == 0) {
                     // No registered drivers found
-                    LOGE("ERROR no sensor driver registered in media controller!");
+                    ALOGE("ERROR no sensor driver registered in media controller!");
                     ret = NO_INIT;
                 }
             } else {
-                LOGE("ERROR in browsing media controller entities: %s!", strerror(errno));
+                ALOGE("ERROR in browsing media controller entities: %s!", strerror(errno));
                 ret = FAILED_TRANSACTION;
             }
             break;
@@ -449,7 +449,7 @@ status_t CpfStore::initDriverList()
     } while (!ret);
 
     if (close(fd)) {
-        LOGE("ERROR in closing media controller: %s!", strerror(errno));
+        ALOGE("ERROR in closing media controller: %s!", strerror(errno));
         if (!ret) ret = EPERM;
     }
 
@@ -467,17 +467,17 @@ status_t CpfStore::initDriverListHelper(unsigned major, unsigned minor, SensorDr
         if (stat(subdevPathNameN, &fileInfo) < 0) {
             // We end up here when there are no more subdevs
             if (errno == ENOENT) {
-                LOGE("ERROR sensor subdev missing: \"%s\"!", subdevPathNameN.string());
+                ALOGE("ERROR sensor subdev missing: \"%s\"!", subdevPathNameN.string());
                 return NO_INIT;
             } else {
-                LOGE("ERROR querying sensor subdev filestat for \"%s\": %s!", subdevPathNameN.string(), strerror(errno));
+                ALOGE("ERROR querying sensor subdev filestat for \"%s\": %s!", subdevPathNameN.string(), strerror(errno));
                 return FAILED_TRANSACTION;
             }
         }
         if ((major == MAJOR(fileInfo.st_rdev)) && (minor == MINOR(fileInfo.st_rdev))) {
             drvInfo.mDeviceName = subdevPathNameN.getPathLeaf();
             RegisteredDrivers.push(drvInfo);
-            LOGD("Registered sensor driver \"%s\" found for sensor \"%s\"", drvInfo.mDeviceName.string(), drvInfo.mSensorName.string());
+            ALOGD("Registered sensor driver \"%s\" found for sensor \"%s\"", drvInfo.mDeviceName.string(), drvInfo.mSensorName.string());
             // All ok
             break;
         }
@@ -500,7 +500,7 @@ status_t CpfStore::findConfigWithDriver(String8& cpfName, int& drvIndex)
 
     DIR *dir = opendir(cpfConfigPath);
     if (!dir) {
-        LOGE("ERROR in opening CPF folder \"%s\": %s!", cpfConfigPath, strerror(errno));
+        ALOGE("ERROR in opening CPF folder \"%s\": %s!", cpfConfigPath, strerror(errno));
         return ENOTDIR;
     }
 
@@ -508,16 +508,16 @@ status_t CpfStore::findConfigWithDriver(String8& cpfName, int& drvIndex)
         dirent *entry;
         if (errno = 0, !(entry = readdir(dir))) {
             if (errno) {
-                LOGE("ERROR in browsing CPF folder \"%s\": %s!", cpfConfigPath, strerror(errno));
+                ALOGE("ERROR in browsing CPF folder \"%s\": %s!", cpfConfigPath, strerror(errno));
                 ret = FAILED_TRANSACTION;
             }
             // If errno was not set, return 0 means end of directory.
             // So, let's see if we found any (suitable) CPF files
             if (drvIndex < 0) {
                 if (anyMatch) {
-                    LOGE("NOTE no suitable CPF files found in CPF folder \"%s\" (ok for SOC cameras)", cpfConfigPath);
+                    ALOGE("NOTE no suitable CPF files found in CPF folder \"%s\" (ok for SOC cameras)", cpfConfigPath);
                 } else {
-                    LOGE("NOTE not a single CPF file found in CPF folder \"%s\" (ok for SOC cameras)", cpfConfigPath);
+                    ALOGE("NOTE not a single CPF file found in CPF folder \"%s\" (ok for SOC cameras)", cpfConfigPath);
                 }
                 ret = NO_INIT;
             }
@@ -542,14 +542,14 @@ status_t CpfStore::findConfigWithDriver(String8& cpfName, int& drvIndex)
             continue;
         default:
             // Unknown error (the looping ends at 'while')
-            LOGE("ERROR in pattern matching file name \"%s\"!", entry->d_name);
+            ALOGE("ERROR in pattern matching file name \"%s\"!", entry->d_name);
             ret = UNKNOWN_ERROR;
             continue;
         }
     } while (!ret);
 
     if (closedir(dir)) {
-        LOGE("ERROR in closing CPF folder \"%s\": %s!", cpfConfigPath, strerror(errno));
+        ALOGE("ERROR in closing CPF folder \"%s\": %s!", cpfConfigPath, strerror(errno));
         if (!ret) ret = EPERM;
     }
 
@@ -586,7 +586,7 @@ status_t CpfStore::findConfigWithDriverHelper(const String8& fileName, String8& 
                 } else {
                     // We just got lost:
                     // Which is the correct sensor driver?
-                    LOGE("ERROR multiple driver candidates for CPF file \"%s\"!", fileName.string());
+                    ALOGE("ERROR multiple driver candidates for CPF file \"%s\"!", fileName.string());
                     ret = ENOTUNIQ;
                 }
             }
@@ -606,13 +606,13 @@ status_t CpfStore::findBusAddress(const int drvIndex, int& i2cBus, int& i2cAddre
 
     file = fopen(i2cInfoPathName, "rb");
     if (!file) {
-        LOGE("ERROR in opening file \"%s\" for I²C info: %s!", i2cInfoPathName.string(), strerror(errno));
+        ALOGE("ERROR in opening file \"%s\" for I²C info: %s!", i2cInfoPathName.string(), strerror(errno));
         return NAME_NOT_FOUND;
     }
 
     do {
         if (fscanf(file, " %*s %d-%x", &i2cBus, &i2cAddress) < 2) {
-            LOGE("ERROR reading file \"%s\"!", i2cInfoPathName.string());
+            ALOGE("ERROR reading file \"%s\"!", i2cInfoPathName.string());
             ret = EIO;
             break;
         }
@@ -620,7 +620,7 @@ status_t CpfStore::findBusAddress(const int drvIndex, int& i2cBus, int& i2cAddre
     } while (0);
 
     if (fclose(file)) {
-        LOGE("ERROR in closing file \"%s\": %s!", i2cInfoPathName.string(), strerror(errno));
+        ALOGE("ERROR in closing file \"%s\": %s!", i2cInfoPathName.string(), strerror(errno));
         if (!ret) ret = EPERM;
     }
 
@@ -659,10 +659,10 @@ status_t CpfStore::loadConf(CameraBlob& allConf)
     struct stat statCurrent;
     status_t ret = 0;
 
-    LOGD("Opening CPF file \"%s\"", mCpfPathName.string());
+    ALOGD("Opening CPF file \"%s\"", mCpfPathName.string());
     file = fopen(mCpfPathName, "rb");
     if (!file) {
-        LOGE("ERROR in opening CPF file \"%s\": %s!", mCpfPathName.string(), strerror(errno));
+        ALOGE("ERROR in opening CPF file \"%s\": %s!", mCpfPathName.string(), strerror(errno));
         return NAME_NOT_FOUND;
     }
 
@@ -671,20 +671,20 @@ status_t CpfStore::loadConf(CameraBlob& allConf)
         if ((fseek(file, 0, SEEK_END) < 0) ||
             ((fileSize = ftell(file)) < 0) ||
             (fseek(file, 0, SEEK_SET) < 0)) {
-            LOGE("ERROR querying properties of CPF file \"%s\": %s!", mCpfPathName.string(), strerror(errno));
+            ALOGE("ERROR querying properties of CPF file \"%s\": %s!", mCpfPathName.string(), strerror(errno));
             ret = ESPIPE;
             break;
         }
 
         allConf = CameraBlob(fileSize);
         if (!allConf) {
-            LOGE("ERROR no memory in %s!", __func__);
+            ALOGE("ERROR no memory in %s!", __func__);
             ret = NO_MEMORY;
             break;
         }
 
         if (fread(allConf, fileSize, 1, file) < 1) {
-            LOGE("ERROR reading CPF file \"%s\"!", mCpfPathName.string());
+            ALOGE("ERROR reading CPF file \"%s\"!", mCpfPathName.string());
             ret = EIO;
             break;
         }
@@ -693,7 +693,7 @@ status_t CpfStore::loadConf(CameraBlob& allConf)
         // The access time was just changed (because of us!),
         // so let's nullify the access time info
         if (stat(mCpfPathName, &statCurrent) < 0) {
-            LOGE("ERROR querying filestat of CPF file \"%s\": %s!", mCpfPathName.string(), strerror(errno));
+            ALOGE("ERROR querying filestat of CPF file \"%s\": %s!", mCpfPathName.string(), strerror(errno));
             ret = FAILED_TRANSACTION;
             break;
         }
@@ -703,7 +703,7 @@ status_t CpfStore::loadConf(CameraBlob& allConf)
     } while (0);
 
     if (fclose(file)) {
-        LOGE("ERROR in closing CPF file \"%s\": %s!", mCpfPathName.string(), strerror(errno));
+        ALOGE("ERROR in closing CPF file \"%s\": %s!", mCpfPathName.string(), strerror(errno));
         if (!ret) ret = EPERM;
     }
 
@@ -735,12 +735,12 @@ status_t CpfStore::validateConf(const CameraBlob& allConf, const struct stat& st
     }
 
     if (canSkipChecksum) {
-        LOGD("CPF file already validated");
+        ALOGD("CPF file already validated");
     } else {
-        LOGD("CPF file not validated yet, validating...");
+        ALOGD("CPF file not validated yet, validating...");
         if (tbd_validate(allConf, allConf.size(), tbd_tag_cpff)) {
             // Error, looks like we had unknown file
-            LOGE("ERROR corrupted CPF file!");
+            ALOGE("ERROR corrupted CPF file!");
             return DEAD_OBJECT;
         }
     }
@@ -767,7 +767,7 @@ status_t CpfStore::fetchConf(const CameraBlob& allConf, CameraBlob& recConf, tbd
 
     if (!allConf) {
         // This should never happen; CPF file has not been loaded properly
-        LOGE("ERROR null pointer provided!");
+        ALOGE("ERROR null pointer provided!");
         return NO_MEMORY;
     }
 
@@ -778,14 +778,14 @@ status_t CpfStore::fetchConf(const CameraBlob& allConf, CameraBlob& recConf, tbd
         if (data && size) {
             recConf = CameraBlob(allConf, data, size);
             if (!recConf) {
-                LOGE("ERROR no memory in %s!", __func__);
+                ALOGE("ERROR no memory in %s!", __func__);
                 return NO_MEMORY;
             } else {
-                LOGD("CPF %s record found!", blockDebugName);
+                ALOGD("CPF %s record found!", blockDebugName);
             }
         } else {
             // Looks like we didn't have the requested record in CPF file
-            LOGD("CPF %s record missing!", blockDebugName);
+            ALOGD("CPF %s record missing!", blockDebugName);
         }
     }
 
@@ -813,37 +813,37 @@ status_t CpfStore::processDrvConf(CameraBlob& drvConf)
     size_t size;
     if (tbd_get_record(drvConf, tbd_class_drv, tbd_format_any, &data, &size) || (data == 0) || (size == 0)) {
         // Looks like the DRV record was broken
-        LOGE("ERROR corrupted DRV record!");
+        ALOGE("ERROR corrupted DRV record!");
         return DEAD_OBJECT;
     }
 
     // There is a limitation in sysfs; maximum data size to be sent
     // is one page
     if (size > (size_t)(getpagesize())) {
-        LOGE("ERROR too big driver configuration record!");
+        ALOGE("ERROR too big driver configuration record!");
         return EOVERFLOW;
     }
 
     // Now, let's write the driver configuration data via sysfs
-    LOGD("Writing %d bytes to sysfs file \"%s\"", size, mSysfsPathName.string());
+    ALOGD("Writing %d bytes to sysfs file \"%s\"", size, mSysfsPathName.string());
     int fd = open(mSysfsPathName, O_WRONLY);
     if (fd == -1) {
-        LOGE("ERROR in opening sysfs write file \"%s\": %s!", mSysfsPathName.string(), strerror(errno));
+        ALOGE("ERROR in opening sysfs write file \"%s\": %s!", mSysfsPathName.string(), strerror(errno));
         return NO_INIT;
     }
 
     // Writing the driver data record...
     int bytes = write(fd, data, size);
     if (bytes < 0) {
-        LOGE("ERROR in writing sysfs data: %s!", strerror(errno));
+        ALOGE("ERROR in writing sysfs data: %s!", strerror(errno));
         ret = EIO;
     } else if ((bytes == 0) || ((size_t)(bytes) != size)) {
-        LOGE("ERROR in writing sysfs data: %d bytes written (expecting %d)!", bytes, size);
+        ALOGE("ERROR in writing sysfs data: %d bytes written (expecting %d)!", bytes, size);
         ret = EIO;
     }
 
     if (close(fd)) {
-        LOGE("ERROR in closing sysfs write file \"%s\": %s!", mSysfsPathName.string(), strerror(errno));
+        ALOGE("ERROR in closing sysfs write file \"%s\": %s!", mSysfsPathName.string(), strerror(errno));
         if (!ret) ret = EPERM;
     }
 
@@ -858,7 +858,7 @@ status_t CpfStore::processHalConf(CameraBlob& halConf)
         size_t size;
         if (tbd_get_record(halConf, tbd_class_hal, tbd_format_any, &data, &size) || (data == 0) || (size == 0)) {
             // Looks like the HAL record was broken
-            LOGE("ERROR corrupted HAL record!");
+            ALOGE("ERROR corrupted HAL record!");
             return DEAD_OBJECT;
         }
         // CPF HAL contains lot of strings, so the easiest way to allow
@@ -867,7 +867,7 @@ status_t CpfStore::processHalConf(CameraBlob& halConf)
         // of the entire CPF HAL data
         HalConfig = CameraBlob(halConf, data, size).copy();
         if (!HalConfig) {
-            LOGE("ERROR no memory in %s!", __func__);
+            ALOGE("ERROR no memory in %s!", __func__);
             return NO_MEMORY;
         }
 

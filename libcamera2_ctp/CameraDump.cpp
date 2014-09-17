@@ -95,7 +95,7 @@ void CameraDump::setDumpDataFlag(void)
 
         // Check that the property value is a valid integer
         if (DumpProp >= INT_MAX || DumpProp <= INT_MIN) {
-            LOGE("Invalid camera.hal.debug property integer value.");
+            ALOGE("Invalid camera.hal.debug property integer value.");
             return ;
         }
         if (DumpProp & CAMERA_DEBUG_DUMP_RAW)
@@ -170,7 +170,7 @@ int CameraDump::dumpImage2Buf(camera_delay_dumpImage_T *aDumpImage)
     unsigned int height = aDumpImage->height;
     unsigned int bpl = aDumpImage->bpl;
     if ((0 == size) || (0 == width) || (0 == height)) {
-        LOGE("value is err(size=%d,width=%d,height=%d)", size, width, height);
+        ALOGE("value is err(size=%d,width=%d,height=%d)", size, width, height);
         return -ERR_D2F_EVALUE;
     }
     if ((mDelayDump.buffer_raw != NULL) && (size > mDelayDump.buffer_size)) {
@@ -181,7 +181,7 @@ int CameraDump::dumpImage2Buf(camera_delay_dumpImage_T *aDumpImage)
         LOG1 ("Buffer allocate needed %d", size);
         mDelayDump.buffer_raw = malloc(size);
         if (mDelayDump.buffer_raw  == NULL) {
-            LOGE("Buffer allocate failure");
+            ALOGE("Buffer allocate failure");
             mDelayDump.buffer_size = 0;
             mDelayDump.width = 0;
             mDelayDump.height = 0;
@@ -227,7 +227,7 @@ int CameraDump::dumpImage2File(camera_delay_dumpImage_T *aDumpImage, const char 
     ret = getRawDataPath(rawdpp);
     LOG2("RawDataPath is %s", rawdpp);
     if(-ERR_D2F_NOPATH == ret) {
-        LOGE("%s No valid mem for rawdata", __func__);
+        ALOGE("%s No valid mem for rawdata", __func__);
         return ret;
     }
     if ((strcmp(name, "raw.bayer") == 0) && (m3AControls != NULL))
@@ -273,9 +273,9 @@ int CameraDump::dumpImage2File(camera_delay_dumpImage_T *aDumpImage, const char 
         // Get detailed maker note data
         uMknData = m3AControls->get3aMakerNote(ia_mkn_trg_section_2);
         if (uMknData) {
-            LOGD("RAW, mknSize: %d", uMknData->size);
+            ALOGD("RAW, mknSize: %d", uMknData->size);
         } else {
-            LOGW("RAW, no makernote");
+            ALOGW("RAW, no makernote");
         }
     }
     else
@@ -287,7 +287,7 @@ int CameraDump::dumpImage2File(camera_delay_dumpImage_T *aDumpImage, const char 
 
     fp = fopen (rawdpp, "w+");
     if (fp == NULL) {
-        LOGE("open file %s failed %s", rawdpp, strerror(errno));
+        ALOGE("open file %s failed %s", rawdpp, strerror(errno));
         if (uMknData) {
             // Delete Maker note data
             m3AControls->put3aMakerNote(uMknData);
@@ -300,11 +300,11 @@ int CameraDump::dumpImage2File(camera_delay_dumpImage_T *aDumpImage, const char 
     if (uMknData && uMknData->size > 0)
     {
         if ((bytes = fwrite(uMknData->data, uMknData->size, 1, fp)) < (size_t)uMknData->size)
-            LOGW("Write less mkn bytes to %s: %d, %d", filename, uMknData->size, bytes);
+            ALOGW("Write less mkn bytes to %s: %d, %d", filename, uMknData->size, bytes);
     }
 
     if ((bytes = fwrite(data, size, 1, fp)) < (size_t)size)
-        LOGW("Write less raw bytes to %s: %d, %d", filename, size, bytes);
+        ALOGW("Write less raw bytes to %s: %d, %d", filename, size, bytes);
 
     count++;
 
@@ -364,18 +364,18 @@ int CameraDump::dumpAtom2File(const AtomBuffer *b, const char *name)
 {
     int bytes = 0;
 
-    LOGE("Dumping %s resolution (%dx%d) format %s",name,b->width, b->height,v4l2Fmt2Str(b->fourcc));
+    ALOGE("Dumping %s resolution (%dx%d) format %s",name,b->width, b->height,v4l2Fmt2Str(b->fourcc));
 
     FILE *fd = fopen(name, "wb+");
 
     if(fd == NULL) {
-        LOGE("%s could not open dump file ",__FUNCTION__);
+        ALOGE("%s could not open dump file ",__FUNCTION__);
         return -1;
     }
 
     bytes = fwrite(b->dataPtr, 1, b->size, fd);
     if (bytes != b->size) {
-        LOGE("ERROR DUMPING %s written %d size %d",name, bytes, b->size);
+        ALOGE("ERROR DUMPING %s written %d size %d",name, bytes, b->size);
     }
 
     fclose(fd);
@@ -392,7 +392,7 @@ int CameraDump::getRawDataPath(char *ppath)
     for(i = 0; i < pathcount; i++) {
         LOG2("%s", (char *)(rawdp+i));
         if(stat((char *)(rawdp+i), &buf) < 0) {
-            LOGE("stat %s failed %s", (char *)(rawdp+i), strerror(errno));
+            ALOGE("stat %s failed %s", (char *)(rawdp+i), strerror(errno));
             continue;
         }
         if(S_ISDIR(buf.st_mode)) {
@@ -418,11 +418,11 @@ void CameraDump::showMediaServerGroup(void)
     if(x < GIDSETSIZE) {
         int y;
         for(y = 0; y < x; y++) {
-            LOGI("MediaServer GrpID-%d:%d", y , grouplist[y]);
+            ALOGI("MediaServer GrpID-%d:%d", y , grouplist[y]);
         }
     }
     else
-        LOGE("%s Not enough mem for %d groupid", __func__, GIDSETSIZE);
+        ALOGE("%s Not enough mem for %d groupid", __func__, GIDSETSIZE);
 }
 
 void CameraDump::set3AControls(I3AControls *aaaControls)

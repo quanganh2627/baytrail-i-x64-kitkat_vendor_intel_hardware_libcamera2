@@ -84,7 +84,7 @@ void ImageScaler::downScaleImage(void *src, void *dest,
                 dest_w, dest_h, src_w, src_h);
             break;
         default: {
-            LOGE("no downscale support for fourcc = %d", fourcc);
+            ALOGE("no downscale support for fourcc = %d", fourcc);
             break;
         }
     }
@@ -206,7 +206,7 @@ void ImageScaler::downScaleAndCropNv12Image(unsigned char *dest, const unsigned 
     proper_source_width = (proper_source_width + 2) & ~0x3;
     // Now, the source image should have some surplus width
     if (src_w < proper_source_width) {
-        LOGE("%s: source image too narrow", __func__);
+        ALOGE("%s: source image too narrow", __func__);
         return;
     }
     // Let's divide the surplus to both sides
@@ -221,7 +221,7 @@ void ImageScaler::downScaleAndCropNv12Image(unsigned char *dest, const unsigned 
     int dest_Y_data = dest_bpl * dest_h;
     int flag, width, height;
     if (0 == dest_w || 0 == dest_h) {
-        LOGE("%s,dest_w or dest_h should not be 0", __func__);
+        ALOGE("%s,dest_w or dest_h should not be 0", __func__);
         return;
     }
     const int scaling_w = ((src_w - skip) << 8) / dest_w;
@@ -348,7 +348,7 @@ void ImageScaler::downScaleAndCropNv12ImageQcif(unsigned char *dest, const unsig
     proper_source_width = (proper_source_width + 2) & ~0x3;
     // Now, the source image should have some surplus width
     if (src_w < proper_source_width) {
-        LOGE("%s: source image too narrow", __func__);
+        ALOGE("%s: source image too narrow", __func__);
         return;
     }
     // Let's divide the surplus to both sides

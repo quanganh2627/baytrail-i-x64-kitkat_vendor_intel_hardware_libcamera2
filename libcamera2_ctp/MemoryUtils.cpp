@@ -50,7 +50,7 @@ namespace android {
                         GraphicBuffer::USAGE_HW_RENDER | GraphicBuffer::USAGE_SW_WRITE_OFTEN | GraphicBuffer::USAGE_HW_TEXTURE);
 
         if (!cameraGraphicBuffer) {
-            LOGE("No memory to allocate graphic buffer");
+            ALOGE("No memory to allocate graphic buffer");
             return NO_MEMORY;
         }
 
@@ -64,7 +64,7 @@ namespace android {
         aBuff.width = formatDescriptor.width;
         aBuff.height = formatDescriptor.height;
         if (aBuff.bpl != nwbBpl) {
-            LOGW("%s: potential bpl problem requested %d, NW requries %d",__FUNCTION__, aBuff.bpl, nwbBpl);
+            ALOGW("%s: potential bpl problem requested %d, NW requries %d",__FUNCTION__, aBuff.bpl, nwbBpl);
         } else {
             LOG1("%s: bpl from NW is %d", __FUNCTION__, nwbBpl);
         }
@@ -77,7 +77,7 @@ namespace android {
 
         status = cameraGraphicBuffer->lock(lockMode, &mapperPointer.ptr);
         if (status != NO_ERROR) {
-            LOGE("@%s: Failed to lock GraphicBuffer! status=%d", __FUNCTION__, status);
+            ALOGE("@%s: Failed to lock GraphicBuffer! status=%d", __FUNCTION__, status);
             return UNKNOWN_ERROR;
         }
 
@@ -94,7 +94,7 @@ namespace android {
                     GraphicBuffer::USAGE_HW_RENDER | GraphicBuffer::USAGE_HW_TEXTURE);
 
             if (!gfxbuf) {
-                LOGE("No memory to allocate tiled graphic buffer");
+                ALOGE("No memory to allocate tiled graphic buffer");
                 return NO_MEMORY;
             }
 
@@ -151,7 +151,7 @@ namespace android {
 
         aCallbacks->allocateMemory(&aBuff, formatDescriptor.size);
         if (aBuff.buff == NULL) {
-            LOGE("Failed to allocate AtomBuffer");
+            ALOGE("Failed to allocate AtomBuffer");
             return NO_MEMORY;
         }
 
@@ -192,7 +192,7 @@ namespace android {
 
         aCallbacks->allocateMemory(&aBuff.metadata_buff, metaSize);
         if (aBuff.metadata_buff == NULL) {
-            LOGE("@%s Error allocation %d for metadata buffers!", __FUNCTION__, metaSize);
+            ALOGE("@%s Error allocation %d for metadata buffers!", __FUNCTION__, metaSize);
             return NO_MEMORY;
         }
         return OK;

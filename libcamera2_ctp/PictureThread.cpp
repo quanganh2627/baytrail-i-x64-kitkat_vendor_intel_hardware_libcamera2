@@ -62,13 +62,13 @@ PictureThread::PictureThread(I3AControls *aaaControls, sp<ScalerService> scaler,
 
     mHwCompressor = new JpegHwEncoder();
     if (mHwCompressor == NULL) {
-        LOGE("HwCompressor allocation failed");
+        ALOGE("HwCompressor allocation failed");
     }
 
     // TODO: Remove the EXIFMaker's dependency on aaaControls
     mExifMaker = new EXIFMaker(aaaControls);
     if (mExifMaker == NULL) {
-        LOGE("ExifMaker allocation failed");
+        ALOGE("ExifMaker allocation failed");
     }
 }
 
@@ -76,33 +76,33 @@ PictureThread::~PictureThread()
 {
     LOG1("@%s", __FUNCTION__);
 
-    LOGD("@%s: release mOutBuf", __FUNCTION__);
+    ALOGD("@%s: release mOutBuf", __FUNCTION__);
     MemoryUtils::freeAtomBuffer(mOutBuf);
 
-    LOGD("@%s: release mExifBuf", __FUNCTION__);
+    ALOGD("@%s: release mExifBuf", __FUNCTION__);
     MemoryUtils::freeAtomBuffer(mExifBuf);
 
-    LOGD("@%s: release mThumbBuf", __FUNCTION__);
+    ALOGD("@%s: release mThumbBuf", __FUNCTION__);
     MemoryUtils::freeAtomBuffer(mThumbBuf);
 
-    LOGD("@%s: release mScaledPic", __FUNCTION__);
+    ALOGD("@%s: release mScaledPic", __FUNCTION__);
     MemoryUtils::freeAtomBuffer(mScaledPic);
 
 
-    LOGD("@%s: release InputBuffers", __FUNCTION__);
+    ALOGD("@%s: release InputBuffers", __FUNCTION__);
     freeInputBuffers();
 
-    LOGD("@%s: release postview buffers", __FUNCTION__);
+    ALOGD("@%s: release postview buffers", __FUNCTION__);
     freePostviewBuffers();
 
     if (mHwCompressor) {
-        LOGD("@%s: release mHwCompressor", __FUNCTION__);
+        ALOGD("@%s: release mHwCompressor", __FUNCTION__);
         delete mHwCompressor;
         mHwCompressor = NULL;
     }
 
     if (mExifMaker) {
-        LOGD("@%s: release mExifMaker", __FUNCTION__);
+        ALOGD("@%s: release mExifMaker", __FUNCTION__);
         delete mExifMaker;
         mExifMaker = NULL;
     }
@@ -136,7 +136,7 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
         mCallbacks->allocateMemory(&mExifBuf, EXIF_SIZE_LIMITATION + sizeof(JPEG_MARKER_SOI));
     }
     if (mOutBuf.dataPtr == NULL) {
-        LOGE("Could not allocate memory for temp buffer!");
+        ALOGE("Could not allocate memory for temp buffer!");
         return NO_MEMORY;
     }
     LOG1("Out buffer: @%p (%d bytes)", mOutBuf.dataPtr, mOutBuf.size);
@@ -168,7 +168,7 @@ status_t PictureThread::encodeToJpeg(AtomBuffer *mainBuf, AtomBuffer *thumbBuf, 
     }
 
     if (status != NO_ERROR)
-        LOGE("Error while encoding JPEG");
+        ALOGE("Error while encoding JPEG");
     else {
         /* Update the fields in the AtomBuffer structure */
         destBuf->width = mainBuf->width;
@@ -205,7 +205,7 @@ void PictureThread::getDefaultParameters(CameraParameters *params)
 {
     LOG1("@%s", __FUNCTION__);
     if (!params) {
-        LOGE("null params");
+        ALOGE("null params");
         return;
     }
 
@@ -370,7 +370,7 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
     if (msg->snaphotBuf.width == 0 ||
         msg->snaphotBuf.height == 0 ||
         msg->snaphotBuf.fourcc == 0) {
-        LOGE("Picture information not set yet!");
+        ALOGE("Picture information not set yet!");
         return UNKNOWN_ERROR;
     }
 
@@ -393,7 +393,7 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
 
     status = encodeToJpeg(&msg->snaphotBuf, postviewBuf, &jpegBuf);
     if (status != NO_ERROR) {
-        LOGE("Error generating JPEG image!");
+        ALOGE("Error generating JPEG image!");
         LOG1("Releasing jpegBuf @%p", jpegBuf.dataPtr);
         MemoryUtils::freeAtomBuffer(jpegBuf);
     }
@@ -443,7 +443,7 @@ status_t PictureThread::handleMessageAllocBufs(MessageAllocBufs *msg)
         mCallbacks->allocateMemory(&mExifBuf, EXIF_SIZE_LIMITATION + sizeof(JPEG_MARKER_SOI));
     }
     if (mOutBuf.dataPtr == NULL || mExifBuf.dataPtr == NULL) {
-        LOGE("Could not allocate memory for output buffers!");
+        ALOGE("Could not allocate memory for output buffers!");
         status = NO_MEMORY;
         goto exit_fail;
     }
@@ -458,7 +458,7 @@ status_t PictureThread::handleMessageAllocBufs(MessageAllocBufs *msg)
     if (mHwCompressor) {
         status = mHwCompressor->setInputBuffers(mInputBufferArray, mInputBuffers);
         if (status) {
-            LOGW("HW Encoder cannot use pre-allocate buffers");
+            ALOGW("HW Encoder cannot use pre-allocate buffers");
             status = NO_ERROR; // this is not critical, we still return some buffers
         }
     }
@@ -563,7 +563,7 @@ status_t PictureThread::allocateInputBuffers(AtomBuffer& formatDescriptor, int n
     return NO_ERROR;
 
 bailout:
-    LOGE("Error allocating input buffers");
+    ALOGE("Error allocating input buffers");
     freeInputBuffers();
     return NO_MEMORY;
 }
@@ -617,7 +617,7 @@ status_t PictureThread::allocatePostviewBuffers(const AtomBuffer &formatDescript
     AtomBuffer postv = AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_POSTVIEW);
 
     for (int i = 0; i < numBufs; ++i) {
-        LOGD("allocating postview %d", i+1);
+        ALOGD("allocating postview %d", i+1);
         postv.buff = NULL;
         postv.size = 0;
         postv.dataPtr = NULL;
@@ -633,14 +633,14 @@ status_t PictureThread::allocatePostviewBuffers(const AtomBuffer &formatDescript
         } else if (status == NO_ERROR) {
             if (registerToScaler)
                 mScaler->registerBuffer(postv, ScalerService::SCALER_OUTPUT);
-            LOGD("postview dataPtr %p", postv.dataPtr);
+            ALOGD("postview dataPtr %p", postv.dataPtr);
             mPostviewBufferArray[i] = postv;
         } else {
             status = UNKNOWN_ERROR;
         }
 
         if (status != NO_ERROR) {
-            LOGE("Error in postview allocation (%d)", status);
+            ALOGE("Error in postview allocation (%d)", status);
             mPostviewBuffers = i;
             freePostviewBuffers();
             break;
@@ -691,7 +691,7 @@ int PictureThread::encodeExifAndThumbnail(AtomBuffer *thumbBuf, unsigned char* e
         goto exit;
 
     if (thumbBuf->dataPtr == NULL) {
-        LOGW("Emtpy buffer was sent for thumbnail");
+        ALOGW("Emtpy buffer was sent for thumbnail");
         goto exit;
     } else {
         inBuf.buf = (unsigned char*)thumbBuf->dataPtr;
@@ -727,7 +727,7 @@ int PictureThread::encodeExifAndThumbnail(AtomBuffer *thumbBuf, unsigned char* e
             mExifMaker->setThumbnail(outBuf.buf, size);
         } else {
             // This is not critical, we can continue with main picture image
-            LOGE("Could not encode thumbnail stream!");
+            ALOGE("Could not encode thumbnail stream!");
         }
 
         exifSize = mExifMaker->makeExif(&exifDst);
@@ -863,7 +863,7 @@ status_t PictureThread::startHwEncoding(AtomBuffer* mainBuf)
         mHwCompressor->encodeAsync(inBuf, outBuf, mMaxOutJpegBufSize) == 0) {
         LOG1("Picture JPEG (time to start encode: %ums)", (unsigned)((systemTime() - endTime) / 1000000));
     } else {
-        LOGW("JPEG HW encoding failed, falling back to SW");
+        ALOGW("JPEG HW encoding failed, falling back to SW");
         status = INVALID_OPERATION;
     }
 
@@ -906,14 +906,14 @@ void PictureThread::encodeExif(AtomBuffer *thumbBuf)
             mCallbacks->allocateMemory(&mThumbBuf,mThumbBuf.size);
 
         if (mThumbBuf.dataPtr == NULL) {
-            LOGE("Could not allocate memory for ThumbBuf buffers!");
+            ALOGE("Could not allocate memory for ThumbBuf buffers!");
             mThumbBuf.size = 0;
             mThumbBuf.width = 0;
             mThumbBuf.height = 0;
         } else if (thumbBuf->height > srcHeighByThumbAspect) {
             // Support cropping 16:9 out from 4:3
             int skipLines = (thumbBuf->height - srcHeighByThumbAspect) / 2;
-            LOGW("Thumbnail cropped to match requested aspect ratio");
+            ALOGW("Thumbnail cropped to match requested aspect ratio");
             thumbBuf->height = srcHeighByThumbAspect;
             ImageScaler::downScaleImage(thumbBuf, &mThumbBuf, skipLines, skipLines);
         } else {
@@ -944,7 +944,7 @@ void PictureThread::encodeExif(AtomBuffer *thumbBuf)
     int tmpSize = encodeExifAndThumbnail(thumbBuf, currentPtr);
     if (tmpSize == 0) {
         // This is not critical, we can continue with main picture image
-        LOGI("Exif created without thumbnail stream!");
+        ALOGI("Exif created without thumbnail stream!");
         tmpSize = mExifMaker->makeExif(&currentPtr);
     }
     mExifBuf.size += tmpSize;
@@ -1000,14 +1000,14 @@ status_t PictureThread::doSwEncode(AtomBuffer *mainBuf, AtomBuffer* destBuf)
     if (mainSize > 0) {
         finalSize = mExifBuf.size + mainSize;
     } else {
-        LOGE("Could not encode picture stream!");
+        ALOGE("Could not encode picture stream!");
         status = UNKNOWN_ERROR;
     }
 
     if (status == NO_ERROR) {
         mCallbacks->allocateMemory(destBuf, finalSize);
         if (destBuf->dataPtr == NULL) {
-            LOGE("No memory for final JPEG file!");
+            ALOGE("No memory for final JPEG file!");
             status = NO_MEMORY;
         }
     }
@@ -1047,7 +1047,7 @@ status_t PictureThread::completeHwEncode(AtomBuffer *mainBuf, AtomBuffer *destBu
 
     //get JPEG size
     if (mHwCompressor->getOutputSize(mainSize) < 0) {
-        LOGE("Could not get Coded size!");
+        ALOGE("Could not get Coded size!");
         return UNKNOWN_ERROR;
     }
 
@@ -1055,7 +1055,7 @@ status_t PictureThread::completeHwEncode(AtomBuffer *mainBuf, AtomBuffer *destBu
     //allocate JPEG buffer base on the actual coded JPEG size
     mCallbacks->allocateMemory(destBuf, finalSize);
     if (destBuf->dataPtr == NULL) {
-        LOGE("No memory for final JPEG file!");
+        ALOGE("No memory for final JPEG file!");
         status = NO_MEMORY;
     } else {
         destBuf->id = mainBuf->id;
@@ -1066,7 +1066,7 @@ status_t PictureThread::completeHwEncode(AtomBuffer *mainBuf, AtomBuffer *destBu
          */
         dstPtr = (unsigned char*)destBuf->dataPtr + mExifBuf.size - sizeof(JPEG_MARKER_SOI);
         if (mHwCompressor->getOutput(dstPtr, mainSize) < 0) {
-            LOGE("Could not encode picture stream!");
+            ALOGE("Could not encode picture stream!");
             status = UNKNOWN_ERROR;
         } else {
             //Copy EXIF (it will also have the SOI marker)

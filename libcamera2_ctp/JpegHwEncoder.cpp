@@ -33,7 +33,7 @@ JpegHwEncoder::JpegHwEncoder() :
 
     mHwImageEncoder = new IntelImageEncoder();
     if (mHwImageEncoder == NULL) {
-        LOGE("mHwImageEncoder allocation failed");
+        ALOGE("mHwImageEncoder allocation failed");
     }
 }
 
@@ -64,7 +64,7 @@ int JpegHwEncoder::init(void)
 
     status = mHwImageEncoder->initializeEncoder();
     if (status != 0) {
-        LOGE("mHwImageEncoder initializeEncoder failed");
+        ALOGE("mHwImageEncoder initializeEncoder failed");
         delete mHwImageEncoder;
         mHwImageEncoder = NULL;
         return -1;
@@ -126,17 +126,17 @@ status_t JpegHwEncoder::setInputBuffers(AtomBuffer* inputBuffersArray, int input
     }
 
     if (inputBuffersArray[0].bpl % SIZE_OF_WIDTH_ALIGNMENT || inputBuffersArray[0].height % 2) {
-        LOGW("@%s, line:%d, bpl:%d or height:%d, we can't support", __FUNCTION__, __LINE__, inputBuffersArray[0].bpl, inputBuffersArray[0].height);
+        ALOGW("@%s, line:%d, bpl:%d or height:%d, we can't support", __FUNCTION__, __LINE__, inputBuffersArray[0].bpl, inputBuffersArray[0].height);
         return BAD_VALUE;
     }
 
     if (V4L2Fmt2VAFmt(inputBuffersArray[0].fourcc, vaFmt) < 0) {
-        LOGW("@%s, unsupport format, do not use the hw jpeg encoder", __FUNCTION__);
+        ALOGW("@%s, unsupport format, do not use the hw jpeg encoder", __FUNCTION__);
         return BAD_VALUE;
     }
 
     if (init() < 0) {
-        LOGE("HW encoder failed to initialize when setting the input buffers");
+        ALOGE("HW encoder failed to initialize when setting the input buffers");
         return UNKNOWN_ERROR;
     }
 
@@ -146,7 +146,7 @@ status_t JpegHwEncoder::setInputBuffers(AtomBuffer* inputBuffersArray, int input
         */
         status = mHwImageEncoder->createSourceSurface(SURFACE_TYPE_USER_PTR, inputBuffersArray[i].dataPtr, inputBuffersArray[i].width, inputBuffersArray[i].height, inputBuffersArray[i].bpl, vaFmt, &imageSeq);
         if (status != 0) {
-            LOGE("create source surface failed");
+            ALOGE("create source surface failed");
             return UNKNOWN_ERROR;
         }
         mBuffer2SurfaceId.add(inputBuffersArray[i].dataPtr, imageSeq);
@@ -156,7 +156,7 @@ status_t JpegHwEncoder::setInputBuffers(AtomBuffer* inputBuffersArray, int input
     //create context
     status = mHwImageEncoder->createContext(firstImageSeq, &mMaxOutJpegBufSize);
     if (status != 0) {
-        LOGE("createContext failed");
+        ALOGE("createContext failed");
         return UNKNOWN_ERROR;
     }
 
@@ -181,13 +181,13 @@ int JpegHwEncoder::encode(const InputBuffer &in, OutputBuffer &out)
     unsigned int vaFmt = 0;
 
     if (mHwImageEncoder == NULL) {
-        LOGW("JPEG HW encoding failed, falling back to SW");
+        ALOGW("JPEG HW encoding failed, falling back to SW");
         return -1;
     }
 
     if ((in.width <= MIN_HW_ENCODING_WIDTH && in.height <= MIN_HW_ENCODING_HEIGHT)
         || V4L2Fmt2VAFmt(in.fourcc, vaFmt) < 0) {
-         LOGW("@%s, line:%d, do not use the hw jpeg encoder", __FUNCTION__, __LINE__);
+         ALOGW("@%s, line:%d, do not use the hw jpeg encoder", __FUNCTION__, __LINE__);
          return -1;
     }
 
@@ -196,29 +196,29 @@ int JpegHwEncoder::encode(const InputBuffer &in, OutputBuffer &out)
         status = resetContext(in, imgSeq);
         mContextRestoreNeeded = true;
         if (status) {
-            LOGE("Encoder failed to reset the context, falling back to SW");
+            ALOGE("Encoder failed to reset the context, falling back to SW");
             return -1;
         }
     }
     if (mHwImageEncoder->encode(imgSeq, CLIP(out.quality, 100, 1)) == 0) {
     } else {
-        LOGW("JPEG HW encoding failed, falling back to SW");
+        ALOGW("JPEG HW encoding failed, falling back to SW");
         return -1;
     }
     //according to libmix Jpegencoder function call flow, getCodedSize must be called before getCoded
     if (mHwImageEncoder->getCodedSize(&out.size) < 0) {
-        LOGE("Could not get coded JPEG size!");
+        ALOGE("Could not get coded JPEG size!");
         return -1;
     }
 
     if (mHwImageEncoder->getCoded((void*)out.buf, mMaxOutJpegBufSize) < 0) {
-        LOGE("Could not encode picture stream!");
+        ALOGE("Could not encode picture stream!");
         status = -1;
     }
     if (mContextRestoreNeeded) {
         status = restoreContext();
         if (status != 0) {
-            LOGW("restoreContext failed");
+            ALOGW("restoreContext failed");
         }
         mContextRestoreNeeded = false;
     }
@@ -249,7 +249,7 @@ int JpegHwEncoder::encodeAsync(const InputBuffer &in, OutputBuffer &out, int &mM
     if (imgSeq == ERROR_POINTER_NOT_FOUND) {
         status = resetContext(in, imgSeq);
         if (status) {
-            LOGE("Encoder failed to reset the context, falling back to SW");
+            ALOGE("Encoder failed to reset the context, falling back to SW");
             return -1;
         }
         mContextRestoreNeeded = true;
@@ -257,7 +257,7 @@ int JpegHwEncoder::encodeAsync(const InputBuffer &in, OutputBuffer &out, int &mM
     if (mHwImageEncoder &&
         mHwImageEncoder->encode(imgSeq, CLIP(out.quality, 100, 1)) == 0) {
     } else {
-        LOGW("JPEG HW encoding failed, falling back to SW");
+        ALOGW("JPEG HW encoding failed, falling back to SW");
         return -1;
     }
     mMaxCodedSize = mMaxOutJpegBufSize;
@@ -277,7 +277,7 @@ int JpegHwEncoder::getOutputSize(unsigned int& outSize)
     int status = 0;
 
     if (mHwImageEncoder->getCodedSize(&outSize) < 0) {
-        LOGE("Could not get coded size!");
+        ALOGE("Could not get coded size!");
         status = -1;
     }
     return status;
@@ -299,13 +299,13 @@ int JpegHwEncoder::getOutput(void* outBuf, unsigned int& outSize)
     int status = 0;
 
     if (mHwImageEncoder->getCoded(outBuf, mMaxOutJpegBufSize) < 0) {
-        LOGE("Could not encode picture stream!");
+        ALOGE("Could not encode picture stream!");
         status = -1;
     }
     if (mContextRestoreNeeded) {
         status = restoreContext();
         if (status != 0) {
-            LOGW("restoreContext failed");
+            ALOGW("restoreContext failed");
         }
         mContextRestoreNeeded = false;
     }
@@ -327,7 +327,7 @@ int JpegHwEncoder::V4L2Fmt2VAFmt(unsigned int v4l2Fmt, unsigned int &vaFmt)
          vaFmt = VA_RT_FORMAT_YUV422;
          break;
     default:
-         LOGE("@%s Unknown / unsupported preview pixel format: fatal error",__FUNCTION__);
+         ALOGE("@%s Unknown / unsupported preview pixel format: fatal error",__FUNCTION__);
          status = -1;
          break;
     }
@@ -352,16 +352,16 @@ int JpegHwEncoder::resetContext(const InputBuffer &in, int &imgSeq)
     unsigned int vaFmt = 0;
 
     if (in.height % 2 || in.bpl % SIZE_OF_WIDTH_ALIGNMENT) {
-        LOGW("@%s, line:%d, width:%d or height:%d, we can't support", __FUNCTION__, __LINE__, in.width, in.height);
+        ALOGW("@%s, line:%d, width:%d or height:%d, we can't support", __FUNCTION__, __LINE__, in.width, in.height);
         return -1;
     }
     if (V4L2Fmt2VAFmt(in.fourcc, vaFmt) < 0) {
-        LOGW("@%s, unsupport format, do not use the hw jpeg encoder", __FUNCTION__);
+        ALOGW("@%s, unsupport format, do not use the hw jpeg encoder", __FUNCTION__);
         return -1;
     }
     if (! isInitialized()) {
         if (init() < 0) {
-            LOGE("HW encoder failed to initialize when setting the input buffers");
+            ALOGE("HW encoder failed to initialize when setting the input buffers");
             return -1;
         }
     }
@@ -371,14 +371,14 @@ int JpegHwEncoder::resetContext(const InputBuffer &in, int &imgSeq)
      */
     status = mHwImageEncoder->createSourceSurface(SURFACE_TYPE_USER_PTR, in.buf, in.width, in.height, in.bpl, vaFmt, &imgSeq);
     if (status != 0) {
-        LOGE("create source surface failed");
+        ALOGE("create source surface failed");
         return -1;
     }
     singelSeq = imgSeq;
     //create context
     status = mHwImageEncoder->createContext(imgSeq, &mMaxOutJpegBufSize);
     if (status != 0) {
-        LOGE("createContext failed");
+        ALOGE("createContext failed");
         return -1;
     }
     return 0;
@@ -400,13 +400,13 @@ int JpegHwEncoder::restoreContext()
     //destroy context if there is one before
     status = mHwImageEncoder->destroyContext();
     if (status != 0) {
-        LOGW("destroy context failed");
+        ALOGW("destroy context failed");
     }
     //destroy surface
     if (singelSeq != ERROR_POINTER_NOT_FOUND) {
         status = mHwImageEncoder->destroySourceSurface(singelSeq);
         if (status != 0) {
-            LOGW("destroy surface failed");
+            ALOGW("destroy surface failed");
         }
     }
     //surfaces for multi buffer create in setInputBuffers aren't been destroyed, so there is no need to recreate.
@@ -414,7 +414,7 @@ int JpegHwEncoder::restoreContext()
     if (firstImageSeq != ERROR_POINTER_NOT_FOUND) {
         status = mHwImageEncoder->createContext(firstImageSeq, &mMaxOutJpegBufSize);
         if (status != 0) {
-            LOGE("createContext failed");
+            ALOGE("createContext failed");
             return -1;
         }
     }

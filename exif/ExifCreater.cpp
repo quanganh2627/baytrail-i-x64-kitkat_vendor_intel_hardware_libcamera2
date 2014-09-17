@@ -366,7 +366,7 @@ exif_status ExifCreater::makeExif (void *exifOut,
     }
 
     if (status != EXIF_SUCCESS)
-        LOGW("Failed to create EXIF APP2 section");
+        ALOGW("Failed to create EXIF APP2 section");
 
     ALOGV("makeExif End");
     return status;

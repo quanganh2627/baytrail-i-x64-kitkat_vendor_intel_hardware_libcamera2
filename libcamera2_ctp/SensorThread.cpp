@@ -53,7 +53,7 @@ int sensorEventsListener(int fd, int events, void* data)
     }
 
     if (num_sensors < 0 && num_sensors != -EAGAIN) {
-        LOGE("reading sensors events failed: %s", strerror(-num_sensors));
+        ALOGE("reading sensors events failed: %s", strerror(-num_sensors));
     }
 
     if (orientation != -1) {
@@ -78,7 +78,7 @@ SensorThread::SensorThread(int cameraId) :
 
     mLooper = new Looper(false);
     if (mLooper == NULL) {
-        LOGE("Looper alloc failed");
+        ALOGE("Looper alloc failed");
         return;
     }
 
@@ -89,7 +89,7 @@ SensorThread::SensorThread(int cameraId) :
         mLooper->addFd(mSensorEventQueue->getFd(), 0, ALOOPER_EVENT_INPUT,
                        sensorEventsListener, this);
     } else {
-        LOGE("sensorManager createEventQueue failed");
+        ALOGE("sensorManager createEventQueue failed");
     }
 }
 
@@ -119,14 +119,14 @@ int SensorThread::registerOrientationListener(IOrientationListener* listener) {
         SensorManager& sensorManager(SensorManager::getInstance());
         Sensor const* sensor = sensorManager.getDefaultSensor(Sensor::TYPE_ACCELEROMETER);
         if (sensor == NULL) {
-            LOGE("@%s: fail to get accelerometer sensor", __FUNCTION__);
+            ALOGE("@%s: fail to get accelerometer sensor", __FUNCTION__);
             return 0;
         }
 
         mSensorEventQueue->enableSensor(sensor);
         mSensorEventQueue->setEventRate(sensor, ms2ns(200));
 
-        LOGD("@%s: accelerometer sensor start %p (%s)", __FUNCTION__ , sensor, sensor->getName().string());
+        ALOGD("@%s: accelerometer sensor start %p (%s)", __FUNCTION__ , sensor, sensor->getName().string());
     }
 
     mListeners.add(listener);
@@ -145,13 +145,13 @@ void SensorThread::unRegisterOrientationListener(IOrientationListener* listener)
         SensorManager& sensorManager(SensorManager::getInstance());
         Sensor const* sensor = sensorManager.getDefaultSensor(Sensor::TYPE_ACCELEROMETER);
         if (sensor == NULL) {
-            LOGE("@%s: fail to get accelerometer sensor", __FUNCTION__);
+            ALOGE("@%s: fail to get accelerometer sensor", __FUNCTION__);
             return;
         }
 
         mSensorEventQueue->disableSensor(sensor);
 
-        LOGD("@%s: accelerometer sensor stop %p (%s)", __FUNCTION__ , sensor, sensor->getName().string());
+        ALOGD("@%s: accelerometer sensor stop %p (%s)", __FUNCTION__ , sensor, sensor->getName().string());
     }
 }
 

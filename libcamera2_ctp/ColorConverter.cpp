@@ -228,7 +228,7 @@ void trimConvertNV12ToNV21(int width, int height, int srcBpl, void *src, void *d
             pDst += width;
         }
     } else {
-        LOGE("bad bpl value");
+        ALOGE("bad bpl value");
         return;
     }
 
@@ -344,7 +344,7 @@ void align16ConvertNV12ToYV12(int width, int height, int srcBpl, void *src, void
             dstPtr += yBpl;
         }
     } else {
-        LOGE("bad src bpl value");
+        ALOGE("bad src bpl value");
         return;
     }
 
@@ -572,7 +572,7 @@ void convertBuftoYV12(int format, int width, int height, int srcBpl, int
         convertYUYVToYV12(width, height, srcBpl, dstBpl, src, dst);
         break;
     default:
-        LOGE("%s: unsupported format %s", __func__, v4l2Fmt2Str(format));
+        ALOGE("%s: unsupported format %s", __func__, v4l2Fmt2Str(format));
         break;
     }
 }
@@ -591,7 +591,7 @@ void convertBuftoNV21(int format, int width, int height, int srcBpl, int
         convertYUYVToNV21(width, height, srcBpl, src, dst);
         break;
     default:
-        LOGE("%s: unsupported format %s", __func__, v4l2Fmt2Str(format));
+        ALOGE("%s: unsupported format %s", __func__, v4l2Fmt2Str(format));
         break;
     }
 }
@@ -608,7 +608,7 @@ const char *cameraParametersFormat(int v4l2Format)
     case V4L2_PIX_FMT_JPEG:
         return CameraParameters::PIXEL_FORMAT_JPEG;
     default:
-        LOGE("failed to map format %s to a PIXEL_FORMAT\n", v4l2Fmt2Str(v4l2Format));
+        ALOGE("failed to map format %s to a PIXEL_FORMAT\n", v4l2Fmt2Str(v4l2Format));
         return NULL;
     };
 }
@@ -617,7 +617,7 @@ int V4L2Format(const char *cameraParamsFormat)
 {
     LOG1("@%s cameraParamsFormat=%s", __FUNCTION__, cameraParamsFormat);
     if (!cameraParamsFormat) {
-        LOGE("null cameraParamsFormat");
+        ALOGE("null cameraParamsFormat");
         return 0;
     }
 
@@ -637,7 +637,7 @@ int V4L2Format(const char *cameraParamsFormat)
     if (strncmp(cameraParamsFormat, CameraParameters::PIXEL_FORMAT_JPEG, len) == 0)
         return V4L2_PIX_FMT_JPEG;
 
-    LOGE("invalid format %s", cameraParamsFormat);
+    ALOGE("invalid format %s", cameraParamsFormat);
     return 0;
 }
 

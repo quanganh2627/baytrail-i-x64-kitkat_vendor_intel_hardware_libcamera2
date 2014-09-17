@@ -189,9 +189,9 @@ ControlThread::~ControlThread()
     LOG1("@%s", __FUNCTION__);
     if(mMessageQueue.size() > 0) {
         Message msg;
-        LOGE("At this point Message Q should be empty, found %d message(s)",mMessageQueue.size());
+        ALOGE("At this point Message Q should be empty, found %d message(s)",mMessageQueue.size());
         mMessageQueue.receive(&msg);
-        LOGE(" Id of first message is %d",msg.id);
+        ALOGE(" Id of first message is %d",msg.id);
     }
 
     PlatformData::freeActiveCameraId(mCameraId);
@@ -207,32 +207,32 @@ status_t ControlThread::init()
     AtomISP * isp = NULL;
     mScalerService = new ScalerService();
     if (mScalerService == NULL) {
-        LOGE("error creating ScalerService");
+        ALOGE("error creating ScalerService");
         goto bail;
     }
 
     mCallbacks = new Callbacks();
     if (mCallbacks == NULL) {
-        LOGE("error creating Callbacks");
+        ALOGE("error creating Callbacks");
         goto bail;
     }
 
     // we implement ICallbackPicture interface
     mCallbacksThread = new CallbacksThread(mCallbacks, this);
     if (mCallbacksThread == NULL) {
-        LOGE("error creating CallbacksThread");
+        ALOGE("error creating CallbacksThread");
         goto bail;
     }
 
     isp = new AtomISP(mCameraId, mScalerService, mCallbacks);
     if (isp == NULL) {
-        LOGE("error creating ISP");
+        ALOGE("error creating ISP");
         goto bail;
     }
     mISP = isp;
     status = mISP->init();
     if (status != NO_ERROR) {
-        LOGE("Error initializing ISP");
+        ALOGE("Error initializing ISP");
         goto bail;
     }
 
@@ -244,31 +244,31 @@ status_t ControlThread::init()
 
     // Choose 3A interface based on the sensor type
     if (createAtom3A() != NO_ERROR) {
-        LOGE("error creating AAA");
+        ALOGE("error creating AAA");
         goto bail;
     }
 
     if (m3AControls->init3A() != NO_ERROR) {
-        LOGE("Error initializing 3A controls");
+        ALOGE("Error initializing 3A controls");
         goto bail;
     }
     PERFORMANCE_TRACES_BREAKDOWN_STEP("Init_3A");
 
     mCP = new AtomCP(mHwcg);
     if (mCP == NULL) {
-        LOGE("error creating CP");
+        ALOGE("error creating CP");
         goto bail;
     }
 
     mULL = new UltraLowLight(mCallbacks);
     if (mULL == NULL) {
-        LOGE("error creating ULL");
+        ALOGE("error creating ULL");
         goto bail;
     }
 
     mCameraDump = CameraDump::getInstance(mCameraId);
     if (mCameraDump == NULL) {
-        LOGE("error creating CameraDump");
+        ALOGE("error creating CameraDump");
         goto bail;
     }
     mCameraDump->set3AControls(m3AControls);
@@ -277,74 +277,74 @@ status_t ControlThread::init()
     // this as argument
     mPreviewThread = new PreviewThread(mCallbacksThread, mCallbacks);
     if (mPreviewThread == NULL) {
-        LOGE("error creating PreviewThread");
+        ALOGE("error creating PreviewThread");
         goto bail;
     }
 
     mPictureThread = new PictureThread(m3AControls, mScalerService, mCallbacksThread, mCallbacks);
     if (mPictureThread == NULL) {
-        LOGE("error creating PictureThread");
+        ALOGE("error creating PictureThread");
         goto bail;
     }
 
     mVideoThread = new VideoThread(mCallbacksThread);
     if (mVideoThread == NULL) {
-        LOGE("error creating VideoThread");
+        ALOGE("error creating VideoThread");
         goto bail;
     }
 
     // we implement ICallbackAAA interface
     m3AThread = new AAAThread(this, mULL, m3AControls, mCallbacksThread);
     if (m3AThread == NULL) {
-        LOGE("error creating 3AThread");
+        ALOGE("error creating 3AThread");
         goto bail;
     }
 
     mPanoramaThread = new PanoramaThread(this, m3AControls, mCallbacksThread, mCallbacks, mCameraId);
     if (mPanoramaThread == NULL) {
-        LOGE("error creating PanoramaThread");
+        ALOGE("error creating PanoramaThread");
         goto bail;
     }
 
     mPostProcThread = new PostProcThread(this, mPanoramaThread.get(), m3AControls, mCallbacksThread, mCallbacks, mCameraId);
     if (mPostProcThread == NULL) {
-        LOGE("error creating PostProcThread");
+        ALOGE("error creating PostProcThread");
         goto bail;
     }
 
     if (mPostProcThread->init((void*)mISP) != NO_ERROR) {
-        LOGE("error initializing face engine");
+        ALOGE("error initializing face engine");
         goto bail;
     }
 
     mSensorThread = SensorThread::getInstance(mCameraId);
     if (mSensorThread == NULL) {
-        LOGE("error creating SensorThread");
+        ALOGE("error creating SensorThread");
         goto bail;
     }
 
     mBracketManager = new BracketManager(mHwcg, m3AControls);
     if (mBracketManager == NULL) {
-        LOGE("error creating BracketManager");
+        ALOGE("error creating BracketManager");
         goto bail;
     }
 
     mPostCaptureThread = new PostCaptureThread(this);
     if (mPostCaptureThread == NULL) {
-        LOGE("error creating PostCapture");
+        ALOGE("error creating PostCapture");
         goto bail;
     }
 
     mAccManagerThread = new AccManagerThread(mHwcg, mCallbacksThread, mCallbacks, mCameraId);
     if (mAccManagerThread == NULL) {
-        LOGE("error creating AccManagerThread");
+        ALOGE("error creating AccManagerThread");
         goto bail;
     }
 
     // DVS needs to be started after AIQ init.
     status = mISP->initDVS();
     if (status != NO_ERROR) {
-        LOGE("Error in initializing DVS");
+        ALOGE("Error in initializing DVS");
         goto bail;
     }
 
@@ -360,64 +360,64 @@ status_t ControlThread::init()
 
     status = mSensorThread->run("CamHAL_SENSOR");
     if (status != NO_ERROR) {
-        LOGE("Error starting sensor thread!");
+        ALOGE("Error starting sensor thread!");
         goto bail;
     }
     status = mScalerService->run("CamHAL_SCALER");
     if (status != NO_ERROR) {
-        LOGE("Error starting scaler service!");
+        ALOGE("Error starting scaler service!");
         goto bail;
     }
     status = m3AThread->run("CamHAL_3A");
     if (status != NO_ERROR) {
-        LOGE("Error starting 3A thread!");
+        ALOGE("Error starting 3A thread!");
         goto bail;
     }
     status = mPreviewThread->run("CamHAL_PREVIEW");
     if (status != NO_ERROR) {
-        LOGE("Error starting preview thread!");
+        ALOGE("Error starting preview thread!");
         goto bail;
     }
     status = mPictureThread->run("CamHAL_PICTURE");
     if (status != NO_ERROR) {
-        LOGW("Error starting picture thread!");
+        ALOGW("Error starting picture thread!");
         goto bail;
     }
     status = mCallbacksThread->run("CamHAL_CALLBACK");
     if (status != NO_ERROR) {
-        LOGW("Error starting callbacks thread!");
+        ALOGW("Error starting callbacks thread!");
         goto bail;
     }
     status = mVideoThread->run("CamHAL_VIDEO");
     if (status != NO_ERROR) {
-        LOGW("Error starting video thread!");
+        ALOGW("Error starting video thread!");
         goto bail;
     }
     status = mPostProcThread->run("CamHAL_POSTPROC");
     if (status != NO_ERROR) {
-        LOGW("Error starting Post Processing thread!");
+        ALOGW("Error starting Post Processing thread!");
         goto bail;
     }
     status = mPanoramaThread->run("CamHAL_PANO");
     if (status != NO_ERROR) {
-        LOGW("Error Starting Panorama Thread!");
+        ALOGW("Error Starting Panorama Thread!");
         goto bail;
     }
     status = mBracketManager->run("CamHAL_BRACKET");
     if (status != NO_ERROR) {
-        LOGW("Error Starting Bracketing Manager!");
+        ALOGW("Error Starting Bracketing Manager!");
         goto bail;
     }
 
     status = mPostCaptureThread->run("CamHAL_POSTCAP");
     if (status != NO_ERROR) {
-        LOGW("Error Starting PostCaptureThread!");
+        ALOGW("Error Starting PostCaptureThread!");
         goto bail;
     }
 
     status = mAccManagerThread->run("CamHAL_ACCMANAGER");
     if (status != NO_ERROR) {
-        LOGW("Error starting Acceleration Manager thread!");
+        ALOGW("Error starting Acceleration Manager thread!");
         goto bail;
     }
 
@@ -946,7 +946,7 @@ void ControlThread::sceneDetected(int sceneMode, bool sceneHdr)
         msg.data.sceneDetected.sceneHdr = sceneHdr;
         mMessageQueue.send(&msg);
     } else {
-        LOGW("%s: the scene mode (%d) provided is not in the defined range", __FUNCTION__, sceneMode);
+        ALOGW("%s: the scene mode (%d) provided is not in the defined range", __FUNCTION__, sceneMode);
     }
 }
 
@@ -1082,7 +1082,7 @@ status_t ControlThread::handleMessageExit(MessageExit *msg)
         // do nothing
         break;
     default:
-        LOGW("Exiting in an invalid state, this should not happen!!!");
+        ALOGW("Exiting in an invalid state, this should not happen!!!");
         break;
     }
 
@@ -1153,7 +1153,7 @@ status_t ControlThread::handleContinuousPreviewForegrounding()
         mPreviewThread->setPreviewConfig(width, height, cb_fourcc, false);
     } else if (previewState != PreviewThread::STATE_ENABLED
             && previewState != PreviewThread::STATE_ENABLED_HIDDEN) {
-        LOGE("Trying to resume continuous preview from unexpected state!");
+        ALOGE("Trying to resume continuous preview from unexpected state!");
         return INVALID_OPERATION;
     }
 
@@ -1299,7 +1299,7 @@ void ControlThread::releaseContinuousCapture(bool flushPictures)
         // is not needed.
         status = cancelPictureThread();
         if (status != NO_ERROR) {
-            LOGE("Error flushing PictureThread!");
+            ALOGE("Error flushing PictureThread!");
         }
     }
 }
@@ -1350,7 +1350,7 @@ ControlThread::ShootingMode ControlThread::selectShootingMode()
 
         case STATE_STOPPED:
         default:
-            LOGW("Unexpected state (%d) to select the shooting mode",mState);
+            ALOGW("Unexpected state (%d) to select the shooting mode",mState);
             break;
     }
     LOG1("Shooting Mode selected: %d",ret);
@@ -1447,7 +1447,7 @@ online_preview:
     if (mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_DURING_CAPTURE ||
         mPreviewUpdateMode == IntelCameraParameters::PREVIEW_UPDATE_MODE_CONTINUOUS) {
         mPreviewUpdateMode = IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD;
-        LOGW("Forcing preview update mode to standard, conflicting settings");
+        ALOGW("Forcing preview update mode to standard, conflicting settings");
     }
     return STATE_PREVIEW_STILL;
 
@@ -1466,7 +1466,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     AtomMode mode;
 
     if (mState != STATE_STOPPED) {
-        LOGE("Must be in STATE_STOPPED to start preview");
+        ALOGE("Must be in STATE_STOPPED to start preview");
         return INVALID_OPERATION;
     }
 
@@ -1499,7 +1499,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         status = mISP->setDVS(mDvsEnable);
 
         if (status != NO_ERROR) {
-            LOGW("@%s: Failed to set DVS %s", __FUNCTION__, mDvsEnable ? "enabled" : "disabled");
+            ALOGW("@%s: Failed to set DVS %s", __FUNCTION__, mDvsEnable ? "enabled" : "disabled");
         }
 
     } else {
@@ -1520,7 +1520,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     const char* cb_fourcc_s = mParameters.getPreviewFormat();
     cb_fourcc = V4L2Format(cb_fourcc_s);
     if (!cb_fourcc) {
-        LOGW("Unsupported preview callback fourcc : %s", cb_fourcc_s ? cb_fourcc_s : "not set");
+        ALOGW("Unsupported preview callback fourcc : %s", cb_fourcc_s ? cb_fourcc_s : "not set");
     }
     mParameters.getPreviewSize(&width, &height);
 
@@ -1575,7 +1575,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         status = mPreviewThread->fetchPreviewBuffers(sharedGfxBuffers);
         if (status == NO_ERROR) {
             if ((int)sharedGfxBuffers.size() != mNumBuffers) {
-                LOGE("Invalid shared preview buffer count configuration");
+                ALOGE("Invalid shared preview buffer count configuration");
                 return UNKNOWN_ERROR;
             }
             bool cached = isParameterSet(IntelCameraParameters::KEY_HW_OVERLAY_RENDERING) ? true: false;
@@ -1589,13 +1589,13 @@ status_t ControlThread::startPreviewCore(bool videoMode)
 
     status = mISP->configure(mode);
     if (status != NO_ERROR) {
-        LOGE("Error configuring ISP");
+        ALOGE("Error configuring ISP");
         return status;
     }
 
     status = mISP->allocateBuffers(mode);
     if (status != NO_ERROR) {
-        LOGE("Error allocate buffers in ISP");
+        ALOGE("Error allocate buffers in ISP");
         return status;
     }
 
@@ -1604,7 +1604,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         m3AControls->setAfEnabled(true);
         m3AThread->enable3A();
         if (m3AControls->switchModeAndRate(mode, mHwcg.mSensorCI->getFramerate()) != NO_ERROR)
-            LOGE("Failed switching 3A at %.2f fps", mHwcg.mSensorCI->getFramerate());
+            ALOGE("Failed switching 3A at %.2f fps", mHwcg.mSensorCI->getFramerate());
 
 
         mISP->attachObserver(m3AThread.get(), OBSERVE_3A_STAT_READY);
@@ -1617,7 +1617,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         mFocusAreas.toWindows(focusWindows);
         convertAfWindows(focusWindows, winCount);
         if (m3AControls->setAfWindows(focusWindows, winCount) != NO_ERROR) {
-            LOGE("Could not set AF windows. Resseting the AF to %d", CAM_AF_MODE_AUTO);
+            ALOGE("Could not set AF windows. Resseting the AF to %d", CAM_AF_MODE_AUTO);
             m3AControls->setAfMode(CAM_AF_MODE_AUTO);
         }
         delete[] focusWindows;
@@ -1642,7 +1642,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
         convertFromAndroidToIaCoordinates(meteringWindows[0], aeWindow);
 
         if (m3AControls->setAeWindow(&aeWindow) != NO_ERROR) {
-            LOGW("Error setting AE metering window. Metering will not work");
+            ALOGW("Error setting AE metering window. Metering will not work");
         }
         delete[] meteringWindows;
         meteringWindows = NULL;
@@ -1679,7 +1679,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
             mPreviewThread->setPreviewState(PreviewThread::STATE_ENABLED_HIDDEN);
         }
     } else {
-        LOGE("Error starting ISP!");
+        ALOGE("Error starting ISP!");
         mPreviewThread->returnPreviewBuffers();
         mISP->detachObserver(mPreviewThread.get(), OBSERVE_PREVIEW_STREAM);
         mISP->detachObserver(this, OBSERVE_PREVIEW_STREAM);
@@ -1726,7 +1726,7 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
     if (status == NO_ERROR) {
         mState = STATE_STOPPED;
     } else {
-        LOGE("Error stopping ISP in preview mode!");
+        ALOGE("Error stopping ISP in preview mode!");
     }
 
     mISP->detachObserver(mPreviewThread.get(), OBSERVE_PREVIEW_STREAM);
@@ -1768,7 +1768,7 @@ status_t ControlThread::stopCapture()
     status_t status = NO_ERROR;
 
     if (mState != STATE_CAPTURE) {
-        LOGE("Must be in STATE_CAPTURE to stop capture");
+        ALOGE("Must be in STATE_CAPTURE to stop capture");
         return INVALID_OPERATION;
     }
     if (mHdr.inProgress)
@@ -1776,7 +1776,7 @@ status_t ControlThread::stopCapture()
 
     status = cancelPictureThread();
     if (status != NO_ERROR) {
-        LOGE("Error canceling PictureThread!");
+        ALOGE("Error canceling PictureThread!");
         return status;
     }
 
@@ -1784,7 +1784,7 @@ status_t ControlThread::stopCapture()
 
     status = mISP->stop();
     if (status != NO_ERROR) {
-        LOGE("Error stopping ISP!");
+        ALOGE("Error stopping ISP!");
         return status;
     }
 
@@ -1877,7 +1877,7 @@ status_t ControlThread::handleMessageStartPreview()
     if (mState == STATE_CAPTURE) {
         status = stopCapture();
         if (status != NO_ERROR) {
-            LOGE("Could not stop capture before start preview!");
+            ALOGE("Could not stop capture before start preview!");
             mMessageQueue.reply(MESSAGE_ID_START_PREVIEW, status);
             return status;
         }
@@ -1899,7 +1899,7 @@ status_t ControlThread::handleMessageStartPreview()
             bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT);
             status = startPreviewCore(videoMode);
         } else {
-            LOGI("Preview window not set deferring start preview until then");
+            ALOGI("Preview window not set deferring start preview until then");
             mPreviewThread->setPreviewState(PreviewThread::STATE_NO_WINDOW);
         }
     } else if (mState == STATE_CONTINUOUS_CAPTURE) {
@@ -1910,7 +1910,7 @@ status_t ControlThread::handleMessageStartPreview()
     }
 
     if (status != NO_ERROR) {
-        LOGE("Error starting preview. Invalid state!");
+        ALOGE("Error starting preview. Invalid state!");
     }
 
 preview_started:
@@ -1944,7 +1944,7 @@ status_t ControlThread::handleMessageStopPreview()
 
     status = cancelCapture();
     if (status != NO_ERROR)
-        LOGE("There was failures while canceling capture process");
+        ALOGE("There was failures while canceling capture process");
 
     // In STATE_CAPTURE, preview is already stopped, nothing to do
     if (mState != STATE_CAPTURE) {
@@ -1957,7 +1957,7 @@ status_t ControlThread::handleMessageStopPreview()
         if (mState != STATE_STOPPED) {
             status = stopPreviewCore();
         } else {
-            LOGE("Error stopping preview. Invalid state!");
+            ALOGE("Error stopping preview. Invalid state!");
             status = INVALID_OPERATION;
         }
     }
@@ -1988,9 +1988,9 @@ status_t ControlThread::handleMessageErrorPreview()
     if (mState != STATE_STOPPED && mState != STATE_CAPTURE) {
         status = stopPreviewCore(true);
         mISP->deInitDevice();
-        LOGE("Preview was stopped due error in stream, trying to recover (timeout 5s)...");
+        ALOGE("Preview was stopped due error in stream, trying to recover (timeout 5s)...");
     } else {
-        LOGE("Preview stream error unhandled, unexpected state (%d)", mState);
+        ALOGE("Preview stream error unhandled, unexpected state (%d)", mState);
     }
 
     return status;
@@ -2009,12 +2009,12 @@ status_t ControlThread::handleMessageTimeout()
     if (!mISP->isDeviceInitialized()) {
         status = mISP->init();
         if (status != NO_ERROR) {
-            LOGE("Error initializing ISP");
+            ALOGE("Error initializing ISP");
         } else {
             bool videoMode = isParameterSet(CameraParameters::KEY_RECORDING_HINT) ? true : false;
             status = startPreviewCore(videoMode);
             if (status)
-                LOGE("%s: Restart Preview failed", __FUNCTION__);
+                ALOGE("%s: Restart Preview failed", __FUNCTION__);
         }
     } else {
         LOG2("%s: nothing to do", __FUNCTION__);
@@ -2117,11 +2117,11 @@ status_t ControlThread::handleMessageStartRecording()
         mISP->applyISPLimitations(&mParameters, mDvsEnable, videoMode);
         status = restartPreview(videoMode);
         if (status != NO_ERROR) {
-            LOGE("Error restarting preview in video mode");
+            ALOGE("Error restarting preview in video mode");
         }
         mState = STATE_RECORDING;
     } else {
-        LOGE("Error starting recording. Invalid state!");
+        ALOGE("Error starting recording. Invalid state!");
         status = INVALID_OPERATION;
     }
 
@@ -2187,10 +2187,10 @@ status_t ControlThread::handleMessageStopRecording()
          */
         status = mVideoThread->flushBuffers();
         if (status != NO_ERROR)
-            LOGE("Error flushing video thread");
+            ALOGE("Error flushing video thread");
         mState = STATE_PREVIEW_VIDEO;
     } else {
-        LOGE("Error stopping recording. Invalid state!");
+        ALOGE("Error stopping recording. Invalid state!");
         status = INVALID_OPERATION;
     }
 
@@ -2230,7 +2230,7 @@ void ControlThread::reconfigureThumbnailSize(int &width, int &height)
 
     /* check input parameter */
     if (height <= 0) {
-        LOGE("error input thumbnail height");
+        ALOGE("error input thumbnail height");
         return;
     }
 
@@ -2272,14 +2272,14 @@ status_t ControlThread::skipFrames(size_t numFrames)
 
     for (size_t i = 0; i < numFrames; i++) {
         if ((status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer)) != NO_ERROR) {
-            LOGE("Error in grabbing warm-up frame %d!", i);
+            ALOGE("Error in grabbing warm-up frame %d!", i);
             return status;
         }
         status = mISP->putSnapshot(&snapshotBuffer, &postviewBuffer);
         if (status == DEAD_OBJECT) {
             LOG1("Stale snapshot buffer returned to ISP");
         } else if (status != NO_ERROR) {
-            LOGE("Error in putting skip frame %d!", i);
+            ALOGE("Error in putting skip frame %d!", i);
             return status;
         }
     }
@@ -2333,7 +2333,7 @@ status_t ControlThread::handleMessagePanoramaCaptureTrigger()
 
     status = capturePanoramaPic(snapshotBuffer, postviewBuffer);
     if (status != NO_ERROR) {
-        LOGE("Error %d capturing panorama picture.", status);
+        ALOGE("Error %d capturing panorama picture.", status);
         return status;
     }
 
@@ -2344,7 +2344,7 @@ status_t ControlThread::handleMessagePanoramaCaptureTrigger()
         // (copied) the buffers
         status = mISP->putSnapshot(&snapshotBuffer, &postviewBuffer);
         if (status != NO_ERROR)
-            LOGE("error returning panorama capture buffers");
+            ALOGE("error returning panorama capture buffers");
 
         //restart preview
         Message msg;
@@ -2457,7 +2457,7 @@ status_t ControlThread::handleMessageTakePicture() {
             status = captureULLPic();
             break;
         default:
-            LOGE("Taking picture when recording is not supported!");
+            ALOGE("Taking picture when recording is not supported!");
             status = INVALID_OPERATION;
             break;
     }
@@ -2485,7 +2485,7 @@ status_t ControlThread::getFlashExposedSnapshot(AtomBuffer *snapshotBuffer, Atom
 
         status = mISP->getSnapshot(snapshotBuffer, postviewBuffer);
         if (status != NO_ERROR) {
-            LOGE("%s: Error in grabbing snapshot!", __FUNCTION__);
+            ALOGE("%s: Error in grabbing snapshot!", __FUNCTION__);
             break;
         }
 
@@ -2494,12 +2494,12 @@ status_t ControlThread::getFlashExposedSnapshot(AtomBuffer *snapshotBuffer, Atom
             break;
         }
         else if (snapshotBuffer->status  == FRAME_STATUS_FLASH_FAILED) {
-            LOGE("%s: flash fail, frame %d", __FUNCTION__, cnt);
+            ALOGE("%s: flash fail, frame %d", __FUNCTION__, cnt);
             break;
         }
 
         if (cnt++ == FLASH_TIMEOUT_FRAMES) {
-            LOGE("%s: unexpected flash timeout, frame %d", __FUNCTION__, cnt);
+            ALOGE("%s: unexpected flash timeout, frame %d", __FUNCTION__, cnt);
             break;
         }
 
@@ -2541,7 +2541,7 @@ void ControlThread::fillPicMetaData(PictureThread::MetaData &metaData, bool flas
         // TODO: add support for raw mknote
         aaaMkNote = m3AControls->get3aMakerNote(ia_mkn_trg_section_1);
         if (!aaaMkNote)
-            LOGW("No 3A makernote data available");
+            ALOGW("No 3A makernote data available");
     }
 
     atomisp_makernote_info tmp;
@@ -2551,7 +2551,7 @@ void ControlThread::fillPicMetaData(PictureThread::MetaData &metaData, bool flas
         *atomispMkNote = tmp;
     }
     else {
-        LOGW("Could not get AtomISP makernote information!");
+        ALOGW("Could not get AtomISP makernote information!");
     }
 
     metaData.flashFired = flashFired;
@@ -2582,7 +2582,7 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
     if (mState != STATE_CONTINUOUS_CAPTURE) {
         status = stopPreviewCore();
         if (status != NO_ERROR) {
-            LOGE("Error stopping preview!");
+            ALOGE("Error stopping preview!");
             return status;
         }
         mState = STATE_CAPTURE;
@@ -2617,28 +2617,28 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
         mISP->setPostviewFrameFormat(formatDescriptorPv);
 
         if ((status = mISP->configure(MODE_CAPTURE)) != NO_ERROR) {
-            LOGE("Error configuring the ISP driver for CAPTURE mode");
+            ALOGE("Error configuring the ISP driver for CAPTURE mode");
             return status;
         }
 
         status = mISP->allocateBuffers(MODE_CAPTURE);
         if (status != NO_ERROR) {
-            LOGE("Error allocate buffers in ISP");
+            ALOGE("Error allocate buffers in ISP");
             return status;
         }
 
         if (m3AControls->switchModeAndRate(MODE_CAPTURE, mHwcg.mSensorCI->getFramerate()) != NO_ERROR)
-            LOGE("Failed to switch 3A to capture mode at %.2f fps",mHwcg.mSensorCI->getFramerate());
+            ALOGE("Failed to switch 3A to capture mode at %.2f fps",mHwcg.mSensorCI->getFramerate());
 
         if ((status = mISP->start()) != NO_ERROR) {
-            LOGE("Error starting the ISP driver in CAPTURE mode!");
+            ALOGE("Error starting the ISP driver in CAPTURE mode!");
             return status;
         }
     } else {
         /* Necessary to update the buffer pools before we start to capture */
         status = mISP->allocateBuffers(MODE_CAPTURE);
         if (status != NO_ERROR) {
-            LOGE("Error allocate buffers in ISP");
+            ALOGE("Error allocate buffers in ISP");
             return status;
         }
 
@@ -2656,7 +2656,7 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
      */
     if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_SOC) {
         if ((status = skipFrames(NUM_WARMUP_FRAMES)) != NO_ERROR) {
-            LOGE("Error skipping warm-up frames!");
+            ALOGE("Error skipping warm-up frames!");
             return status;
         }
     }
@@ -2666,7 +2666,7 @@ status_t ControlThread::capturePanoramaPic(AtomBuffer &snapshotBuffer, AtomBuffe
 
     // Get the snapshot
     if ((status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer)) != NO_ERROR) {
-        LOGE("Error in grabbing snapshot!");
+        ALOGE("Error in grabbing snapshot!");
         return status;
     }
 
@@ -2738,7 +2738,7 @@ status_t ControlThread::burstCaptureSkipFrames()
             mBracketManager->getBracketMode() == BRACKET_NONE) {
         LOG1("Skipping %d burst frames", mFpsAdaptSkip);
         if ((status = skipFrames(mFpsAdaptSkip)) != NO_ERROR) {
-            LOGE("Error skipping burst frames!");
+            ALOGE("Error skipping burst frames!");
         }
     }
     return status;
@@ -2778,7 +2778,7 @@ status_t ControlThread::continuousStartStillCapture(bool useFlash)
 
         status = mISP->allocateBuffers(MODE_CAPTURE);
         if (status != NO_ERROR) {
-           LOGE("Error allocate buffers in ISP");
+           ALOGE("Error allocate buffers in ISP");
             return status;
         }
         startOfflineCapture();
@@ -2794,7 +2794,7 @@ status_t ControlThread::continuousStartStillCapture(bool useFlash)
         if (status == NO_ERROR)
             mState = STATE_CAPTURE;
         else
-            LOGE("Error stopping preview!");
+            ALOGE("Error stopping preview!");
     }
     return status;
 }
@@ -2840,7 +2840,7 @@ bool ControlThread::selectPostviewSize(int &width, int &height)
         height = preHeight;
         return true;
     } else {
-        LOGW("Postview aspect difference (%f) beyond tolerance (%f)",
+        ALOGW("Postview aspect difference (%f) beyond tolerance (%f)",
              aspectDiff, POSTVIEW_ASPECT_TOLERANCE);
     }
 
@@ -2856,7 +2856,7 @@ bool ControlThread::selectPostviewSize(int &width, int &height)
         height = 0;
         return false;
     } else if (picWidth * thuHeight / thuWidth != picHeight) {
-        LOGW("Thumbnail size doesn't match the picture aspect"
+        ALOGW("Thumbnail size doesn't match the picture aspect"
              "(%d,%d) -> (%d,%d), check your configuration",
              picWidth, picHeight, thuWidth, thuHeight);
         int heightByPicAspect = thuWidth * picHeight / picWidth;
@@ -3005,7 +3005,7 @@ status_t ControlThread::captureStillPic()
     } else {
         status = stopPreviewCore();
         if (status != NO_ERROR) {
-            LOGE("Error stopping preview!");
+            ALOGE("Error stopping preview!");
             return status;
         }
         mState = STATE_CAPTURE;
@@ -3046,20 +3046,20 @@ status_t ControlThread::captureStillPic()
         }
 
         if ((status = mISP->configure(MODE_CAPTURE)) != NO_ERROR) {
-            LOGE("Error configuring the ISP driver for CAPTURE mode");
+            ALOGE("Error configuring the ISP driver for CAPTURE mode");
             return status;
         }
 
         status = mISP->allocateBuffers(MODE_CAPTURE);
         if (status != NO_ERROR) {
-            LOGE("Error allocate buffers in ISP");
+            ALOGE("Error allocate buffers in ISP");
             return status;
         }
 
         if (m3AControls->switchModeAndRate(MODE_CAPTURE, mHwcg.mSensorCI->getFramerate()) != NO_ERROR)
-            LOGE("Failed to switch 3A to capture mode at %.2f fps", mHwcg.mSensorCI->getFramerate());
+            ALOGE("Failed to switch 3A to capture mode at %.2f fps", mHwcg.mSensorCI->getFramerate());
         if ((status = mISP->start()) != NO_ERROR) {
-            LOGE("Error starting the ISP driver in CAPTURE mode");
+            ALOGE("Error starting the ISP driver in CAPTURE mode");
             return status;
         }
     }
@@ -3072,7 +3072,7 @@ status_t ControlThread::captureStillPic()
     // HDR init
     if (mHdr.enabled &&
        (status = hdrInit( pvSize, pvWidth, pvHeight)) != NO_ERROR) {
-        LOGE("Error initializing HDR!");
+        ALOGE("Error initializing HDR!");
         return status;
     }
 
@@ -3091,7 +3091,7 @@ status_t ControlThread::captureStillPic()
         int framesToSkip = CameraDump::isDumpImageEnable(CAMERA_DEBUG_DUMP_RAW) ?
                          RAW_CAPTURE_SKIP:NUM_WARMUP_FRAMES;
         if ((status = skipFrames(framesToSkip)) != NO_ERROR) {
-            LOGE("Error skipping warm-up frames!");
+            ALOGE("Error skipping warm-up frames!");
             return status;
         }
     }
@@ -3100,7 +3100,7 @@ status_t ControlThread::captureStillPic()
     if (flashOn && flashMode != CAM_AE_FLASH_MODE_TORCH && mBurstLength <= 1) {
         LOG1("Requesting flash");
         if (mHwcg.mFlashCI->setFlash(1) != NO_ERROR) {
-            LOGE("Failed to enable the Flash!");
+            ALOGE("Failed to enable the Flash!");
         }
         else {
             flashFired = true;
@@ -3111,7 +3111,7 @@ status_t ControlThread::captureStillPic()
 
     status = burstCaptureSkipFrames();
     if (status != NO_ERROR) {
-        LOGE("Error skipping burst frames!");
+        ALOGE("Error skipping burst frames!");
         return status;
     }
 
@@ -3122,7 +3122,7 @@ status_t ControlThread::captureStillPic()
             mBurstQbufs = mISP->getNumSnapshotBuffers();
         status = waitForCaptureStart();
         if (status != NO_ERROR) {
-            LOGE("Error while waiting for capture to start");
+            ALOGE("Error while waiting for capture to start");
             mCallbacksThread->sendError(CAMERA_ERROR_UNKNOWN);
             return status;
         }
@@ -3147,7 +3147,7 @@ status_t ControlThread::captureStillPic()
     }
 
     if (status != NO_ERROR) {
-        LOGE("Error in grabbing snapshot!");
+        ALOGE("Error in grabbing snapshot!");
         return status;
     }
 
@@ -3162,7 +3162,7 @@ status_t ControlThread::captureStillPic()
     // HDR Processing
     if (mHdr.enabled &&
        (status = hdrProcess(&snapshotBuffer, &postviewBuffer)) != NO_ERROR) {
-        LOGE("HDR: Error in compute CDF for capture %d in HDR sequence!", mBurstCaptureNum);
+        ALOGE("HDR: Error in compute CDF for capture %d in HDR sequence!", mBurstCaptureNum);
         picMetaData.free(m3AControls);
         return status;
     }
@@ -3259,7 +3259,7 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
 
     status = burstCaptureSkipFrames();
     if (status != NO_ERROR) {
-        LOGE("Error skipping burst frames!");
+        ALOGE("Error skipping burst frames!");
         return status;
     }
 
@@ -3273,7 +3273,7 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
     }
 
     if (status != NO_ERROR) {
-        LOGE("Error in grabbing snapshot!");
+        ALOGE("Error in grabbing snapshot!");
         return status;
     }
 
@@ -3286,7 +3286,7 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
    // HDR Processing
     if ( mHdr.enabled &&
         (status = hdrProcess(&snapshotBuffer, &postviewBuffer)) != NO_ERROR) {
-        LOGE("Error processing HDR!");
+        ALOGE("Error processing HDR!");
         picMetaData.free(m3AControls);
         return status;
     }
@@ -3313,7 +3313,7 @@ status_t ControlThread::captureBurstPic(bool clientRequest = false)
 
         status = hdrCompose();
         if (status != NO_ERROR)
-            LOGE("Error composing HDR picture");
+            ALOGE("Error composing HDR picture");
     }
 
     if (doEncode == false) {
@@ -3378,7 +3378,7 @@ status_t ControlThread::queueSnapshotBuffers()
         else if (status == DEAD_OBJECT) {
             LOG1("Stale snapshot buffer returned to ISP");
         } else if (status != NO_ERROR) {
-            LOGE("Error in putting snapshot!");
+            ALOGE("Error in putting snapshot!");
         }
     }
     mAvailableSnapshotBuffers.clear();*/
@@ -3434,7 +3434,7 @@ status_t ControlThread::captureFixedBurstPic(bool clientRequest = false)
     status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer);
 
     if (status != NO_ERROR) {
-        LOGE("Error in grabbing snapshot!");
+        ALOGE("Error in grabbing snapshot!");
         picMetaData.free(m3AControls);
         stopOfflineCapture();
         burstStateReset();
@@ -3503,7 +3503,7 @@ status_t ControlThread::captureULLPic()
     status = mULL->init(picWidth,picHeight,0);
     if (status != NO_ERROR) {
       mULL->deinit();
-      LOGE("Failed to initialize the ULL algorithm");
+      ALOGE("Failed to initialize the ULL algorithm");
       return NO_INIT;
     }
 
@@ -3528,7 +3528,7 @@ status_t ControlThread::captureULLPic()
     for (int i=0; i< mBurstLength; i++) {
        status = mISP->getSnapshot(&snapshotBuffer, &postviewBuffer);
        if (status != NO_ERROR) {
-           LOGE("Error in grabbing snapshot!");
+           ALOGE("Error in grabbing snapshot!");
            goto exit;
        }
        if (i == 0) {
@@ -3555,7 +3555,7 @@ status_t ControlThread::captureULLPic()
                // normally this is done by PictureThread, but as no
                // encoding was done, free the allocated metadata
                firstPicMetaData.free(m3AControls);
-               LOGE("Error encoding first image of the ULL burst");
+               ALOGE("Error encoding first image of the ULL burst");
                goto exit;
            }
        }
@@ -3676,7 +3676,7 @@ status_t ControlThread::cancelPictureThread()
     for (it = canceledPictures.begin(); it != canceledPictures.end(); it++) {
         status = handleMessagePictureDone(&it->data.pictureDone);
         if (status != NO_ERROR)
-            LOGD("Failed handling pictureDone-messages while canceling!");
+            ALOGD("Failed handling pictureDone-messages while canceling!");
     }
 
     return status;
@@ -3702,7 +3702,7 @@ status_t ControlThread::cancelPostCaptureThread()
     for (it = canceledPictures.begin(); it != canceledPictures.end(); it++) {
         status = handleMessagePostCaptureProcessingDone(&it->data.postCapture);
         if (status != NO_ERROR)
-            LOGD("Failed handling postCaptureProcessingDone while canceling!");
+            ALOGD("Failed handling postCaptureProcessingDone while canceling!");
     }
 
     return status;
@@ -3809,7 +3809,7 @@ status_t ControlThread::handleMessageReleaseRecordingFrame(MessageReleaseRecordi
             // to see if sharing was disabled then we restart the ISP with new buffers. In
             // the mean time, the app is returning us shared buffers when we are no longer
             // using them.
-            LOGE("Could not find recording buffer: %p", msg->buff);
+            ALOGE("Could not find recording buffer: %p", msg->buff);
             return DEAD_OBJECT;
         }
         int curBuff = recBuff->id;
@@ -3829,15 +3829,15 @@ status_t ControlThread::handleMessageReleaseRecordingFrame(MessageReleaseRecordi
             // return to AtomISP
             status = mISP->putRecordingFrame(recBuff);
             if (status == DEAD_OBJECT) {
-                LOGW("Stale recording buffer returned to ISP");
+                ALOGW("Stale recording buffer returned to ISP");
             } else if (status != NO_ERROR) {
-                LOGE("Error putting recording frame to ISP");
+                ALOGE("Error putting recording frame to ISP");
             } else {
                 // drop from reserved list
                 mRecordingBuffers.erase(recBuff);
             }
         } else {
-            LOGE("Recording buffer out of array");
+            ALOGE("Recording buffer out of array");
         }
     }
     return status;
@@ -3847,7 +3847,7 @@ void ControlThread::previewBufferCallback(AtomBuffer *buff, ICallbackPreview::Ca
 {
     LOG2("@%s", __FUNCTION__);
     if (t != ICallbackPreview::INPUT_ONCE) {
-        LOGE("Received unexpected preview callback");
+        ALOGE("Received unexpected preview callback");
         return;
     }
     Message msg;
@@ -3884,7 +3884,7 @@ status_t ControlThread::handleMessagePreviewStarted()
     if (mAllocatedSnapshotBuffers.size() == mAvailableSnapshotBuffers.size()) {
         allocateSnapshotAndPostviewBuffers(videoMode);
     } else {
-        LOGW("%s: not safe to allocate now, some snapshot buffers are not returned, skipping", __FUNCTION__);
+        ALOGW("%s: not safe to allocate now, some snapshot buffers are not returned, skipping", __FUNCTION__);
     };
 
     return NO_ERROR;
@@ -3945,7 +3945,7 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
                 if (status == DEAD_OBJECT) {
                     LOG1("Stale preview buffer returned to ISP");
                 } else if (status != NO_ERROR) {
-                    LOGE("Error putting preview frame to ISP");
+                    ALOGE("Error putting preview frame to ISP");
                 } else {
                     // drop from reserved list
                     mVideoSnapshotBuffers.erase(videoBuffer);
@@ -3979,7 +3979,7 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
 
             msg->snapshotBuf.status = FRAME_STATUS_OK;
             if (findBufferByData(&msg->snapshotBuf, &mAllocatedSnapshotBuffers) == NULL) {
-                LOGE("Stale snapshot buffer %p returned... this should not happen", msg->snapshotBuf.dataPtr);
+                ALOGE("Stale snapshot buffer %p returned... this should not happen", msg->snapshotBuf.dataPtr);
 
             } else if (findBufferByData(&msg->snapshotBuf, &mAvailableSnapshotBuffers) == NULL) {
                 // It's safe to recycle this buffer if needed
@@ -3991,7 +3991,7 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
                     }
 
                     if (status != NO_ERROR) {
-                        LOGE("Error %d in putting snapshot buffer:%p postviewBuf:%p!", status,
+                        ALOGE("Error %d in putting snapshot buffer:%p postviewBuf:%p!", status,
                                 msg->snapshotBuf.dataPtr, msg->postviewBuf.dataPtr);
                     } else {
                         LOG1("Recycle snapshot buffer:%p postviewBuf:%p", msg->snapshotBuf.dataPtr, msg->postviewBuf.dataPtr);
@@ -4003,7 +4003,7 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
                             __FUNCTION__, msg->snapshotBuf.dataPtr, mAvailableSnapshotBuffers.size());
                 }
             } else {
-                LOGE("%s Already available snapshot buffer arrived. Find the bug!!", __FUNCTION__);
+                ALOGE("%s Already available snapshot buffer arrived. Find the bug!!", __FUNCTION__);
             }
         }
 
@@ -4014,14 +4014,14 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
                 // like for ULL post-processed image: a NULL postview image is sent to encoding.
                 LOG1("@%s NULL postview buffer cycled", __FUNCTION__);
             } else if (findBufferByData(&msg->postviewBuf, &mAllocatedPostviewBuffers) == NULL) {
-                LOGE("Stale postview buffer, dataPtr = %p returned... this should not happen",
+                ALOGE("Stale postview buffer, dataPtr = %p returned... this should not happen",
                     msg->postviewBuf.dataPtr);
             } else if (findBufferByData(&msg->postviewBuf, &mAvailablePostviewBuffers) == NULL) {
                 mAvailablePostviewBuffers.push(msg->postviewBuf);
                 LOG1("%s: pushed postview buffer ptr = %p to mAvailablePostviewBuffers, size %d",
                     __FUNCTION__, msg->postviewBuf.dataPtr, mAvailablePostviewBuffers.size());
             } else {
-                LOGE("%s Already available postview buffer arrived. Find the bug!!", __FUNCTION__);
+                ALOGE("%s Already available postview buffer arrived. Find the bug!!", __FUNCTION__);
             }
         }
 
@@ -4031,7 +4031,7 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
                  mBurstCaptureNum, mBurstCaptureDoneNum, mBurstLength);
             if (mBurstCaptureDoneNum >= mBurstLength &&
                 (!mHdr.enabled || msg->snapshotBuf.dataPtr == mHdr.outMainBuf.dataPtr)) {
-                LOGW("Last pic in burst received, terminating");
+                ALOGW("Last pic in burst received, terminating");
                 burstStateReset();
             }
         }
@@ -4043,7 +4043,7 @@ status_t ControlThread::handleMessagePictureDone(MessagePicture *msg)
         }
 
     } else {
-        LOGW("Received a picture Done during invalid state %d; buf id:%d, ptr=%p", mState, msg->snapshotBuf.id, msg->snapshotBuf.buff);
+        ALOGW("Received a picture Done during invalid state %d; buf id:%d, ptr=%p", mState, msg->snapshotBuf.id, msg->snapshotBuf.buff);
     }
 
     // It is possible that handleMessageSetParameters here will callback to
@@ -4100,7 +4100,7 @@ bool ControlThread::validateSize(int width, int height, Vector<Size> &supportedS
         if (width == it->width && height == it->height)
             return true;
 
-    LOGW("WARNING: The Size %dx%d is not fully supported. Some issues might occur!", width, height);
+    ALOGW("WARNING: The Size %dx%d is not fully supported. Some issues might occur!", width, height);
     return true;
 }
 
@@ -4160,7 +4160,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     params->getSupportedPreviewSizes(supportedSizes);
     params->getPreviewSize(&width, &height);
     if (!validateSize(width, height, supportedSizes)) {
-        LOGE("bad preview size");
+        ALOGE("bad preview size");
         return BAD_VALUE;
     }
 
@@ -4172,7 +4172,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     const char* fpsRanges = params->get(CameraParameters::KEY_SUPPORTED_PREVIEW_FPS_RANGE);
     if ((fpsRange && fpsRanges && strstr(fpsRanges, fpsRange) == NULL) ||
         minFPS < 0 || maxFPS < 0) {
-            LOGE("invalid fps range: %s; supported %s", fpsRange, fpsRanges);
+            ALOGE("invalid fps range: %s; supported %s", fpsRange, fpsRanges);
             return BAD_VALUE;
     }
 
@@ -4181,7 +4181,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     supportedSizes.clear();
     params->getSupportedVideoSizes(supportedSizes);
     if (!validateSize(width, height, supportedSizes)) {
-        LOGE("bad video size %dx%d", width, height);
+        ALOGE("bad video size %dx%d", width, height);
         return BAD_VALUE;
     }
 
@@ -4189,7 +4189,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     const char* recordingFps = params->get(IntelCameraParameters::KEY_RECORDING_FRAME_RATE);
     const char* supportedRecordingFps = params->get(IntelCameraParameters::KEY_SUPPORTED_RECORDING_FRAME_RATES);
     if (!validateString(recordingFps, supportedRecordingFps)) {
-        LOGE("bad recording frame rate: %s, supported: %s", recordingFps, supportedRecordingFps);
+        ALOGE("bad recording frame rate: %s, supported: %s", recordingFps, supportedRecordingFps);
         return BAD_VALUE;
     }
 
@@ -4198,21 +4198,21 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     supportedSizes.clear();
     params->getSupportedPictureSizes(supportedSizes);
     if (!validateSize(width, height, supportedSizes)) {
-        LOGE("bad picture size");
+        ALOGE("bad picture size");
         return BAD_VALUE;
     }
 
     // JPEG QUALITY
     int jpegQuality = params->getInt(CameraParameters::KEY_JPEG_QUALITY);
     if (jpegQuality < 1 || jpegQuality > 100) {
-        LOGE("bad jpeg quality: %d", jpegQuality);
+        ALOGE("bad jpeg quality: %d", jpegQuality);
         return BAD_VALUE;
     }
 
     // THUMBNAIL QUALITY
     int thumbQuality = params->getInt(CameraParameters::KEY_JPEG_THUMBNAIL_QUALITY);
     if (thumbQuality < 1 || thumbQuality > 100) {
-        LOGE("bad thumbnail quality: %d", thumbQuality);
+        ALOGE("bad thumbnail quality: %d", thumbQuality);
         return BAD_VALUE;
     }
 
@@ -4231,18 +4231,18 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
             ++thumbnailSizes;
         }
         if (!validateSize(thumbWidth, thumbHeight, supportedSizes)) {
-            LOGE("bad thumbnail size: (%d,%d)", thumbWidth, thumbHeight);
+            ALOGE("bad thumbnail size: (%d,%d)", thumbWidth, thumbHeight);
             return BAD_VALUE;
         }
     } else {
-        LOGE("bad thumbnail size");
+        ALOGE("bad thumbnail size");
         return BAD_VALUE;
     }
     // PICTURE FORMAT
     const char* picFormat = params->get(CameraParameters::KEY_PICTURE_FORMAT);
     const char* picFormats = params->get(CameraParameters::KEY_SUPPORTED_PICTURE_FORMATS);
     if (!validateString(picFormat, picFormats)) {
-        LOGE("bad picture fourcc: %s", picFormat);
+        ALOGE("bad picture fourcc: %s", picFormat);
         return BAD_VALUE;
     }
 
@@ -4250,14 +4250,14 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     const char* preFormat = params->get(CameraParameters::KEY_PREVIEW_FORMAT);
     const char* preFormats = params->get(CameraParameters::KEY_SUPPORTED_PREVIEW_FORMATS);
     if (!validateString(preFormat, preFormats))  {
-        LOGE("bad preview fourcc: %s", preFormat);
+        ALOGE("bad preview fourcc: %s", preFormat);
         return BAD_VALUE;
     }
 
     // ROTATION, can only be 0 ,90, 180 or 270.
     int rotation = params->getInt(CameraParameters::KEY_ROTATION);
     if (rotation != 0 && rotation != 90 && rotation != 180 && rotation != 270) {
-        LOGE("bad rotation value: %d", rotation);
+        ALOGE("bad rotation value: %d", rotation);
         return BAD_VALUE;
     }
 
@@ -4266,7 +4266,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     const char* whiteBalance = params->get(CameraParameters::KEY_WHITE_BALANCE);
     const char* whiteBalances = params->get(CameraParameters::KEY_SUPPORTED_WHITE_BALANCE);
     if (!validateString(whiteBalance, whiteBalances)) {
-        LOGE("bad white balance mode: %s", whiteBalance);
+        ALOGE("bad white balance mode: %s", whiteBalance);
         return BAD_VALUE;
     }
 
@@ -4274,7 +4274,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     int zoom = params->getInt(CameraParameters::KEY_ZOOM);
     int maxZoom = params->getInt(CameraParameters::KEY_MAX_ZOOM);
     if (zoom > maxZoom || zoom < 0) {
-        LOGE("bad zoom index: %d", zoom);
+        ALOGE("bad zoom index: %d", zoom);
         return BAD_VALUE;
     }
 
@@ -4282,7 +4282,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     const char* flashMode = params->get(CameraParameters::KEY_FLASH_MODE);
     const char* flashModes = params->get(CameraParameters::KEY_SUPPORTED_FLASH_MODES);
     if (!validateString(flashMode, flashModes)) {
-        LOGE("bad flash mode");
+        ALOGE("bad flash mode");
         return BAD_VALUE;
     }
 
@@ -4290,7 +4290,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     const char* sceneMode = params->get(CameraParameters::KEY_SCENE_MODE);
     const char* sceneModes = params->get(CameraParameters::KEY_SUPPORTED_SCENE_MODES);
     if (!validateString(sceneMode, sceneModes)) {
-        LOGE("bad scene mode: %s; supported: %s", sceneMode, sceneModes);
+        ALOGE("bad scene mode: %s; supported: %s", sceneMode, sceneModes);
         return BAD_VALUE;
     }
 
@@ -4298,7 +4298,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     const char* focusMode = params->get(CameraParameters::KEY_FOCUS_MODE);
     const char* focusModes = params->get(CameraParameters::KEY_SUPPORTED_FOCUS_MODES);
     if (!validateString(focusMode, focusModes)) {
-        LOGE("bad focus mode: %s; supported: %s", focusMode, focusModes);
+        ALOGE("bad focus mode: %s; supported: %s", focusMode, focusModes);
         return BAD_VALUE;
     }
 
@@ -4306,7 +4306,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     const char* burstLength = params->get(IntelCameraParameters::KEY_BURST_LENGTH);
     const char* burstLengths = params->get(IntelCameraParameters::KEY_SUPPORTED_BURST_LENGTH);
     if (!validateString(burstLength, burstLengths)) {
-        LOGE("bad burst length: %s; supported: %s", burstLength, burstLengths);
+        ALOGE("bad burst length: %s; supported: %s", burstLength, burstLengths);
         return BAD_VALUE;
     }
     const char* burstStart = params->get(IntelCameraParameters::KEY_BURST_START_INDEX);
@@ -4315,12 +4315,12 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
         if (burstStartInt < 0) {
             const char* captureBracket = params->get(IntelCameraParameters::KEY_CAPTURE_BRACKET);
             if (captureBracket && String8(captureBracket) != "none") {
-                LOGE("negative start-index and bracketing not supported concurrently");
+                ALOGE("negative start-index and bracketing not supported concurrently");
                 return BAD_VALUE;
             }
             int len = burstLength ? atoi(burstLength) : 0;
             if (len > PlatformData::maxContinuousRawRingBufferSize(mCameraId)-1) {
-                LOGE("negative start-index and burst-length=%d not supported concurrently", len);
+                ALOGE("negative start-index and burst-length=%d not supported concurrently", len);
                 return BAD_VALUE;
             }
         }
@@ -4330,7 +4330,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     const char* burstSpeed = params->get(IntelCameraParameters::KEY_BURST_SPEED);
     const char* burstSpeeds = params->get(IntelCameraParameters::KEY_SUPPORTED_BURST_SPEED);
     if (!validateString(burstSpeed, burstSpeeds)) {
-        LOGE("bad burst speed: %s; supported: %s", burstSpeed, burstSpeeds);
+        ALOGE("bad burst speed: %s; supported: %s", burstSpeed, burstSpeeds);
         return BAD_VALUE;
     }
 
@@ -4338,7 +4338,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     const char* overlaySupported = params->get(IntelCameraParameters::KEY_HW_OVERLAY_RENDERING_SUPPORTED);
     const char* overlay = params->get(IntelCameraParameters::KEY_HW_OVERLAY_RENDERING);
         if (!validateString(overlay, overlaySupported)) {
-        LOGE("bad overlay rendering mode: %s; supported: %s", overlay, overlaySupported);
+        ALOGE("bad overlay rendering mode: %s; supported: %s", overlay, overlaySupported);
         return BAD_VALUE;
     }
 
@@ -4346,7 +4346,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     const char *size = params->get(IntelCameraParameters::KEY_PANORAMA_LIVE_PREVIEW_SIZE);
     const char *livePreviewSizes = IntelCameraParameters::getSupportedPanoramaLivePreviewSizes(*params);
     if (!validateString(size, livePreviewSizes)) {
-        LOGE("bad panorama live preview size");
+        ALOGE("bad panorama live preview size");
         return BAD_VALUE;
     }
 
@@ -4354,7 +4354,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     const char* flickerMode = params->get(CameraParameters::KEY_ANTIBANDING);
     const char* flickerModes = params->get(CameraParameters::KEY_SUPPORTED_ANTIBANDING);
     if (!validateString(flickerMode, flickerModes)) {
-        LOGE("bad anti flicker mode");
+        ALOGE("bad anti flicker mode");
         return BAD_VALUE;
     }
 
@@ -4362,7 +4362,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     const char* colorEffect = params->get(CameraParameters::KEY_EFFECT);
     const char* colorEffects = params->get(CameraParameters::KEY_SUPPORTED_EFFECTS);
     if (!validateString(colorEffect, colorEffects)) {
-        LOGE("bad color effect: %s", colorEffect);
+        ALOGE("bad color effect: %s", colorEffect);
         return BAD_VALUE;
     }
 
@@ -4371,7 +4371,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     int minExposure = params->getInt(CameraParameters::KEY_MIN_EXPOSURE_COMPENSATION);
     int maxExposure = params->getInt(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION);
     if (exposure > maxExposure || exposure < minExposure) {
-        LOGE("bad exposure compensation value: %d", exposure);
+        ALOGE("bad exposure compensation value: %d", exposure);
         return BAD_VALUE;
     }
 
@@ -4384,7 +4384,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     const char* noiseReductionAndEdgeEnhancement = params->get(IntelCameraParameters::KEY_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT);
     const char* noiseReductionAndEdgeEnhancements = params->get(IntelCameraParameters::KEY_SUPPORTED_NOISE_REDUCTION_AND_EDGE_ENHANCEMENT);
     if (!validateString(noiseReductionAndEdgeEnhancement, noiseReductionAndEdgeEnhancements)) {
-        LOGE("bad noise reduction and edge enhancement value : %s", noiseReductionAndEdgeEnhancement);
+        ALOGE("bad noise reduction and edge enhancement value : %s", noiseReductionAndEdgeEnhancement);
         return BAD_VALUE;
     }
 
@@ -4392,7 +4392,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     const char* multiAccessColorCorrection = params->get(IntelCameraParameters::KEY_MULTI_ACCESS_COLOR_CORRECTION);
     const char* multiAccessColorCorrections = params->get(IntelCameraParameters::KEY_SUPPORTED_MULTI_ACCESS_COLOR_CORRECTIONS);
     if (!validateString(multiAccessColorCorrection, multiAccessColorCorrections)) {
-        LOGE("bad multi access color correction value : %s", multiAccessColorCorrection);
+        ALOGE("bad multi access color correction value : %s", multiAccessColorCorrection);
         return BAD_VALUE;
     }
 
@@ -4400,7 +4400,7 @@ status_t ControlThread::validateParameters(const CameraParameters *params)
     const char* dvsEnable = params->get(CameraParameters::KEY_VIDEO_STABILIZATION);
     const char* dvsEnables = params->get(CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED);
     if (!validateString(dvsEnable, dvsEnables)) {
-        LOGE("bad value for dvs enable : %s, supported are: %s", dvsEnable, dvsEnables);
+        ALOGE("bad value for dvs enable : %s, supported are: %s", dvsEnable, dvsEnables);
         return BAD_VALUE;
     }
 
@@ -4417,7 +4417,7 @@ bool ControlThread::validateHighSpeedResolutionFps(int width, int height, int fp
         snprintf(sizeFpsStr, 20, "%dx%d@%d", width, height, fps);
         const char* supportedSizeFpsCombos = mParameters.get(IntelCameraParameters::KEY_SUPPORTED_HIGH_SPEED_RESOLUTION_FPS);
         if (!validateString(sizeFpsStr, supportedSizeFpsCombos)) {
-            LOGE("Unsupported high-speed video size@fps combination: %s, supported: %s", sizeFpsStr, supportedSizeFpsCombos);
+            ALOGE("Unsupported high-speed video size@fps combination: %s, supported: %s", sizeFpsStr, supportedSizeFpsCombos);
             return false;
         }
     }
@@ -4439,11 +4439,11 @@ status_t ControlThread::ProcessOverlayEnable(const CameraParameters *oldParams,
                     newParams->set(IntelCameraParameters::KEY_HW_OVERLAY_RENDERING, "true");
                     LOG1("@%s: Preview Overlay rendering enabled!", __FUNCTION__);
                 } else {
-                    LOGE("Could not configure Overlay preview rendering");
+                    ALOGE("Could not configure Overlay preview rendering");
                 }
             }
         } else {
-            LOGW("Overlay cannot be enabled in other state than stop, ignoring request");
+            ALOGW("Overlay cannot be enabled in other state than stop, ignoring request");
         }
     }
     return status;
@@ -4514,7 +4514,7 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
         status = mISP->setZoom(newZoom);
         mPostProcThread->setZoom(mISP->zoomRatio(newZoom));
     } else {
-        LOGD("not supported zoom setting");
+        ALOGD("not supported zoom setting");
     }
 
     // Preview update mode
@@ -4780,7 +4780,7 @@ status_t ControlThread::allocateSnapshotAndPostviewBuffers(bool videoMode)
                                                       registerToScaler);
 
         if (status != NO_ERROR) {
-            LOGE("Could not pre-allocate snapshot buffers!");
+            ALOGE("Could not pre-allocate snapshot buffers!");
         } else {
             mAvailableSnapshotBuffers = mAllocatedSnapshotBuffers;
         }
@@ -4799,7 +4799,7 @@ status_t ControlThread::allocateSnapshotAndPostviewBuffers(bool videoMode)
                                                       registerToScaler);
 
         if (status != NO_ERROR) {
-            LOGE("Could not pre-allocate postview buffers!");
+            ALOGE("Could not pre-allocate postview buffers!");
         } else {
             mAvailablePostviewBuffers = mAllocatedPostviewBuffers;
         }
@@ -4849,7 +4849,7 @@ status_t ControlThread::processParamAFLock(const CameraParameters *oldParams,
         } else if(newVal == PARAM_UNLOCK) {
             af_lock = false;
         } else {
-            LOGE("Invalid value received for %s: %s", IntelCameraParameters::KEY_AF_LOCK_MODE, newVal.string());
+            ALOGE("Invalid value received for %s: %s", IntelCameraParameters::KEY_AF_LOCK_MODE, newVal.string());
             return INVALID_OPERATION;
         }
         status = m3AControls->setAfLock(af_lock);
@@ -4880,7 +4880,7 @@ status_t ControlThread::processParamAWBLock(const CameraParameters *oldParams,
         } else if(newVal == CameraParameters::FALSE) {
             awb_lock = false;
         } else {
-            LOGE("Invalid value received for %s: %s", CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK, newVal.string());
+            ALOGE("Invalid value received for %s: %s", CameraParameters::KEY_AUTO_WHITEBALANCE_LOCK, newVal.string());
             return INVALID_OPERATION;
         }
         status = m3AThread->lockAwb(awb_lock);
@@ -5013,7 +5013,7 @@ status_t ControlThread::processParamAELock(const CameraParameters *oldParams,
         } else  if(newVal == CameraParameters::FALSE) {
             ae_lock = false;
         } else {
-            LOGE("Invalid value received for %s: %s", CameraParameters::KEY_AUTO_EXPOSURE_LOCK, newVal.string());
+            ALOGE("Invalid value received for %s: %s", CameraParameters::KEY_AUTO_EXPOSURE_LOCK, newVal.string());
             return INVALID_OPERATION;
         }
 
@@ -5061,7 +5061,7 @@ status_t ControlThread::processParamFlash(const CameraParameters *oldParams,
         } else {
             // Ok in general for SOC sensors.
             // TODO: Kernel driver should support querying which controls the sensors support
-            LOGW("Error in setting flash mode \'%s\' (%d), 3A ctrl type: %d",
+            ALOGW("Error in setting flash mode \'%s\' (%d), 3A ctrl type: %d",
                  newVal.string(), flash, m3AControls->getType());
         }
     }
@@ -5087,16 +5087,16 @@ status_t ControlThread::processPreviewUpdateMode(const CameraParameters *oldPara
             mPreviewUpdateMode = IntelCameraParameters::PREVIEW_UPDATE_MODE_STANDARD;
         else if (newVal == IntelCameraParameters::PREVIEW_UPDATE_MODE_WINDOWLESS) {
             if (mPreviewThread->isWindowConfigured()) {
-                LOGE("Windowless operation cannot be enabled, window already configured!");
+                ALOGE("Windowless operation cannot be enabled, window already configured!");
                 return INVALID_OPERATION;
             }
             if (mPreviewThread->getPreviewState() == PreviewThread::STATE_NO_WINDOW) {
-                LOGE("Windowless operation cannot be enabled, startPreview() already called");
+                ALOGE("Windowless operation cannot be enabled, startPreview() already called");
                 return INVALID_OPERATION;
             }
             mPreviewUpdateMode = IntelCameraParameters::PREVIEW_UPDATE_MODE_WINDOWLESS;
         } else {
-            LOGE("Unknown preview update mode received %s", newVal.string());
+            ALOGE("Unknown preview update mode received %s", newVal.string());
         }
     }
     return status;
@@ -5135,7 +5135,7 @@ status_t ControlThread::processParamBracket(const CameraParameters *oldParams,
         } else if(newVal == "none") {
             mBracketManager->setBracketMode(BRACKET_NONE);
         } else {
-            LOGE("Invalid value received for %s: %s", IntelCameraParameters::KEY_CAPTURE_BRACKET, newVal.string());
+            ALOGE("Invalid value received for %s: %s", IntelCameraParameters::KEY_CAPTURE_BRACKET, newVal.string());
             status = BAD_VALUE;
         }
         if (status == NO_ERROR) {
@@ -5156,7 +5156,7 @@ status_t ControlThread::processParamSmartShutter(const CameraParameters *oldPara
     if (!newVal.isEmpty()) {
         int value = newParams->getInt(IntelCameraParameters::KEY_SMILE_SHUTTER_THRESHOLD);
         if (value < 0 || value > SMILE_THRESHOLD_MAX) {
-            LOGE("Invalid value received for %s: %d, set to default %d",
+            ALOGE("Invalid value received for %s: %d, set to default %d",
                 IntelCameraParameters::KEY_SMILE_SHUTTER_THRESHOLD, value, SMILE_THRESHOLD);
             status = BAD_VALUE;
         }
@@ -5171,7 +5171,7 @@ status_t ControlThread::processParamSmartShutter(const CameraParameters *oldPara
     if (!newVal.isEmpty()) {
         int value = newParams->getInt(IntelCameraParameters::KEY_BLINK_SHUTTER_THRESHOLD);
         if (value < 0 || value > BLINK_THRESHOLD_MAX) {
-            LOGE("Invalid value received for %s: %d, set to default %d",
+            ALOGE("Invalid value received for %s: %d, set to default %d",
                 IntelCameraParameters::KEY_BLINK_SHUTTER_THRESHOLD, value, BLINK_THRESHOLD);
             status = BAD_VALUE;
         }
@@ -5195,7 +5195,7 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
     oldParams->getPictureSize(&oldWidth, &oldHeight);
 
     if (mHdr.inProgress) {
-        LOGW("%s: attempt to change hdr parameters during hdr capture", __FUNCTION__);
+        ALOGW("%s: attempt to change hdr parameters during hdr capture", __FUNCTION__);
         // keep the value of mBurstLength when hdr is still runing.
         mBurstLength = mHdr.bracketNum;
         return INVALID_OPERATION;
@@ -5220,20 +5220,20 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
                 mHdr.savedBracketMode = mBracketManager->getBracketMode();
                 mHdr.bracketNum = DEFAULT_HDR_BRACKETING;
             } else {
-                LOGE("HDR buffer allocation failed");
+                ALOGE("HDR buffer allocation failed");
             }
         } else if ((newValIntel.isEmpty() && newVal != CameraParameters::SCENE_MODE_HDR)
                     || (newValIntel == "off" && newVal != CameraParameters::SCENE_MODE_HDR)) {
             if(mHdr.enabled) {
                 status = mCP->uninitializeHDR();
                 if (status != NO_ERROR)
-                    LOGE("HDR buffer release failed");
+                    ALOGE("HDR buffer release failed");
             }
             mHdr.enabled = false;
             mBracketManager->setBracketMode(mHdr.savedBracketMode);
         } else {
             if(!newValIntel.isEmpty()) {
-            LOGE("Invalid value received for %s: %s", IntelCameraParameters::KEY_HDR_IMAGING, newVal.string());
+            ALOGE("Invalid value received for %s: %s", IntelCameraParameters::KEY_HDR_IMAGING, newVal.string());
             status = BAD_VALUE;
             }
         }
@@ -5248,10 +5248,10 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
             if (status == NO_ERROR) {
                 status = mCP->initializeHDR(newWidth, newHeight);
                 if (status != NO_ERROR) {
-                    LOGE("HDR buffer allocation failed");
+                    ALOGE("HDR buffer allocation failed");
                 }
             } else {
-                LOGE("HDR buffer release failed");
+                ALOGE("HDR buffer release failed");
             }
         }
     }
@@ -5272,7 +5272,7 @@ status_t ControlThread::processParamHDR(const CameraParameters *oldParams,
             mHdr.saveOrig = false;
         } else {
             // the default value is kept
-            LOGW("Invalid value received for %s: %s", IntelCameraParameters::KEY_HDR_SAVE_ORIGINAL, newVal.string());
+            ALOGW("Invalid value received for %s: %s", IntelCameraParameters::KEY_HDR_SAVE_ORIGINAL, newVal.string());
             localStatus = BAD_VALUE;
         }
         if (localStatus == NO_ERROR) {
@@ -5335,20 +5335,20 @@ void ControlThread::preProcessFlashMode(CameraParameters *newParams)
     BatteryStatus bs = mHwcg.mFlashCI->getBatteryStatus();
     switch (bs) {
         case BATTERY_STATUS_WARNING:
-            LOGW("@%s low battery status warning", __FUNCTION__);
+            ALOGW("@%s low battery status warning", __FUNCTION__);
             //TODO call 3a interface
             break;
         case BATTERY_STATUS_ALERT:
-            LOGW("@%s low battery status alert", __FUNCTION__);
+            ALOGW("@%s low battery status alert", __FUNCTION__);
             //TODO call 3a interface
             break;
         case BATTERY_STATUS_CRITICAL:
-            LOGW("@%s critical low battery status", __FUNCTION__);
+            ALOGW("@%s critical low battery status", __FUNCTION__);
             //TODO call 3a interface
             lowBattery = true;
             break;
         case BATTERY_STATUS_INVALID:
-            LOGW("@%s invalid battery status", __FUNCTION__);
+            ALOGW("@%s invalid battery status", __FUNCTION__);
         case BATTERY_STATUS_NORMAL:
             //do nothing
         default:
@@ -5365,7 +5365,7 @@ void ControlThread::preProcessFlashMode(CameraParameters *newParams)
     if (((mBurstLength > 1 || mHdr.enabled) && currSupportedFlashModes != CameraParameters::FLASH_MODE_OFF)
             || (lowBattery && currRequestedFlashMode != CameraParameters::FLASH_MODE_OFF)) {
         if (lowBattery) {
-            LOGW("@%s low battery for flash, force set flash mode to off", __FUNCTION__);
+            ALOGW("@%s low battery for flash, force set flash mode to off", __FUNCTION__);
             //Callback to user
             mCallbacksThread->lowBattery();
         }
@@ -5770,7 +5770,7 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
         } else {
             // Ok in general for SOC sensors.
             // TODO: Kernel driver should support querying which controls the sensors support
-            LOGW("Could not set AF mode to \'%s\' (%d),  3A ctrl type: %d",
+            ALOGW("Could not set AF mode to \'%s\' (%d),  3A ctrl type: %d",
                  newVal.string(), afMode, m3AControls->getType());
         }
     }
@@ -5792,7 +5792,7 @@ status_t ControlThread::processParamFocusMode(const CameraParameters *oldParams,
                 if (m3AControls->setAfWindows(focusWindows, winCount) != NO_ERROR) {
                     // If focus windows couldn't be set, previous AF mode is used
                     curAfMode = m3AControls->getAfMode();
-                    LOGW("Could not set AF windows. Resetting the AF back to %d", curAfMode);
+                    ALOGW("Could not set AF windows. Resetting the AF back to %d", curAfMode);
                     m3AControls->setAfMode(curAfMode);
                 }
 
@@ -5825,10 +5825,10 @@ status_t ControlThread:: processParamSetMeteringAreas(const CameraParameters *ol
         if (m3AControls->setAeMeteringMode(CAM_AE_METERING_MODE_SPOT) == NO_ERROR) {
             LOG1("@%s, Got metering area, and \"spot\" mode set. Setting window.", __FUNCTION__ );
             if (m3AControls->setAeWindow(&aeWindow) != NO_ERROR) {
-                LOGW("Error setting AE metering window. Metering will not work");
+                ALOGW("Error setting AE metering window. Metering will not work");
             }
         } else {
-                LOGW("Error setting AE metering mode to \"spot\". Metering will not work");
+                ALOGW("Error setting AE metering mode to \"spot\". Metering will not work");
         }
 
         delete[] meteringWindows;
@@ -5872,7 +5872,7 @@ status_t ControlThread::processParamExposureCompensation(const CameraParameters 
         float ev = 0;
         if (PlatformData::supportEV(mHwcg.mSensorCI->getCurrentCameraId()))
             m3AControls->getEv(&ev);
-        LOGD("exposure compensation to \"%s\" (%d), ev value %f, res %d",
+        ALOGD("exposure compensation to \"%s\" (%d), ev value %f, res %d",
              newVal.string(), exposure, ev, status);
     }
     return status;
@@ -5906,18 +5906,18 @@ status_t ControlThread::processParamAutoExposureMode(const CameraParameters *old
         } else if (newVal == "aperture-priority") {
             ae_mode = CAM_AE_MODE_APERTURE_PRIORITY;
         } else {
-            LOGW("unknown AE_MODE \"%s\", falling back to AUTO", newVal.string());
+            ALOGW("unknown AE_MODE \"%s\", falling back to AUTO", newVal.string());
             ae_mode = CAM_AE_MODE_AUTO;
         }
         m3AControls->setPublicAeMode(ae_mode);
         m3AControls->setAeMode(ae_mode);
-        LOGD("Changed ae mode to \"%s\" (%d)", newVal.string(), ae_mode);
+        ALOGD("Changed ae mode to \"%s\" (%d)", newVal.string(), ae_mode);
 
         if (mPublicShutter >= 0 &&
                 (ae_mode == CAM_AE_MODE_SHUTTER_PRIORITY ||
                 ae_mode == CAM_AE_MODE_MANUAL)) {
             m3AControls->setManualShutter(mPublicShutter);
-            LOGD("Changed shutter to %f", mPublicShutter);
+            ALOGD("Changed shutter to %f", mPublicShutter);
         }
     }
     return status;
@@ -5950,11 +5950,11 @@ status_t ControlThread::processParamAutoExposureMeteringMode(
             // when using touch AE, which is handled in processParamSetMeteringAreas().
             updateSpotWindow(aaaWindow.width, aaaWindow.height);
         } else if (mode == CAM_AE_METERING_MODE_SPOT) {
-            LOGE("User trying to set AE metering mode \"spot\" with an AE metering area.");
+            ALOGE("User trying to set AE metering mode \"spot\" with an AE metering area.");
         }
 
         m3AControls->setAeMeteringMode(mode);
-        LOGD("Changed ae metering mode to \"%s\" (%d)", newVal.string(), mode);
+        ALOGD("Changed ae metering mode to \"%s\" (%d)", newVal.string(), mode);
     }
 
     return status;
@@ -5983,9 +5983,9 @@ status_t ControlThread::processParamIso(const CameraParameters *oldParams,
             iso_mode = CAM_AE_ISO_MODE_MANUAL;
             int iso = atoi(isostr);
             m3AControls->setManualIso(iso);
-            LOGD("Changed manual iso to \"%s\" (%d)", newVal.string(), iso);
+            ALOGD("Changed manual iso to \"%s\" (%d)", newVal.string(), iso);
         } else {
-            LOGD("Changed auto iso to \"%s\"", newVal.string());
+            ALOGD("Changed auto iso to \"%s\"", newVal.string());
         }
         m3AControls->setIsoMode(iso_mode);
     }
@@ -6094,7 +6094,7 @@ status_t ControlThread::processParamShutter(const CameraParameters *oldParams,
             if (m3AControls->getAeMode() == CAM_AE_MODE_MANUAL ||
                 (m3AControls->getAeMode() == CAM_AE_MODE_SHUTTER_PRIORITY)) {
                 m3AControls->setManualShutter(mPublicShutter);
-                LOGD("Changed shutter to \"%s\" (%f)", newVal.string(), shutter);
+                ALOGD("Changed shutter to \"%s\" (%f)", newVal.string(), shutter);
             }
         }
     }
@@ -6142,7 +6142,7 @@ status_t ControlThread::processParamWhiteBalance(const CameraParameters *oldPara
         } else {
             // For SOC sensors, this is generally OK.
             // TODO: should query the support from kernel driver, when driver supports this.
-            LOGW("Error while setting AWB mode \'%s\' (%d), 3A ctrl type: %d",
+            ALOGW("Error while setting AWB mode \'%s\' (%d), 3A ctrl type: %d",
                  newVal.string() , wbMode, m3AControls->getType());
         }
     }
@@ -6181,7 +6181,7 @@ status_t ControlThread::processParamPreviewFrameRate(const CameraParameters *old
                                               CameraParameters::KEY_PREVIEW_FRAME_RATE);
 
     if (!newVal.isEmpty()) {
-        LOGI("DEPRECATED: Got new preview frame rate: %s", newVal.string());
+        ALOGI("DEPRECATED: Got new preview frame rate: %s", newVal.string());
         int fps = newParams->getPreviewFrameRate();
         // Save the set FPS for doing frame dropping
         mISP->setPreviewFramerate(fps);
@@ -6393,7 +6393,7 @@ status_t ControlThread::processStaticParameters(CameraParameters *oldParams,
                 break;
             }
         }
-        LOGD("Application doesn't set picture size, hal chooses %dx%d to match preview size", pictureWidth, pictureHeight);
+        ALOGD("Application doesn't set picture size, hal chooses %dx%d to match preview size", pictureWidth, pictureHeight);
     }
 
     if(videoMode) {
@@ -6414,7 +6414,7 @@ status_t ControlThread::processStaticParameters(CameraParameters *oldParams,
              *  aspect ratio. Also, the video size must be at least as preview size
              */
             if (fabsf(videoAspectRatio - previewAspectRatio) > ASPECT_TOLERANCE) {
-                LOGW("Requested video (%dx%d) aspect ratio does not match preview \
+                ALOGW("Requested video (%dx%d) aspect ratio does not match preview \
                      (%dx%d) aspect ratio! The preview will be stretched!",
                         newWidth, newHeight,
                         previewWidth, previewHeight);
@@ -6536,7 +6536,7 @@ status_t ControlThread::updateParameterCache()
     mParamCache = strndup(params.string(), sizeof(char) * len);
     if (!mParamCache) {
         status = NO_MEMORY;
-        LOGE("@%s: strndup failed, len = %d", __FUNCTION__, len);
+        ALOGE("@%s: strndup failed, len = %d", __FUNCTION__, len);
     }
 
     mParamCacheLock.unlock();
@@ -6569,7 +6569,7 @@ void ControlThread::storeCurrentPictureParams()
     if (supportedSnapshotSizes) {
         mStillPictContext.supportedSnapshotSizes = supportedSnapshotSizes;
     } else {
-        LOGE("Missing supported picture sizes");
+        ALOGE("Missing supported picture sizes");
         mStillPictContext.supportedSnapshotSizes = "";
     }
 
@@ -6577,7 +6577,7 @@ void ControlThread::storeCurrentPictureParams()
     if (supportedThumbnailSizes) {
         mStillPictContext.suportedThumnailSizes = supportedThumbnailSizes;
     } else {
-        LOGE("Missing supported thumbnail sizes");
+        ALOGE("Missing supported thumbnail sizes");
         mStillPictContext.suportedThumnailSizes = "";
     }
 }
@@ -6612,7 +6612,7 @@ void ControlThread::restoreCurrentPictureParams()
     if (mAllocatedSnapshotBuffers.size() == mAvailableSnapshotBuffers.size()) {
         allocateSnapshotAndPostviewBuffers(false);
     } else {
-        LOGW("%s: not safe to allocate now, some snapshot buffers are not returned, skipping", __FUNCTION__);
+        ALOGW("%s: not safe to allocate now, some snapshot buffers are not returned, skipping", __FUNCTION__);
     }
 
 
@@ -6633,7 +6633,7 @@ status_t ControlThread::createAtom3A()
         m3AControls = new AtomSoc3A(mCameraId, mHwcg);
     }
     if (m3AControls == NULL) {
-        LOGE("error creating AAA");
+        ALOGE("error creating AAA");
         status = BAD_VALUE;
     }
     return status;
@@ -6701,7 +6701,7 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
         goto exit;
 
     if (mCaptureSubState == STATE_CAPTURE_STARTED) {
-        LOGE("setParameters happened during capturing. Changing parameters during capturing would produce "
+        ALOGE("setParameters happened during capturing. Changing parameters during capturing would produce "
              "undeterministic results, so postponing the params! Fix your application!");
         Message message;
         message.id = MESSAGE_ID_SET_PARAMETERS;
@@ -6716,14 +6716,14 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
     status = newFocusAreas.scan(newParams.get(CameraParameters::KEY_FOCUS_AREAS),
                                 m3AControls->getAfMaxNumWindows());
     if (status != NO_ERROR) {
-        LOGE("bad focus area");
+        ALOGE("bad focus area");
         goto exit;
     }
     LOG1("scanning AE metering areas");
     status = newMeteringAreas.scan(newParams.get(CameraParameters::KEY_METERING_AREAS),
                                    m3AControls->getAeMaxNumWindows());
     if (status != NO_ERROR) {
-        LOGE("bad metering area");
+        ALOGE("bad metering area");
         goto exit;
     }
 
@@ -6786,7 +6786,7 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
         if (mAllocatedSnapshotBuffers.size() == mAvailableSnapshotBuffers.size()) {
             allocateSnapshotAndPostviewBuffers(videoMode);
         } else {
-            LOGW("%s: not safe to allocate now, some snapshot buffers are not returned, skipping", __FUNCTION__);
+            ALOGW("%s: not safe to allocate now, some snapshot buffers are not returned, skipping", __FUNCTION__);
         }
     }
 
@@ -6796,7 +6796,7 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
 
         if (msg->stopPreviewRequest) {
             if (mState != STATE_CONTINUOUS_CAPTURE)
-                LOGD("%s: Invalid stopPreviewRequest!", __FUNCTION__);
+                ALOGD("%s: Invalid stopPreviewRequest!", __FUNCTION__);
             status = stopPreviewCore();
             if (status != NO_ERROR)
                 return status;
@@ -6813,7 +6813,7 @@ status_t ControlThread::handleMessageSetParameters(MessageSetParameters *msg)
             case STATE_STOPPED:
                 break;
             default:
-                LOGE("formats can only be changed while in preview or stop states");
+                ALOGE("formats can only be changed while in preview or stop states");
                 break;
         };
     }
@@ -6942,7 +6942,7 @@ status_t ControlThread::handleMessageCommand(MessageCommand* msg)
     }
 
     if (status != NO_ERROR)
-        LOGE("@%s command id %d failed", __FUNCTION__, msg->cmd_id);
+        ALOGE("@%s command id %d failed", __FUNCTION__, msg->cmd_id);
     return status;
 }
 
@@ -6993,7 +6993,7 @@ status_t ControlThread::handleMessageStoreMetaDataInBuffers(MessageStoreMetaData
             mState != STATE_PREVIEW_VIDEO &&
             mState != STATE_PREVIEW_STILL &&
             mState != STATE_CONTINUOUS_CAPTURE) {
-        LOGE("Cannot configure metadata buffers in this state: %d", mState);
+        ALOGE("Cannot configure metadata buffers in this state: %d", mState);
         status = BAD_VALUE;
         mMessageQueue.reply(MESSAGE_ID_STORE_METADATA_IN_BUFFER, status);
         return status;
@@ -7007,7 +7007,7 @@ status_t ControlThread::handleMessageStoreMetaDataInBuffers(MessageStoreMetaData
     if(status == NO_ERROR)
         status = mCallbacks->storeMetaDataInBuffers(msg->enabled);
     else
-        LOGE("Error configuring metadatabuffers in ISP!");
+        ALOGE("Error configuring metadatabuffers in ISP!");
 
     mMessageQueue.reply(MESSAGE_ID_STORE_METADATA_IN_BUFFER, status);
     return status;
@@ -7035,7 +7035,7 @@ status_t ControlThread::handleMessagePostCaptureProcessingDone(MessagePostCaptur
     int ULLid = 0;
 
     if(msg->status != NO_ERROR)  {
-        LOGW("PostCapture Processing failed !!");
+        ALOGW("PostCapture Processing failed !!");
         goto cleanup;
     }
 
@@ -7043,7 +7043,7 @@ status_t ControlThread::handleMessagePostCaptureProcessingDone(MessagePostCaptur
         // we are in the middle of another capture, let's delay this
         LOG1("Delaying processing of post capture processed image, image capture in progress, CaptureSubState %s", sCaptureSubstateStrings[mCaptureSubState]);
         if (msg->retriesLeft == 0) {
-            LOGE("@%s:Waited too long to handle this message, canceling post capture processing", __FUNCTION__);
+            ALOGE("@%s:Waited too long to handle this message, canceling post capture processing", __FUNCTION__);
             goto cleanup;
         }
         postCaptureProcesssingDone(msg->item, msg->status,msg->retriesLeft--);
@@ -7093,7 +7093,7 @@ cleanup:
 
     if (inputs.size() != postviews.size()) {
         // Just to check that we got the right amount of buffers
-        LOGE("%s input buffer (n = %d) and postview buffer count (m = %d) mismatch",
+        ALOGE("%s input buffer (n = %d) and postview buffer count (m = %d) mismatch",
              __FUNCTION__, inputs.size(), postviews.size());
         return UNKNOWN_ERROR;
     }
@@ -7124,7 +7124,7 @@ status_t ControlThread::hdrInit(int pvSize, int pvWidth, int pvHeight)
     // Main output buffer should have same dimensions initially as one of the input
     // buffers, so take those details from the vector of allocated buffers
     if (mAllocatedSnapshotBuffers.isEmpty()) {
-        LOGE("%s:We do not have any snapshotbuffers yet... find the bug",__FUNCTION__);
+        ALOGE("%s:We do not have any snapshotbuffers yet... find the bug",__FUNCTION__);
         return NO_MEMORY;
     }
 
@@ -7136,7 +7136,7 @@ status_t ControlThread::hdrInit(int pvSize, int pvWidth, int pvHeight)
 
     mCallbacks->allocateMemory(&mHdr.outMainBuf, size);
     if (mHdr.outMainBuf.dataPtr == NULL) {
-        LOGE("HDR: Error allocating memory for HDR main buffer!");
+        ALOGE("HDR: Error allocating memory for HDR main buffer!");
         return NO_MEMORY;
     }
     mHdr.outMainBuf.shared = false;
@@ -7148,7 +7148,7 @@ status_t ControlThread::hdrInit(int pvSize, int pvWidth, int pvHeight)
     // Postview output buffer
     mCallbacks->allocateMemory(&mHdr.outPostviewBuf, pvSize);
     if (mHdr.outPostviewBuf.dataPtr == NULL) {
-        LOGE("HDR: Error allocating memory for HDR postview buffer!");
+        ALOGE("HDR: Error allocating memory for HDR postview buffer!");
         return NO_MEMORY;
     }
     mHdr.outPostviewBuf.shared = false;
@@ -7177,13 +7177,13 @@ status_t ControlThread::hdrInit(int pvSize, int pvWidth, int pvHeight)
         mHdr.ciBufIn.hist == NULL ||
         mHdr.ciBufOut.ciMainBuf == NULL ||
         mHdr.ciBufOut.ciPostviewBuf == NULL) {
-        LOGE("HDR: Error allocating memory for HDR CI buffers!");
+        ALOGE("HDR: Error allocating memory for HDR CI buffers!");
         return NO_MEMORY;
     }
 
     status = AtomCP::setIaFrameFormat(&mHdr.ciBufOut.ciMainBuf[0], fourcc);
     if (status != NO_ERROR) {
-        LOGE("HDR: pixel format %d not supported", fourcc);
+        ALOGE("HDR: pixel format %d not supported", fourcc);
         return status;
     }
 
@@ -7314,7 +7314,7 @@ status_t ControlThread::hdrCompose()
         status = m3AControls->getGBCEResults(&gbce_results);
         if (status != NO_ERROR) {
             hdrPicMetaData.free(m3AControls);
-            LOGE("Error collecting the GBCE results!");
+            ALOGE("Error collecting the GBCE results!");
             return status;
         }
     }
@@ -7327,13 +7327,13 @@ status_t ControlThread::hdrCompose()
     status = mISP->stop();
     if (status != NO_ERROR) {
         hdrPicMetaData.free(m3AControls);
-        LOGE("Error stopping ISP!");
+        ALOGE("Error stopping ISP!");
         return status;
     }
 
     if (status != NO_ERROR) {
         hdrPicMetaData.free(m3AControls);
-        LOGE("HDR buffer allocation failed");
+        ALOGE("HDR buffer allocation failed");
         return UNKNOWN_ERROR;
     }
 
@@ -7367,7 +7367,7 @@ status_t ControlThread::hdrCompose()
             doEncode = true;
         }
     } else {
-        LOGE("HDR Composition failed !");
+        ALOGE("HDR Composition failed !");
     }
 
     if (doEncode == false)
@@ -7424,7 +7424,7 @@ void ControlThread::setExternalSnapshotBuffers(int fourcc, int width, int height
         // allocatedSnapshotbuffers will decide if really need to allocate
         allocateSnapshotAndPostviewBuffers(false);
     } else {
-        LOGW("%s: not safe to allocate now, some snapshot buffers are not returned, skipping", __FUNCTION__);
+        ALOGW("%s: not safe to allocate now, some snapshot buffers are not returned, skipping", __FUNCTION__);
     }
 
     unsigned int numberOfSnapshots = MAX(1,mBurstLength);
@@ -7446,7 +7446,7 @@ void ControlThread::setExternalSnapshotBuffers(int fourcc, int width, int height
     if (mAvailableSnapshotBuffers.size() >= numToSet) {
         if ((mAllocatedSnapshotBuffers[0].width != width) ||
             (mAllocatedSnapshotBuffers[0].height != height)) {
-            LOGE("We got allocated snapshot buffers of wrong resolution (%dx%d), "
+            ALOGE("We got allocated snapshot buffers of wrong resolution (%dx%d), "
                   "this should not happen!! we wanted (%dx%d)",
                   mAllocatedSnapshotBuffers[0].width,
                   mAllocatedSnapshotBuffers[0].height,
@@ -7464,7 +7464,7 @@ void ControlThread::setExternalSnapshotBuffers(int fourcc, int width, int height
          * It is not possible to re-allocate now if we do not have all the
          * snapshot buffers back in mAvailableSnapshotBuffers.
          */
-        LOGE("Not enough available buffers for this request. This should not happen");
+        ALOGE("Not enough available buffers for this request. This should not happen");
     }
 }
 
@@ -7504,7 +7504,7 @@ status_t ControlThread::startFaceDetection()
     }
 
     if (mState == STATE_STOPPED || mFaceDetectionActive) {
-        LOGE("starting FD in stop state");
+        ALOGE("starting FD in stop state");
         return INVALID_OPERATION;
     }
     if (mPostProcThread != 0) {
@@ -7578,7 +7578,7 @@ status_t ControlThread::startFaceRecognition()
 {
     LOG1("@%s", __FUNCTION__);
     if (mPostProcThread->isFaceRecognitionRunning()) {
-        LOGW("@%s: face recognition already started", __FUNCTION__);
+        ALOGW("@%s: face recognition already started", __FUNCTION__);
         return NO_ERROR;
     }
     mPostProcThread->startFaceRecognition();
@@ -7702,11 +7702,11 @@ status_t ControlThread::enableIspExtensions()
 {
     LOG2("@%s", __FUNCTION__);
     if (mState != STATE_STOPPED) {
-        LOGE("Must enable ISP extensions in stop state");
+        ALOGE("Must enable ISP extensions in stop state");
         return INVALID_OPERATION;
     }
     if (mIspExtensionsEnabled) {
-        LOGD("ISP extensions already enabled");
+        ALOGD("ISP extensions already enabled");
         return NO_ERROR;
     }
     if (mAccManagerThread != NULL) {
@@ -7857,13 +7857,13 @@ status_t ControlThread::waitForAndExecuteMessage()
             break;
 
         default:
-            LOGE("Invalid message");
+            ALOGE("Invalid message");
             status = BAD_VALUE;
             break;
     };
 
     if (status != NO_ERROR)
-        LOGE("Error handling message: %d", (int) msg.id);
+        ALOGE("Error handling message: %d", (int) msg.id);
     return status;
 }
 
@@ -7926,7 +7926,7 @@ bool ControlThread::atomIspNotify(IAtomIspObserver::Message *msg, const Observer
         if (msg->id != IAtomIspObserver::MESSAGE_ID_FRAME) {
             LOG1("Received unexpected notify message id %d!", msg->id);
             if (msg->id == IAtomIspObserver::MESSAGE_ID_ERROR) {
-                LOGE("Error in preview stream");
+                ALOGE("Error in preview stream");
                 errorPreview();
             }
             return false;
@@ -7965,7 +7965,7 @@ status_t ControlThread::dequeueRecording(MessageDequeueRecording *msg)
     // many recording buffers, so we need to skip the unnecessary notifications
     status = mISP->getRecordingFrame(&buff);
     if (status == NOT_ENOUGH_DATA) {
-        LOGW("@%s - recording frame was not ready. Maybe there was an ISP timeout?", __FUNCTION__);
+        ALOGW("@%s - recording frame was not ready. Maybe there was an ISP timeout?", __FUNCTION__);
         return NO_ERROR;
     }
 
@@ -7973,7 +7973,7 @@ status_t ControlThread::dequeueRecording(MessageDequeueRecording *msg)
        if (buff.status != FRAME_STATUS_CORRUPTED) {
             // Check whether driver has run out of buffers
             if (!mISP->dataAvailable()) {
-                LOGE("Video frame dropped, buffers reserved : %d video encoder, %d video snapshot",
+                ALOGE("Video frame dropped, buffers reserved : %d video encoder, %d video snapshot",
                         mRecordingBuffers.size(), mVideoSnapshotBuffers.size());
                 msg->skipFrame = true;
             }
@@ -8015,11 +8015,11 @@ status_t ControlThread::dequeueRecording(MessageDequeueRecording *msg)
                }
             }
         } else {
-            LOGD("Recording frame %d corrupted, ignoring", buff.id);
+            ALOGD("Recording frame %d corrupted, ignoring", buff.id);
             mISP->putRecordingFrame(&buff);
         }
     } else {
-        LOGE("Error: getting recording from isp\n");
+        ALOGE("Error: getting recording from isp\n");
     }
 
     return status;

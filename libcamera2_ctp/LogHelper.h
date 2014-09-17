@@ -70,8 +70,8 @@ enum  {
     CAMERA_DISABLE_BACK_NVM = 1<<4
 };
 
-#define LOG1(...) LOGD_IF(gLogLevel & CAMERA_DEBUG_LOG_LEVEL1, __VA_ARGS__);
-#define LOG2(...) LOGD_IF(gLogLevel & CAMERA_DEBUG_LOG_LEVEL2, __VA_ARGS__);
+#define LOG1(...) ALOGD_IF(gLogLevel & CAMERA_DEBUG_LOG_LEVEL1, __VA_ARGS__);
+#define LOG2(...) ALOGD_IF(gLogLevel & CAMERA_DEBUG_LOG_LEVEL2, __VA_ARGS__);
 
 namespace android {
 

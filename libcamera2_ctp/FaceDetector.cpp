@@ -48,7 +48,7 @@ FaceDetector::FaceDetector() :
 
     mFaceDBLoaderThread = new FaceDBLoaderThread(this);
     if (mFaceDBLoaderThread == NULL) {
-        LOGE("Create mFaceDBLoaderThread fail!");
+        ALOGE("Create mFaceDBLoaderThread fail!");
     }
 }
 
@@ -229,7 +229,7 @@ status_t FaceDetector::startFaceRecognition()
     status_t status = NO_ERROR;
 
     if (mFaceRecognitionRunning) {
-        LOGE("@%s: face recognition already running", __FUNCTION__);
+        ALOGE("@%s: face recognition already running", __FUNCTION__);
         return INVALID_OPERATION;
     }
 
@@ -237,7 +237,7 @@ status_t FaceDetector::startFaceRecognition()
     if ((mFaceDBLoaderThread != NULL) && !mFaceDBLoaded) {
         status = mFaceDBLoaderThread->run("CameHAL_FACEDBLOADER");
         if (status != NO_ERROR) {
-            LOGE("Error starting FaceDBLoader Thread!");
+            ALOGE("Error starting FaceDBLoader Thread!");
         } else {
             mFaceDBLoaded = true;
         }
@@ -414,7 +414,7 @@ bool FaceDetector::FaceDBLoaderThread::threadLoop()
 
     status = loadFaceDb();
     if (status != NO_ERROR) {
-        LOGE("loadFaceDb failed: %x", status);
+        ALOGE("loadFaceDb failed: %x", status);
     }
     return false;
 }
@@ -446,14 +446,14 @@ status_t FaceDetector::FaceDBLoaderThread::loadFaceDb()
 
     ret = sqlite3_open(dbPath, &pDb);
     if (ret != SQLITE_OK) {
-        LOGE("sqlite3_open error : %s", sqlite3_errmsg(pDb));
+        ALOGE("sqlite3_open error : %s", sqlite3_errmsg(pDb));
         return UNKNOWN_ERROR;
     }
 
     const char *select_query = "SELECT featureId, version, personId, feature, timeStamp FROM Feature";
     ret = sqlite3_prepare_v2(pDb, select_query, -1, &pStmt, NULL);
     if (ret != SQLITE_OK) {
-        LOGE("sqlite3_prepare_v2 error : %s", sqlite3_errmsg(pDb));
+        ALOGE("sqlite3_prepare_v2 error : %s", sqlite3_errmsg(pDb));
         sqlite3_close(pDb);
         return UNKNOWN_ERROR;
     }
@@ -468,7 +468,7 @@ status_t FaceDetector::FaceDBLoaderThread::loadFaceDb()
         mFaceDetector->faceDatabaseRegister(feature, personId, featureId, timeStamp, 0, 0, version);
         LOG2("Register feature (%d): face ID: %d, feature ID: %d, timestamp: %d, version: %d", featureCount, personId, featureId, timeStamp, version);
         if (ret < 0) {
-            LOGE("Error on loading feature data(%d) : %d", featureCount, ret);
+            ALOGE("Error on loading feature data(%d) : %d", featureCount, ret);
         }
         featureCount++;
     }

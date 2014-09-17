@@ -155,10 +155,10 @@ void Callbacks::postviewFrameDone(AtomBuffer *buff)
                     buff->buff->release(buff->buff);
                     buff->buff = 0;
                 } else {
-                    LOGE("@%s, Not enough memory for postview callback.", __FUNCTION__);
+                    ALOGE("@%s, Not enough memory for postview callback.", __FUNCTION__);
                 }
             } else {
-                LOGE("@%s, unusable postview buffer", __FUNCTION__);
+                ALOGE("@%s, unusable postview buffer", __FUNCTION__);
             }
         }
     }
@@ -182,7 +182,7 @@ void Callbacks::cameraError(int err)
 {
     LOG1("@%s", __FUNCTION__);
     if ((mMessageFlags & CAMERA_MSG_ERROR) && mNotifyCB != NULL) {
-        LOGD("Sending message: CAMERA_MSG_ERROR, err # = %d", err);
+        ALOGD("Sending message: CAMERA_MSG_ERROR, err # = %d", err);
         mNotifyCB(CAMERA_MSG_ERROR, err, 0, mUserToken);
     }
 }
@@ -224,12 +224,12 @@ void Callbacks::allocateMemory(AtomBuffer *buff, int size)
             buff->dataPtr = buff->buff->data;
             buff->size = buff->buff->size;
         } else {
-            LOGE("Memory allocation failed (get memory callback return null)");
+            ALOGE("Memory allocation failed (get memory callback return null)");
             buff->dataPtr = NULL;
             buff->size = 0;
         }
     } else {
-        LOGE("Memory allocation failed (missing get memory callback)");
+        ALOGE("Memory allocation failed (missing get memory callback)");
         buff->buff = NULL;
         buff->dataPtr = NULL;
         buff->size = 0;

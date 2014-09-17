@@ -640,7 +640,7 @@ status_t UltraLowLight::processIntelULL()
     }
     error = ia_cp_ull_uninit();
     if (error != ia_err_none) {
-        LOGE("Failed to uninit Intel ULL %d", error);
+        ALOGE("Failed to uninit Intel ULL %d", error);
         ret = ia_error_to_status_t(error);
     }
 

@@ -35,7 +35,7 @@ VideoThread::VideoThread(sp<CallbacksThread> callbacksThread) :
 #ifdef GRAPHIC_IS_GEN
     mVpp = new VideoVPPBase();
     if (!mVpp) {
-        LOGE("Fail to construct VPP");
+        ALOGE("Fail to construct VPP");
     }
 #endif
 }
@@ -82,7 +82,7 @@ void VideoThread::getDefaultParameters(CameraParameters *intel_params, int camer
 {
     LOG1("@%s", __FUNCTION__);
     if (!intel_params) {
-        LOGE("params is null!");
+        ALOGE("params is null!");
         return;
     }
     // Set slow motion rate in high speed mode
@@ -110,7 +110,7 @@ status_t VideoThread::convertNV12Linear2Tiled(const AtomBuffer &buff)
     ANativeWindowBuffer *nativeBuffer = buff.gfxInfo_rec.gfxBuffer->getNativeBuffer();
 
     if (mVpp == NULL) {
-        LOGE("@%s vpp is not valid", __FUNCTION__);
+        ALOGE("@%s vpp is not valid", __FUNCTION__);
         return UNKNOWN_ERROR;
     }
 
@@ -146,7 +146,7 @@ status_t VideoThread::convertNV12Linear2Tiled(const AtomBuffer &buff)
      */
     ret = mVpp->perform(Src, Dst, NULL, true);
     if (ret != VA_STATUS_SUCCESS) {
-        LOGE("@%s error:%x", __FUNCTION__, ret);
+        ALOGE("@%s error:%x", __FUNCTION__, ret);
         return UNKNOWN_ERROR;
     }
 #endif //GRAPHIC_IS_GEN
@@ -168,7 +168,7 @@ status_t VideoThread::handleMessageVideo(MessageVideo *msg)
 
     if (convertNV12Linear2Tiled(msg->buff)) {
         // Print err and do nothing here
-        LOGE("Fail to convertNV12Linear2Tiled");
+        ALOGE("Fail to convertNV12Linear2Tiled");
     }
 
     mCallbacksThread->videoFrameDone(&msg->buff, timestamp);
@@ -224,7 +224,7 @@ status_t VideoThread::waitForAndExecuteMessage()
             break;
 
         default:
-            LOGE("Invalid message");
+            ALOGE("Invalid message");
             status = BAD_VALUE;
             break;
     };

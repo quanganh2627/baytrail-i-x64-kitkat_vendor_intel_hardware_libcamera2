@@ -60,7 +60,7 @@ int SWJpegEncoder::encode(const InputBuffer &in, const OutputBuffer &out)
             out.buf, out.width, out.height, out.size, out.quality);
 
     if (in.width == 0 || in.height == 0 || in.fourcc == 0) {
-        LOGE("Invalid input received!");
+        ALOGE("Invalid input received!");
         mJpegSize = -1;
         goto exit;
     }
@@ -266,7 +266,7 @@ int SWJpegEncoder::doJpegEncodingMultiThread(void)
         encThread = mSwJpegEncoder.editItemAt(i);
         status = encThread->runThread(threadName.string());
         if (status != NO_ERROR) {
-            LOGE("@%s, line:%d, start jpeg thread fail, thread name:%s", __FUNCTION__, __LINE__, threadName.string());
+            ALOGE("@%s, line:%d, start jpeg thread fail, thread name:%s", __FUNCTION__, __LINE__, threadName.string());
             return -1;
         }
     }
@@ -519,7 +519,7 @@ configEncoding(int width, int height, void *jpegBuf, int jpegBufSize)
     mCInfo.image_height = height;
 
     if(setupJpegDestMgr(&mCInfo, (JSAMPLE *)jpegBuf, jpegBufSize) < 0) {
-        LOGE("@%s, line:%d, setupJpegDestMgr fail", __FUNCTION__, __LINE__);
+        ALOGE("@%s, line:%d, setupJpegDestMgr fail", __FUNCTION__, __LINE__);
         return -1;
     }
 
@@ -568,7 +568,7 @@ doJpegEncoding(const void *y_buf, const void *uv_buf, int fourcc)
     srcUV = (unsigned char*)uv_buf;
     p411 = (unsigned char*)malloc(width * height * 3 / 2);
     if (NULL == p411) {
-        LOGE("@%s, line:%d, malloc fail", __FUNCTION__, __LINE__);
+        ALOGE("@%s, line:%d, malloc fail", __FUNCTION__, __LINE__);
         return -1;
     }
 
@@ -580,7 +580,7 @@ doJpegEncoding(const void *y_buf, const void *uv_buf, int fourcc)
         NV12ToP411Separate(width, height, srcY, srcUV, p411);
         break;
     defaut:
-        LOGE("%s Unsupported fourcc %d", __func__, fourcc);
+        ALOGE("%s Unsupported fourcc %d", __func__, fourcc);
         return -1;
     }
 
@@ -638,7 +638,7 @@ setupJpegDestMgr(j_compress_ptr cInfo, JSAMPLE *jpegBuf, int jpegBufSize)
     JpegDestMgrPtr dest;
 
     if (NULL == jpegBuf || jpegBufSize <= 0) {
-        LOGE("@%s, line:%d, jpegBuf:%p, jpegBufSize:%d", __FUNCTION__, __LINE__, jpegBuf, jpegBufSize);
+        ALOGE("@%s, line:%d, jpegBuf:%p, jpegBufSize:%d", __FUNCTION__, __LINE__, jpegBuf, jpegBufSize);
         return -1;
     }
 
@@ -692,7 +692,7 @@ void SWJpegEncoder::Codec::initDestination(j_compress_ptr cInfo)
 boolean SWJpegEncoder::Codec::emptyOutputBuffer(j_compress_ptr cInfo)
 {
     LOG1("@%s", __FUNCTION__);
-    LOGE("@%s, line:%d, buffer overflow!", __FUNCTION__, __LINE__);
+    ALOGE("@%s, line:%d, buffer overflow!", __FUNCTION__, __LINE__);
     JpegDestMgrPtr dest = (JpegDestMgrPtr)cInfo->dest;
 
     /* re-cfg the buffer info */

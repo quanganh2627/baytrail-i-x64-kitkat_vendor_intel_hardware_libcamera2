@@ -43,7 +43,7 @@ V4L2DeviceBase::~V4L2DeviceBase()
 {
     LOG1("@%s", __FUNCTION__);
     if (mFd != -1) {
-        LOGW("Destroying a device object not closed, closing first");
+        ALOGW("Destroying a device object not closed, closing first");
         close();
     }
 }
@@ -55,25 +55,25 @@ status_t V4L2DeviceBase::open()
     struct stat st;
 
     if (mFd != -1) {
-        LOGE("Trying to open a device already open");
+        ALOGE("Trying to open a device already open");
         return INVALID_OPERATION;
     }
 
     if (stat (mName.string(), &st) == -1) {
-        LOGE("Error stat video device %s: %s",
+        ALOGE("Error stat video device %s: %s",
              mName.string(), strerror(errno));
         return UNKNOWN_ERROR;
     }
 
     if (!S_ISCHR (st.st_mode)) {
-        LOGE("%s is not a device", mName.string());
+        ALOGE("%s is not a device", mName.string());
         return UNKNOWN_ERROR;
     }
 
     mFd = ::open(mName.string(), O_RDWR);
 
     if (mFd < 0) {
-        LOGE("Error opening video device %s: %s",
+        ALOGE("Error opening video device %s: %s",
               mName.string(), strerror(errno));
         return UNKNOWN_ERROR;
     }
@@ -86,12 +86,12 @@ status_t V4L2DeviceBase::close()
     LOG1("@%s device : %s", __FUNCTION__, mName.string());
 
     if (mFd == -1) {
-        LOGW("Device not opened!");
+        ALOGW("Device not opened!");
         return INVALID_OPERATION;
     }
 
     if (::close(mFd) < 0) {
-        LOGE("Close video device failed: %s", strerror(errno));
+        ALOGE("Close video device failed: %s", strerror(errno));
         return UNKNOWN_ERROR;
     }
 
@@ -103,7 +103,7 @@ int V4L2DeviceBase::xioctl(int request, void *arg) const
 {
     int ret(0);
     if (mFd == -1) {
-        LOGE("%s invalid device closed!",__FUNCTION__);
+        ALOGE("%s invalid device closed!",__FUNCTION__);
         return INVALID_OPERATION;
     }
 
@@ -112,7 +112,7 @@ int V4L2DeviceBase::xioctl(int request, void *arg) const
     } while (-1 == ret && EINTR == errno);
 
     if (ret < 0)
-        LOGW ("%s: Request 0x%x failed: %s", __FUNCTION__, request, strerror(errno));
+        ALOGW ("%s: Request 0x%x failed: %s", __FUNCTION__, request, strerror(errno));
 
     return ret;
 }
@@ -165,7 +165,7 @@ int V4L2DeviceBase::subscribeEvent(int event)
 
     ret = ioctl(mFd, VIDIOC_SUBSCRIBE_EVENT, &sub);
     if (ret < 0) {
-        LOGE("error subscribing event %x: %s", event, strerror(errno));
+        ALOGE("error subscribing event %x: %s", event, strerror(errno));
         return ret;
     }
 
@@ -188,7 +188,7 @@ int V4L2DeviceBase::unsubscribeEvent(int event)
 
     ret = ioctl(mFd, VIDIOC_UNSUBSCRIBE_EVENT, &sub);
     if (ret < 0) {
-        LOGE("error unsubscribing event %x :%s",event,strerror(errno));
+        ALOGE("error unsubscribing event %x :%s",event,strerror(errno));
         return ret;
     }
 
@@ -207,7 +207,7 @@ int V4L2DeviceBase::dequeueEvent(struct v4l2_event *event)
 
     ret = ioctl(mFd, VIDIOC_DQEVENT, event);
     if (ret < 0) {
-        LOGE("error dequeuing event");
+        ALOGE("error dequeuing event");
         return ret;
     }
 
@@ -229,7 +229,7 @@ status_t V4L2DeviceBase::setControl (int aControlNum, const int value, const cha
     LOG1("setting attribute [%s] to %d", name, value);
 
     if (mFd == -1) {
-        LOGE("Invalid state (CLOSED) to set an attribute");
+        ALOGE("Invalid state (CLOSED) to set an attribute");
         return UNKNOWN_ERROR;
     }
 
@@ -247,7 +247,7 @@ status_t V4L2DeviceBase::setControl (int aControlNum, const int value, const cha
     if (ioctl(mFd, VIDIOC_S_CTRL, &control) == 0)
         return NO_ERROR;
 
-    LOGE("Failed to set value %d for control %s (%d) on device '%s', %s",
+    ALOGE("Failed to set value %d for control %s (%d) on device '%s', %s",
         value, name, aControlNum, mName.string(), strerror(errno));
 
     return UNKNOWN_ERROR;
@@ -266,7 +266,7 @@ status_t V4L2DeviceBase::getControl (int aControlNum, int *value)
     CLEAR(ext_control);
 
     if (mFd == -1) {
-        LOGE("Invalid state (CLOSED) to set an attribute");
+        ALOGE("Invalid state (CLOSED) to set an attribute");
         return UNKNOWN_ERROR;
     }
 
@@ -286,7 +286,7 @@ status_t V4L2DeviceBase::getControl (int aControlNum, int *value)
        return NO_ERROR;
     }
 
-    LOGE("Failed to get value for control (%d) on device '%s', %s",
+    ALOGE("Failed to get value for control (%d) on device '%s', %s",
             aControlNum, mName.string(), strerror(errno));
     return UNKNOWN_ERROR;
 }

@@ -64,12 +64,12 @@ status_t PlatformData::readSpId(String8& spIdName, int& spIdValue)
 
         file = fopen(fullPath, "rb");
         if (!file) {
-            LOGE("ERROR in opening file %s", fullPath.string());
+            ALOGE("ERROR in opening file %s", fullPath.string());
             return NAME_NOT_FOUND;
         }
         ret = fscanf(file, "%x", &spIdValue);
         if (ret < 0) {
-            LOGE("ERROR in reading %s", fullPath.string());
+            ALOGE("ERROR in reading %s", fullPath.string());
             spIdValue = 0;
             fclose(file);
             return UNKNOWN_ERROR;
@@ -81,7 +81,7 @@ status_t PlatformData::readSpId(String8& spIdName, int& spIdValue)
 bool PlatformData::validCameraId(int cameraId, const char* functionName)
 {
     if (cameraId < 0 || cameraId >= static_cast<int>(getInstance()->mCameras.size())) {
-        LOGE("%s: Invalid cameraId %d", functionName, cameraId);
+        ALOGE("%s: Invalid cameraId %d", functionName, cameraId);
         return false;
     }
     else {
@@ -125,7 +125,7 @@ void PlatformData::setActiveCameraId(int cameraId)
 {
     // Multiple active cameras not supported
     if ((mActiveCameraId >= 0) || (cameraId < 0)) {
-        LOGE("%s: Activating multiple cameras (was %d, now trying %d)", __FUNCTION__, mActiveCameraId, cameraId);
+        ALOGE("%s: Activating multiple cameras (was %d, now trying %d)", __FUNCTION__, mActiveCameraId, cameraId);
     }
     mActiveCameraId = cameraId;
 }
@@ -134,7 +134,7 @@ void PlatformData::freeActiveCameraId(int cameraId)
 {
     // Multiple active cameras not supported
     if ((mActiveCameraId != cameraId) || (cameraId < 0)) {
-        LOGE("%s: Freeing a wrong camera (was %d, now trying %d)", __FUNCTION__, mActiveCameraId, cameraId);
+        ALOGE("%s: Freeing a wrong camera (was %d, now trying %d)", __FUNCTION__, mActiveCameraId, cameraId);
     }
     mActiveCameraId = -1;
 }
@@ -895,7 +895,7 @@ const char* PlatformData::defaultHdr(int cameraId)
 {
     PlatformBase *i = getInstance();
     if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
-      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      ALOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
       return "";
     }
     return i->mCameras[cameraId].defaultHdr;
@@ -905,7 +905,7 @@ const char* PlatformData::supportedHdr(int cameraId)
 {
     PlatformBase *i = getInstance();
     if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
-      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      ALOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
       return "";
     }
     return i->mCameras[cameraId].supportedHdr;
@@ -916,7 +916,7 @@ const char* PlatformData::defaultUltraLowLight(int cameraId)
 {
     PlatformBase *i = getInstance();
     if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
-      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      ALOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
       return "";
     }
     return i->mCameras[cameraId].defaultUltraLowLight;
@@ -926,7 +926,7 @@ const char* PlatformData::supportedUltraLowLight(int cameraId)
 {
     PlatformBase *i = getInstance();
     if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
-      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      ALOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
       return "";
     }
     return i->mCameras[cameraId].supportedUltraLowLight;
@@ -936,7 +936,7 @@ const char* PlatformData::defaultFaceRecognition(int cameraId)
 {
     PlatformBase *i = getInstance();
     if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
-      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      ALOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
       return "";
     }
     return i->mCameras[cameraId].defaultFaceRecognition;
@@ -946,7 +946,7 @@ const char* PlatformData::supportedFaceRecognition(int cameraId)
 {
     PlatformBase *i = getInstance();
     if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
-      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      ALOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
       return "";
     }
     return i->mCameras[cameraId].supportedFaceRecognition;
@@ -956,7 +956,7 @@ const char* PlatformData::defaultSmileShutter(int cameraId)
 {
     PlatformBase *i = getInstance();
     if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
-      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      ALOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
       return "";
     }
     return i->mCameras[cameraId].defaultSmileShutter;
@@ -966,7 +966,7 @@ const char* PlatformData::supportedSmileShutter(int cameraId)
 {
     PlatformBase *i = getInstance();
     if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
-      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      ALOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
       return "";
     }
     return i->mCameras[cameraId].supportedSmileShutter;
@@ -976,7 +976,7 @@ const char* PlatformData::defaultBlinkShutter(int cameraId)
 {
     PlatformBase *i = getInstance();
     if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
-      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      ALOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
       return "";
     }
     return i->mCameras[cameraId].defaultBlinkShutter;
@@ -986,7 +986,7 @@ const char* PlatformData::supportedBlinkShutter(int cameraId)
 {
     PlatformBase *i = getInstance();
     if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
-      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      ALOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
       return "";
     }
     return i->mCameras[cameraId].supportedBlinkShutter;
@@ -996,7 +996,7 @@ const char* PlatformData::defaultPanorama(int cameraId)
 {
     PlatformBase *i = getInstance();
     if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
-      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      ALOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
       return "";
     }
     return i->mCameras[cameraId].defaultPanorama;
@@ -1006,7 +1006,7 @@ const char* PlatformData::supportedPanorama(int cameraId)
 {
     PlatformBase *i = getInstance();
     if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
-      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      ALOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
       return "";
     }
     return i->mCameras[cameraId].supportedPanorama;
@@ -1016,7 +1016,7 @@ const char* PlatformData::defaultSceneDetection(int cameraId)
 {
     PlatformBase *i = getInstance();
     if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
-      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      ALOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
       return "";
     }
     return i->mCameras[cameraId].defaultSceneDetection;
@@ -1026,7 +1026,7 @@ const char* PlatformData::supportedSceneDetection(int cameraId)
 {
     PlatformBase *i = getInstance();
     if (cameraId < 0 || cameraId >= static_cast<int>(i->mCameras.size())) {
-      LOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
+      ALOGE("%s: Invalid cameraId %d", __FUNCTION__, cameraId);
       return "";
     }
     return i->mCameras[cameraId].supportedSceneDetection;
@@ -1126,15 +1126,15 @@ status_t PlatformData::createVendorPlatformProductName(String8& name)
     String8 productLineIdName = String8("product_line_id");
 
     if (readSpId(vendorIdName, vendorIdValue) < 0) {
-        LOGE("%s could not be read from sysfs", vendorIdName.string());
+        ALOGE("%s could not be read from sysfs", vendorIdName.string());
         return UNKNOWN_ERROR;
     }
     if (readSpId(platformFamilyIdName, platformFamilyIdValue) < 0) {
-        LOGE("%s could not be read from sysfs", platformFamilyIdName.string());
+        ALOGE("%s could not be read from sysfs", platformFamilyIdName.string());
         return UNKNOWN_ERROR;
     }
     if (readSpId(productLineIdName, productLineIdValue) < 0){
-        LOGE("%s could not be read from sysfs", productLineIdName.string());
+        ALOGE("%s could not be read from sysfs", productLineIdName.string());
         return UNKNOWN_ERROR;
     }
 
@@ -1177,7 +1177,7 @@ bool PlatformData::synchronizeExposure(void)
 {
     PlatformBase *i = getInstance();
     if (mActiveCameraId < 0 || mActiveCameraId >= static_cast<int>(i->mCameras.size())) {
-      LOGE("%s: Invalid cameraId %d", __FUNCTION__, mActiveCameraId);
+      ALOGE("%s: Invalid cameraId %d", __FUNCTION__, mActiveCameraId);
       return false;
     }
     return i->mCameras[mActiveCameraId].synchronizeExposure;

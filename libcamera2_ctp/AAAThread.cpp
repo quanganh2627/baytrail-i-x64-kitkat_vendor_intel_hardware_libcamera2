@@ -54,7 +54,7 @@ AAAThread::AAAThread(ICallbackAAA *aaaDone, UltraLowLight *ull, I3AControls *aaa
     LOG1("@%s", __FUNCTION__);
     mFaceState.faces = new ia_face[MAX_FACES_DETECTABLE];
     if (mFaceState.faces == NULL) {
-        LOGE("Error allocation memory for face state");
+        ALOGE("Error allocation memory for face state");
     } else {
         memset(mFaceState.faces, 0, MAX_FACES_DETECTABLE * sizeof(ia_face));
     }
@@ -230,12 +230,12 @@ status_t AAAThread::setFaces(const ia_face_state& faceState)
     status_t status(NO_ERROR);
 
     if (mFaceState.faces == NULL) {
-        LOGE("face state not allocated");
+        ALOGE("face state not allocated");
         return NO_INIT;
     }
 
     if (faceState.num_faces > MAX_FACES_DETECTABLE) {
-        LOGW("@%s: %d faces detected, limiting to %d", __FUNCTION__,
+        ALOGW("@%s: %d faces detected, limiting to %d", __FUNCTION__,
             faceState.num_faces, MAX_FACES_DETECTABLE);
          mFaceState.num_faces = MAX_FACES_DETECTABLE;
     } else {
@@ -373,7 +373,7 @@ status_t AAAThread::handleMessageFlashStage(MessageFlashStage *msg)
     // handle enterFlashSequence()
     if (mFlashStage != FLASH_STAGE_NA) {
         status = ALREADY_EXISTS;
-        LOGE("Flash sequence already started");
+        ALOGE("Flash sequence already started");
         if (msg->value != FLASH_STAGE_NA)
             mMessageQueue.reply(MESSAGE_ID_FLASH_STAGE, status);
         return status;
@@ -383,7 +383,7 @@ status_t AAAThread::handleMessageFlashStage(MessageFlashStage *msg)
     if (mBlockForStage == FLASH_STAGE_SHOT_EXPOSED) {
         // TODO: Not receiving expose statuses for snapshot frames
         // ControlThread does snapshot capturing atm for this purpose.
-        LOGD("Not Implemented! its a deadlock");
+        ALOGD("Not Implemented! its a deadlock");
         mFlashStage = FLASH_STAGE_SHOT_WAITING;
     } else {
         // Enter pre-flash sequence by default
@@ -497,7 +497,7 @@ bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus)
     }
 
     if (status != NO_ERROR) {
-        LOGD("Flash sequence failed!");
+        ALOGD("Flash sequence failed!");
         mFramesTillExposed = 0;
         skipForEv = 0;
         mFlashStage = FLASH_STAGE_NA;
@@ -558,7 +558,7 @@ status_t AAAThread::handleMessageNewStats(MessageNewStats *msgFrame)
     mMessageQueue.remove(MESSAGE_ID_NEW_STATS_READY, &messages);
     if(!messages.isEmpty()) {
         Vector<Message>::iterator it = messages.begin();
-        LOGW("%d frames in 3A process queue, handling timestamp "
+        ALOGW("%d frames in 3A process queue, handling timestamp "
              "%lld instead of %lld\n", messages.size(),
         ((long long)(it->data.stats.capture_timestamp.tv_sec)*1000000LL +
          (long long)(it->data.stats.capture_timestamp.tv_usec)),

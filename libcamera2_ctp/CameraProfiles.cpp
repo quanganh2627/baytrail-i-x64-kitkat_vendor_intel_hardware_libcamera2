@@ -61,7 +61,7 @@ void CameraProfiles::checkField(CameraProfiles *profiles, const char *name, cons
         if (0 == profiles->mCurrentSensor || 1 == profiles->mCurrentSensor) {
             profiles->pCurrentCam = new CameraInfo;
             if (NULL == profiles->pCurrentCam) {
-                LOGE("@%s, Cannot create CameraInfo!", __func__);
+                ALOGE("@%s, Cannot create CameraInfo!", __func__);
                 return;
             }
         }
@@ -78,7 +78,7 @@ void CameraProfiles::checkField(CameraProfiles *profiles, const char *name, cons
         return;
     }
 
-    LOGE("@%s, name:%s, atts[0]:%s, xml format wrong", __func__, name, atts[0]);
+    ALOGE("@%s, name:%s, atts[0]:%s, xml format wrong", __func__, name, atts[0]);
     return;
 }
 
@@ -96,7 +96,7 @@ void CameraProfiles::handleCommon(CameraProfiles *profiles, const char *name, co
     LOG1("@%s, name:%s, atts[0]:%s", __func__, name, atts[0]);
 
     if (strcmp(atts[0], "value") != 0) {
-        LOGE("@%s, name:%s, atts[0]:%s, xml format wrong", __func__, name, atts[0]);
+        ALOGE("@%s, name:%s, atts[0]:%s, xml format wrong", __func__, name, atts[0]);
         return;
     }
 
@@ -157,7 +157,7 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
     LOG1("@%s, name:%s, atts[0]:%s, profiles->mCurrentSensor:%d", __func__, name, atts[0], profiles->mCurrentSensor);
 
     if (strcmp(atts[0], "value") != 0) {
-        LOGE("@%s, name:%s, atts[0]:%s, xml format wrong", __func__, name, atts[0]);
+        ALOGE("@%s, name:%s, atts[0]:%s, xml format wrong", __func__, name, atts[0]);
         return;
     }
 
@@ -314,7 +314,7 @@ void CameraProfiles::handleFeature(CameraProfiles *profiles, const char *name, c
     LOG1("@%s, name:%s, atts[0]:%s, profiles->mCurrentSensor:%d", __func__, name, atts[0], profiles->mCurrentSensor);
 
     if (strcmp(atts[0], "value") != 0) {
-        LOGE("@%s, name:%s, atts[0]:%s, xml format wrong", __func__, name, atts[0]);
+        ALOGE("@%s, name:%s, atts[0]:%s, xml format wrong", __func__, name, atts[0]);
         return;
     }
 
@@ -398,7 +398,7 @@ void CameraProfiles::startElement(void *userData, const char *name, const char *
             profiles->handleCommon(profiles, name, atts);
             break;
         default:
-            LOGE("@%s, line:%d, go to default handling", __func__, __LINE__);
+            ALOGE("@%s, line:%d, go to default handling", __func__, __LINE__);
             break;
     }
 }
@@ -446,13 +446,13 @@ void CameraProfiles::getDataFromXmlFile(void)
 
     fp = ::fopen(defaultXmlFile, "r");
     if (NULL == fp) {
-        LOGE("@%s, line:%d, fp is NULL", __func__, __LINE__);
+        ALOGE("@%s, line:%d, fp is NULL", __func__, __LINE__);
         return;
     }
 
     XML_Parser parser = ::XML_ParserCreate(NULL);
     if (NULL == parser) {
-        LOGE("@%s, line:%d, parser is NULL", __func__, __LINE__);
+        ALOGE("@%s, line:%d, parser is NULL", __func__, __LINE__);
         goto exit;
     }
     ::XML_SetUserData(parser, this);
@@ -460,7 +460,7 @@ void CameraProfiles::getDataFromXmlFile(void)
 
     pBuf = malloc(mBufSize);
     if (NULL == pBuf) {
-        LOGE("@%s, line:%d, pBuf is NULL", __func__, __LINE__);
+        ALOGE("@%s, line:%d, pBuf is NULL", __func__, __LINE__);
         goto exit;
     }
 
@@ -474,7 +474,7 @@ void CameraProfiles::getDataFromXmlFile(void)
         }
         done = len < mBufSize;
         if (XML_Parse(parser, (const char *)pBuf, len, done) == XML_STATUS_ERROR) {
-            LOGE("@%s, line:%d, XML_Parse error", __func__, __LINE__);
+            ALOGE("@%s, line:%d, XML_Parse error", __func__, __LINE__);
             goto exit;
         }
     } while (!done);
@@ -491,69 +491,69 @@ exit:
 void CameraProfiles::dump(void)
 {
     for (unsigned i = 0; i < getSensorNum(); i++) {
-        LOGD("line%d, in DeviceData, start i:%d, sensor number:%d", __LINE__, i, getSensorNum());
-        LOGD("line%d, in DeviceData, pcam->maxEV:%s ", __LINE__, mCameras[i].maxEV.string());
-        LOGD("line%d, in DeviceData, pcam->minEV:%s ", __LINE__, mCameras[i].minEV.string());
-        LOGD("line%d, in DeviceData, pcam->stepEV:%s ", __LINE__, mCameras[i].stepEV.string());
-        LOGD("line%d, in DeviceData, pcam->supportedSceneModes:%s ", __LINE__, mCameras[i].supportedSceneModes.string());
-        LOGD("line%d, in DeviceData, pcam->defaultSceneMode:%s ", __LINE__, mCameras[i].defaultSceneMode.string());
-        LOGD("line%d, in DeviceData, pcam->supportedPreviewSizes:%s ", __LINE__, mCameras[i].supportedPreviewSizes.string());
-        LOGD("line%d, in DeviceData, mSupportedVideoSizes:%s ", __LINE__, mCameras[i].supportedVideoSizes.string());
-        LOGD("line%d, in DeviceData, pcam->mVideoPreviewSizePref:%s ", __LINE__, mCameras[i].mVideoPreviewSizePref.string());
-        LOGD("line%d, in DeviceData, pcam->supportedBurstFPS:%s ", __LINE__, mCameras[i].supportedBurstFPS.string());
-        LOGD("line%d, in DeviceData, pcam->orientation:%d ", __LINE__, mCameras[i].orientation);
-        LOGD("line%d, in DeviceData, pcam->sensorType:%d ", __LINE__, mCameras[i].sensorType);
-        LOGD("line%d, in DeviceData, pcam->dvs:%d ", __LINE__, mCameras[i].dvs);
-        LOGD("line%d, in DeviceData, pcam->supportedSnapshotSizes:%s ", __LINE__, mCameras[i].supportedSnapshotSizes.string());
-        LOGD("line%d, in DeviceData, pcam->flipping:%d ", __LINE__, mCameras[i].flipping);
-        LOGD("line%d, in DeviceData, pcam->continuousCapture:%d ", __LINE__, mCameras[i].continuousCapture);
-        LOGD("line%d, in DeviceData, pcam->mPreviewViaOverlay:%d ", __LINE__, mCameras[i].mPreviewViaOverlay);
-        LOGD("line%d, in DeviceData, pcam->supportedBurstLength:%s ", __LINE__, mCameras[i].supportedBurstLength.string());
-        LOGD("line%d, in DeviceData, pcam->facing:%d ", __LINE__, mCameras[i].facing);
-        LOGD("line%d, in DeviceData, pcam->defaultBurstLength:%s ", __LINE__, mCameras[i].defaultBurstLength.string());
-        LOGD("line%d, in DeviceData, pcam->defaultFlashMode:%s ", __LINE__, mCameras[i].defaultFlashMode.string());
-        LOGD("line%d, in DeviceData, pcam->supportedFlashModes:%s ", __LINE__, mCameras[i].supportedFlashModes.string());
-        LOGD("line%d, in DeviceData, pcam->supportedEffectModes:%s ", __LINE__, mCameras[i].supportedEffectModes.string());
-        LOGD("line%d, in DeviceData, pcam->supportedIntelEffectModes:%s ", __LINE__, mCameras[i].supportedIntelEffectModes.string());
-        LOGD("line%d, in DeviceData, pcam->supportedAwbModes:%s ", __LINE__, mCameras[i].supportedAwbModes.string());
-        LOGD("line%d, in DeviceData, pcam->defaultAwbMode:%s ", __LINE__, mCameras[i].defaultAwbMode.string());
-        LOGD("line%d, in DeviceData, pcam->defaultIso:%s ", __LINE__, mCameras[i].defaultIso.string());
-        LOGD("line%d, in DeviceData, pcam->supportedIso:%s ", __LINE__, mCameras[i].supportedIso.string());
-        LOGD("line%d, in DeviceData, pcam->defaultAeMetering:%s ", __LINE__, mCameras[i].defaultAeMetering.string());
-        LOGD("line%d, in DeviceData, pcam->supportedAeMetering:%s ", __LINE__, mCameras[i].supportedAeMetering.string());
-        LOGD("line%d, in DeviceData, pcam->defaultFocusMode:%s ", __LINE__, mCameras[i].defaultFocusMode.string());
-        LOGD("line%d, in DeviceData, pcam->supportedFocusModes:%s ", __LINE__, mCameras[i].supportedFocusModes.string());
-        LOGD("line%d, in DeviceData, pcam->defaultHdr:%s ", __LINE__, mCameras[i].defaultHdr.string());
-        LOGD("line%d, in DeviceData, pcam->supportedHdr:%s ", __LINE__, mCameras[i].supportedHdr.string());
-        LOGD("line%d, in DeviceData, pcam->defaultUltraLowLight:%s ", __LINE__, mCameras[i].defaultUltraLowLight.string());
-        LOGD("line%d, in DeviceData, pcam->supportedUltraLowLight:%s ", __LINE__, mCameras[i].supportedUltraLowLight.string());
-        LOGD("line%d, in DeviceData, pcam->defaultFaceRecognition:%s ", __LINE__, mCameras[i].defaultFaceRecognition.string());
-        LOGD("line%d, in DeviceData, pcam->supportedFaceRecognition:%s ", __LINE__, mCameras[i].supportedFaceRecognition.string());
-        LOGD("line%d, in DeviceData, pcam->defaultSmileShutter:%s ", __LINE__, mCameras[i].defaultSmileShutter.string());
-        LOGD("line%d, in DeviceData, pcam->supportedSmileShutter:%s ", __LINE__, mCameras[i].supportedSmileShutter.string());
-        LOGD("line%d, in DeviceData, pcam->defaultBlinkShutter:%s ", __LINE__, mCameras[i].defaultBlinkShutter.string());
-        LOGD("line%d, in DeviceData, pcam->supportedBlinkShutter:%s ", __LINE__, mCameras[i].supportedBlinkShutter.string());
-        LOGD("line%d, in DeviceData, pcam->defaultPanorama:%s ", __LINE__, mCameras[i].defaultPanorama.string());
-        LOGD("line%d, in DeviceData, pcam->supportedPanorama:%s ", __LINE__, mCameras[i].supportedPanorama.string());
-        LOGD("line%d, in DeviceData, pcam->defaultSceneDetection:%s ", __LINE__, mCameras[i].defaultSceneDetection.string());
-        LOGD("line%d, in DeviceData, pcam->supportedSceneDetection:%s ", __LINE__, mCameras[i].supportedSceneDetection.string());
-        LOGD("line%d, in DeviceData, pcam->maxNumYUVBufferForBurst:%d ", __LINE__, mCameras[i].maxNumYUVBufferForBurst);
-        LOGD("line%d, in DeviceData, pcam->maxNumYUVBufferForBracket:%d ", __LINE__, mCameras[i].maxNumYUVBufferForBracket);
-        LOGD("line%d, in DeviceData, pcam->maxHighSpeedDvsResolution:%s ",__LINE__, mCameras[i].maxHighSpeedDvsResolution.string());
+        ALOGD("line%d, in DeviceData, start i:%d, sensor number:%d", __LINE__, i, getSensorNum());
+        ALOGD("line%d, in DeviceData, pcam->maxEV:%s ", __LINE__, mCameras[i].maxEV.string());
+        ALOGD("line%d, in DeviceData, pcam->minEV:%s ", __LINE__, mCameras[i].minEV.string());
+        ALOGD("line%d, in DeviceData, pcam->stepEV:%s ", __LINE__, mCameras[i].stepEV.string());
+        ALOGD("line%d, in DeviceData, pcam->supportedSceneModes:%s ", __LINE__, mCameras[i].supportedSceneModes.string());
+        ALOGD("line%d, in DeviceData, pcam->defaultSceneMode:%s ", __LINE__, mCameras[i].defaultSceneMode.string());
+        ALOGD("line%d, in DeviceData, pcam->supportedPreviewSizes:%s ", __LINE__, mCameras[i].supportedPreviewSizes.string());
+        ALOGD("line%d, in DeviceData, mSupportedVideoSizes:%s ", __LINE__, mCameras[i].supportedVideoSizes.string());
+        ALOGD("line%d, in DeviceData, pcam->mVideoPreviewSizePref:%s ", __LINE__, mCameras[i].mVideoPreviewSizePref.string());
+        ALOGD("line%d, in DeviceData, pcam->supportedBurstFPS:%s ", __LINE__, mCameras[i].supportedBurstFPS.string());
+        ALOGD("line%d, in DeviceData, pcam->orientation:%d ", __LINE__, mCameras[i].orientation);
+        ALOGD("line%d, in DeviceData, pcam->sensorType:%d ", __LINE__, mCameras[i].sensorType);
+        ALOGD("line%d, in DeviceData, pcam->dvs:%d ", __LINE__, mCameras[i].dvs);
+        ALOGD("line%d, in DeviceData, pcam->supportedSnapshotSizes:%s ", __LINE__, mCameras[i].supportedSnapshotSizes.string());
+        ALOGD("line%d, in DeviceData, pcam->flipping:%d ", __LINE__, mCameras[i].flipping);
+        ALOGD("line%d, in DeviceData, pcam->continuousCapture:%d ", __LINE__, mCameras[i].continuousCapture);
+        ALOGD("line%d, in DeviceData, pcam->mPreviewViaOverlay:%d ", __LINE__, mCameras[i].mPreviewViaOverlay);
+        ALOGD("line%d, in DeviceData, pcam->supportedBurstLength:%s ", __LINE__, mCameras[i].supportedBurstLength.string());
+        ALOGD("line%d, in DeviceData, pcam->facing:%d ", __LINE__, mCameras[i].facing);
+        ALOGD("line%d, in DeviceData, pcam->defaultBurstLength:%s ", __LINE__, mCameras[i].defaultBurstLength.string());
+        ALOGD("line%d, in DeviceData, pcam->defaultFlashMode:%s ", __LINE__, mCameras[i].defaultFlashMode.string());
+        ALOGD("line%d, in DeviceData, pcam->supportedFlashModes:%s ", __LINE__, mCameras[i].supportedFlashModes.string());
+        ALOGD("line%d, in DeviceData, pcam->supportedEffectModes:%s ", __LINE__, mCameras[i].supportedEffectModes.string());
+        ALOGD("line%d, in DeviceData, pcam->supportedIntelEffectModes:%s ", __LINE__, mCameras[i].supportedIntelEffectModes.string());
+        ALOGD("line%d, in DeviceData, pcam->supportedAwbModes:%s ", __LINE__, mCameras[i].supportedAwbModes.string());
+        ALOGD("line%d, in DeviceData, pcam->defaultAwbMode:%s ", __LINE__, mCameras[i].defaultAwbMode.string());
+        ALOGD("line%d, in DeviceData, pcam->defaultIso:%s ", __LINE__, mCameras[i].defaultIso.string());
+        ALOGD("line%d, in DeviceData, pcam->supportedIso:%s ", __LINE__, mCameras[i].supportedIso.string());
+        ALOGD("line%d, in DeviceData, pcam->defaultAeMetering:%s ", __LINE__, mCameras[i].defaultAeMetering.string());
+        ALOGD("line%d, in DeviceData, pcam->supportedAeMetering:%s ", __LINE__, mCameras[i].supportedAeMetering.string());
+        ALOGD("line%d, in DeviceData, pcam->defaultFocusMode:%s ", __LINE__, mCameras[i].defaultFocusMode.string());
+        ALOGD("line%d, in DeviceData, pcam->supportedFocusModes:%s ", __LINE__, mCameras[i].supportedFocusModes.string());
+        ALOGD("line%d, in DeviceData, pcam->defaultHdr:%s ", __LINE__, mCameras[i].defaultHdr.string());
+        ALOGD("line%d, in DeviceData, pcam->supportedHdr:%s ", __LINE__, mCameras[i].supportedHdr.string());
+        ALOGD("line%d, in DeviceData, pcam->defaultUltraLowLight:%s ", __LINE__, mCameras[i].defaultUltraLowLight.string());
+        ALOGD("line%d, in DeviceData, pcam->supportedUltraLowLight:%s ", __LINE__, mCameras[i].supportedUltraLowLight.string());
+        ALOGD("line%d, in DeviceData, pcam->defaultFaceRecognition:%s ", __LINE__, mCameras[i].defaultFaceRecognition.string());
+        ALOGD("line%d, in DeviceData, pcam->supportedFaceRecognition:%s ", __LINE__, mCameras[i].supportedFaceRecognition.string());
+        ALOGD("line%d, in DeviceData, pcam->defaultSmileShutter:%s ", __LINE__, mCameras[i].defaultSmileShutter.string());
+        ALOGD("line%d, in DeviceData, pcam->supportedSmileShutter:%s ", __LINE__, mCameras[i].supportedSmileShutter.string());
+        ALOGD("line%d, in DeviceData, pcam->defaultBlinkShutter:%s ", __LINE__, mCameras[i].defaultBlinkShutter.string());
+        ALOGD("line%d, in DeviceData, pcam->supportedBlinkShutter:%s ", __LINE__, mCameras[i].supportedBlinkShutter.string());
+        ALOGD("line%d, in DeviceData, pcam->defaultPanorama:%s ", __LINE__, mCameras[i].defaultPanorama.string());
+        ALOGD("line%d, in DeviceData, pcam->supportedPanorama:%s ", __LINE__, mCameras[i].supportedPanorama.string());
+        ALOGD("line%d, in DeviceData, pcam->defaultSceneDetection:%s ", __LINE__, mCameras[i].defaultSceneDetection.string());
+        ALOGD("line%d, in DeviceData, pcam->supportedSceneDetection:%s ", __LINE__, mCameras[i].supportedSceneDetection.string());
+        ALOGD("line%d, in DeviceData, pcam->maxNumYUVBufferForBurst:%d ", __LINE__, mCameras[i].maxNumYUVBufferForBurst);
+        ALOGD("line%d, in DeviceData, pcam->maxNumYUVBufferForBracket:%d ", __LINE__, mCameras[i].maxNumYUVBufferForBracket);
+        ALOGD("line%d, in DeviceData, pcam->maxHighSpeedDvsResolution:%s ",__LINE__, mCameras[i].maxHighSpeedDvsResolution.string());
     }
 
-    LOGD("line%d, in DeviceData, for common settings ", __LINE__);
-    LOGD("line%d, in DeviceData, mSubDevName:%s ", __LINE__, mSubDevName.string());
-    LOGD("line%d, in DeviceData, mFileInject:%d ", __LINE__, mFileInject);
-    LOGD("line%d, in DeviceData, mProductName:%s ", __LINE__, mProductName.string());
-    LOGD("line%d, in DeviceData, mManufacturerName:%s ", __LINE__, mManufacturerName.string());
-    LOGD("line%d, in DeviceData, mMaxZoomFactor:%d ", __LINE__, mMaxZoomFactor);
-    LOGD("line%d, in DeviceData, mSupportVideoSnapshot:%d ", __LINE__, mSupportVideoSnapshot);
-    LOGD("line%d, in DeviceData, mNumRecordingBuffers:%d ", __LINE__, mNumRecordingBuffers);
-    LOGD("line%d, in DeviceData, mNumPreviewBuffers:%d ", __LINE__, mNumPreviewBuffers);
-    LOGD("line%d, in DeviceData, mMaxContinuousRawRingBuffer:%d ", __LINE__, mMaxContinuousRawRingBuffer);
-    LOGD("line%d, in DeviceData, mBoardName:%s ", __LINE__, mBoardName.string());
-    LOGD("line%d, in DeviceData, mUseIntelULL:%d ", __LINE__, mUseIntelULL);
+    ALOGD("line%d, in DeviceData, for common settings ", __LINE__);
+    ALOGD("line%d, in DeviceData, mSubDevName:%s ", __LINE__, mSubDevName.string());
+    ALOGD("line%d, in DeviceData, mFileInject:%d ", __LINE__, mFileInject);
+    ALOGD("line%d, in DeviceData, mProductName:%s ", __LINE__, mProductName.string());
+    ALOGD("line%d, in DeviceData, mManufacturerName:%s ", __LINE__, mManufacturerName.string());
+    ALOGD("line%d, in DeviceData, mMaxZoomFactor:%d ", __LINE__, mMaxZoomFactor);
+    ALOGD("line%d, in DeviceData, mSupportVideoSnapshot:%d ", __LINE__, mSupportVideoSnapshot);
+    ALOGD("line%d, in DeviceData, mNumRecordingBuffers:%d ", __LINE__, mNumRecordingBuffers);
+    ALOGD("line%d, in DeviceData, mNumPreviewBuffers:%d ", __LINE__, mNumPreviewBuffers);
+    ALOGD("line%d, in DeviceData, mMaxContinuousRawRingBuffer:%d ", __LINE__, mMaxContinuousRawRingBuffer);
+    ALOGD("line%d, in DeviceData, mBoardName:%s ", __LINE__, mBoardName.string());
+    ALOGD("line%d, in DeviceData, mUseIntelULL:%d ", __LINE__, mUseIntelULL);
 }
 
 }

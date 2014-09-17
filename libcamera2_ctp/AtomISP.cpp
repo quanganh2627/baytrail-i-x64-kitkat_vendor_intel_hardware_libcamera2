@@ -133,7 +133,7 @@ status_t AtomISP::initDevice()
     status_t status = NO_ERROR;
 
     if (mGroupIndex < 0) {
-        LOGE("No mGroupIndex set. Could not run device init!");
+        ALOGE("No mGroupIndex set. Could not run device init!");
         return NO_INIT;
     }
 
@@ -162,7 +162,7 @@ status_t AtomISP::initDevice()
 
     status = mMainDevice->open();
     if (status != NO_ERROR) {
-        LOGE("Failed to open first device!");
+        ALOGE("Failed to open first device!");
         return NO_INIT;
     }
 
@@ -170,7 +170,7 @@ status_t AtomISP::initDevice()
     CLEAR(aCap);
     status = mMainDevice->queryCap(&aCap);
     if (status != NO_ERROR) {
-        LOGE("Failed basic capability check failed!");
+        ALOGE("Failed basic capability check failed!");
         return NO_INIT;
     }
 
@@ -240,13 +240,13 @@ status_t AtomISP::init()
     }
 
     if (mGroupIndex < 0) {
-        LOGE("No free device. Inititialize Atomisp failed.");
+        ALOGE("No free device. Inititialize Atomisp failed.");
         return NO_INIT;
     }
 
     status = initDevice();
     if (status != NO_ERROR) {
-        LOGE("Device inititialize failure. Inititialize Atomisp failed.");
+        ALOGE("Device inititialize failure. Inititialize Atomisp failed.");
         return NO_INIT;
     }
 
@@ -409,7 +409,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
 {
     LOG2("@%s", __FUNCTION__);
     if (!params) {
-        LOGE("params is null!");
+        ALOGE("params is null!");
         return;
     }
     int cameraId = mCameraId;
@@ -477,7 +477,7 @@ void AtomISP::getDefaultParameters(CameraParameters *params, CameraParameters *i
         ((float)(makerNote.focal_length & 0xFFFF));
     char focalLength[100] = {0};
     if (snprintf(focalLength, sizeof(focalLength),"%f", focal_length) < 0) {
-        LOGE("Could not generate %s string: %s",
+        ALOGE("Could not generate %s string: %s",
             CameraParameters::KEY_FOCAL_LENGTH, strerror(errno));
         return;
     }
@@ -721,12 +721,12 @@ status_t AtomISP::updateCaptureParams()
     status_t status = NO_ERROR;
     if (mSensorType == SENSOR_TYPE_RAW) {
         if (mMainDevice->setControl(V4L2_CID_ATOMISP_LOW_LIGHT, mLowLight, "Low Light") < 0) {
-            LOGE("set low light failure");
+            ALOGE("set low light failure");
             status = UNKNOWN_ERROR;
         }
 
         if (mMainDevice->xioctl(ATOMISP_IOC_S_XNR, &mXnr) < 0) {
-            LOGE("set XNR failure");
+            ALOGE("set XNR failure");
             status = UNKNOWN_ERROR;
         }
 
@@ -750,7 +750,7 @@ status_t AtomISP::getDvsStatistics(struct atomisp_dis_statistics *stats,
         return NO_ERROR;
 
     if (ret < 0) {
-        LOGE("failed to get DVS statistics");
+        ALOGE("failed to get DVS statistics");
         status = UNKNOWN_ERROR;
     }
     return status;
@@ -760,7 +760,7 @@ status_t AtomISP::setMotionVector(const struct atomisp_dis_vector *vector) const
 {
     status_t status = NO_ERROR;
     if (mMainDevice->xioctl(ATOMISP_IOC_S_DIS_VECTOR, (struct atomisp_dis_vector *)vector) < 0) {
-        LOGE("failed to set motion vector");
+        ALOGE("failed to set motion vector");
         status = UNKNOWN_ERROR;
     }
     return status;
@@ -770,7 +770,7 @@ status_t AtomISP::setDvsCoefficients(const struct atomisp_dis_coefficients *coef
 {
     status_t status = NO_ERROR;
     if (mMainDevice->xioctl(ATOMISP_IOC_S_DIS_COEFS, (struct atomisp_dis_coefficients *)coefs) < 0) {
-        LOGE("failed to set dvs coefficients");
+        ALOGE("failed to set dvs coefficients");
         status = UNKNOWN_ERROR;
     }
     return status;
@@ -780,7 +780,7 @@ status_t AtomISP::getIspParameters(struct atomisp_parm *isp_param) const
 {
     status_t status = NO_ERROR;
     if (mMainDevice->xioctl(ATOMISP_IOC_G_ISP_PARM, isp_param) < 0) {
-        LOGE("failed to get ISP parameters");
+        ALOGE("failed to get ISP parameters");
         status = UNKNOWN_ERROR;
     }
     return status;
@@ -818,13 +818,13 @@ void AtomISP::fetchIspVersions()
     const char *mcPathName = "/dev/media0";
     int fd = open(mcPathName, O_RDONLY);
     if (fd == -1) {
-        LOGE("Error in opening media controller: %s!", strerror(errno));
+        ALOGE("Error in opening media controller: %s!", strerror(errno));
     } else {
         struct media_device_info info;
         memset(&info, 0, sizeof(info));
 
         if (ioctl(fd, MEDIA_IOC_DEVICE_INFO, &info) < 0) {
-            LOGE("Error in getting media controller info: %s", strerror(errno));
+            ALOGE("Error in getting media controller info: %s", strerror(errno));
         } else {
             int hw_version = (info.hw_revision & ATOMISP_HW_REVISION_MASK) >> ATOMISP_HW_REVISION_SHIFT;
             int hw_stepping = info.hw_revision & ATOMISP_HW_STEPPING_MASK;
@@ -842,7 +842,7 @@ void AtomISP::fetchIspVersions()
                     mIspHwMajorVersion = 2401;
                     break;
                 default:
-                    LOGE("Unknown ISP HW version: %d", hw_version);
+                    ALOGE("Unknown ISP HW version: %d", hw_version);
             }
             if (mIspHwMajorVersion > 0)
                 LOG1("ISP HW version is: %d", mIspHwMajorVersion);
@@ -855,7 +855,7 @@ void AtomISP::fetchIspVersions()
                     mIspHwMinorVersion = 1;
                     break;
                 default:
-                    LOGE("Unknown ISP HW stepping: %d", hw_stepping);
+                    ALOGE("Unknown ISP HW stepping: %d", hw_stepping);
             }
             if (mIspHwMinorVersion > 0)
                 LOG1("ISP HW stepping is: %d", mIspHwMinorVersion);
@@ -874,7 +874,7 @@ void AtomISP::fetchIspVersions()
                     mCssMinorVersion = 1;
                     break;
                 default:
-                    LOGE("Unknown CSS version: %d", css_version);
+                    ALOGE("Unknown CSS version: %d", css_version);
             }
             if (mCssMajorVersion > 0)
                 LOG1("CSS version is: %d.%d", mCssMajorVersion, mCssMinorVersion);
@@ -1097,7 +1097,7 @@ status_t AtomISP::configurePreview()
 
     ret = activePreviewNode->open();
     if (ret < 0) {
-        LOGE("Open preview device failed!");
+        ALOGE("Open preview device failed!");
         status = UNKNOWN_ERROR;
         return status;
     }
@@ -1105,7 +1105,7 @@ status_t AtomISP::configurePreview()
     struct v4l2_capability aCap;
     status = activePreviewNode->queryCap(&aCap);
     if (status != NO_ERROR) {
-        LOGE("Failed basic capability check failed!");
+        ALOGE("Failed basic capability check failed!");
         return NO_INIT;
     }
 
@@ -1158,7 +1158,7 @@ status_t AtomISP::startPreview()
 
     ret = mPreviewDevice->start(bufcount, mInitialSkips);
     if (ret < 0) {
-        LOGE("Start preview device failed!");
+        ALOGE("Start preview device failed!");
         status = UNKNOWN_ERROR;
         goto err;
     }
@@ -1210,7 +1210,7 @@ status_t AtomISP::configureRecording()
 
     ret = mPreviewDevice->open();
     if (ret < 0) {
-        LOGE("Open preview device failed!");
+        ALOGE("Open preview device failed!");
         status = UNKNOWN_ERROR;
         goto err;
     }
@@ -1218,7 +1218,7 @@ status_t AtomISP::configureRecording()
     struct v4l2_capability aCap;
     status = mPreviewDevice->queryCap(&aCap);
     if (status != NO_ERROR) {
-        LOGE("Failed basic capability check failed!");
+        ALOGE("Failed basic capability check failed!");
         return NO_INIT;
     }
 
@@ -1234,14 +1234,14 @@ status_t AtomISP::configureRecording()
     //open recording device
     ret = mRecordingDevice->open();
     if (ret < 0) {
-        LOGE("Open recording device failed!");
+        ALOGE("Open recording device failed!");
         status = UNKNOWN_ERROR;
         goto err;
     }
 
     status = mRecordingDevice->queryCap(&aCap);
     if (status != NO_ERROR) {
-        LOGE("Failed basic capability check failed!");
+        ALOGE("Failed basic capability check failed!");
         return NO_INIT;
     }
 
@@ -1251,7 +1251,7 @@ status_t AtomISP::configureRecording()
             recordingConfig,
             false);
     if (ret < 0) {
-        LOGE("Configure recording device failed!");
+        ALOGE("Configure recording device failed!");
         status = UNKNOWN_ERROR;
         goto err;
     }
@@ -1281,7 +1281,7 @@ status_t AtomISP::configureRecording()
     }
 
     if (ret < 0) {
-        LOGE("Configure recording device failed!");
+        ALOGE("Configure recording device failed!");
         status = UNKNOWN_ERROR;
         goto err;
     }
@@ -1310,14 +1310,14 @@ status_t AtomISP::startRecording()
 
     ret = mRecordingDevice->start(mConfig.num_recording_buffers, mInitialSkips);
     if (ret < 0) {
-        LOGE("Start recording device failed");
+        ALOGE("Start recording device failed");
         status = UNKNOWN_ERROR;
         goto err;
     }
 
     ret = mPreviewDevice->start(mConfig.num_preview_buffers, mInitialSkips);
     if (ret < 0) {
-        LOGE("Start preview device failed!");
+        ALOGE("Start preview device failed!");
         status = UNKNOWN_ERROR;
         goto err;
     }
@@ -1369,7 +1369,7 @@ status_t AtomISP::configureCapture()
             &(mConfig.snapshot),
             isDumpRawImageReady());
     if (ret < 0) {
-        LOGE("configure first device failed!");
+        ALOGE("configure first device failed!");
         status = UNKNOWN_ERROR;
         goto errorFreeBuf;
     }
@@ -1379,7 +1379,7 @@ status_t AtomISP::configureCapture()
 
     ret = mPostViewDevice->open();
     if (ret < 0) {
-        LOGE("Open second device failed!");
+        ALOGE("Open second device failed!");
         status = UNKNOWN_ERROR;
         goto errorFreeBuf;
     }
@@ -1387,7 +1387,7 @@ status_t AtomISP::configureCapture()
     struct v4l2_capability aCap;
     status = mPostViewDevice->queryCap(&aCap);
     if (status != NO_ERROR) {
-        LOGE("Failed basic capability check failed!");
+        ALOGE("Failed basic capability check failed!");
         return NO_INIT;
     }
 
@@ -1397,7 +1397,7 @@ status_t AtomISP::configureCapture()
             &(mConfig.postview),
             false);
     if (ret < 0) {
-        LOGE("configure second device failed!");
+        ALOGE("configure second device failed!");
         status = UNKNOWN_ERROR;
         goto errorCloseSecond;
     }
@@ -1440,7 +1440,7 @@ status_t AtomISP::requestContCapture(int numCaptures, int offset, unsigned int s
     LOG1("@%s: CONT_CAPTURE_CONFIG num %d, offset %d, skip %u, res %d",
          __FUNCTION__, numCaptures, offset, skip, res);
     if (res != 0) {
-        LOGE("@%s: error with CONT_CAPTURE_CONFIG, res %d", __FUNCTION__, res);
+        ALOGE("@%s: error with CONT_CAPTURE_CONFIG, res %d", __FUNCTION__, res);
         return UNKNOWN_ERROR;
     }
 
@@ -1603,7 +1603,7 @@ status_t AtomISP::configureContinuousSOC()
     if (!mPreviewDevice->isOpen()) {
         ret = mPreviewDevice->open();
         if (ret < 0) {
-            LOGE("Open preview device failed!");
+            ALOGE("Open preview device failed!");
             status = UNKNOWN_ERROR;
             return status;
         }
@@ -1611,7 +1611,7 @@ status_t AtomISP::configureContinuousSOC()
         struct v4l2_capability aCap;
         status = mPreviewDevice->queryCap(&aCap);
         if (status != NO_ERROR) {
-            LOGE("Failed basic capability check failed!");
+            ALOGE("Failed basic capability check failed!");
             return NO_INIT;
         }
     }
@@ -1635,7 +1635,7 @@ status_t AtomISP::configureContinuousSOC()
             false);
     if (ret < 0) {
         status = UNKNOWN_ERROR;
-        LOGE("@%s: configureDevice failed!", __FUNCTION__);
+        ALOGE("@%s: configureDevice failed!", __FUNCTION__);
         goto err;
     }
 
@@ -1655,7 +1655,7 @@ status_t AtomISP::configureContinuous()
     status_t status = NO_ERROR;
 
     if (!mContCaptPrepared) {
-        LOGE("offline capture not prepared correctly");
+        ALOGE("offline capture not prepared correctly");
         return UNKNOWN_ERROR;
     }
 
@@ -1667,13 +1667,13 @@ status_t AtomISP::configureContinuous()
 
     ret = configureContinuousMode(true);
     if (ret != NO_ERROR) {
-        LOGE("setting continuous mode failed");
+        ALOGE("setting continuous mode failed");
         return ret;
     }
 
     ret = configureContinuousRingBuffer();
     if (ret != NO_ERROR) {
-        LOGE("setting continuous capture params failed");
+        ALOGE("setting continuous capture params failed");
         return ret;
     }
 
@@ -1683,7 +1683,7 @@ status_t AtomISP::configureContinuous()
             &(mConfig.snapshot),
             isDumpRawImageReady());
     if (ret < 0) {
-        LOGE("configure first device failed!");
+        ALOGE("configure first device failed!");
         status = UNKNOWN_ERROR;
         goto errorFreeBuf;
     }
@@ -1697,7 +1697,7 @@ status_t AtomISP::configureContinuous()
 
     ret = mPostViewDevice->open();
     if (ret < 0) {
-        LOGE("Open second device failed!");
+        ALOGE("Open second device failed!");
         status = UNKNOWN_ERROR;
         goto errorFreeBuf;
     }
@@ -1705,7 +1705,7 @@ status_t AtomISP::configureContinuous()
     struct v4l2_capability aCap;
     status = mPostViewDevice->queryCap(&aCap);
     if (status != NO_ERROR) {
-        LOGE("Failed basic capability check failed!");
+        ALOGE("Failed basic capability check failed!");
         return NO_INIT;
     }
 
@@ -1715,7 +1715,7 @@ status_t AtomISP::configureContinuous()
             &(mConfig.postview),
             false);
     if (ret < 0) {
-        LOGE("configure second device failed!");
+        ALOGE("configure second device failed!");
         status = UNKNOWN_ERROR;
         goto errorCloseSecond;
     }
@@ -1784,7 +1784,7 @@ status_t AtomISP::startCapture()
 
     ret = mMainDevice->start(snapNum, initialSkips);
     if (ret < 0) {
-        LOGE("start capture on first device failed!");
+        ALOGE("start capture on first device failed!");
         status = UNKNOWN_ERROR;
         goto end;
     }
@@ -1797,7 +1797,7 @@ status_t AtomISP::startCapture()
 
     ret = mPostViewDevice->start(snapNum, initialSkips);
     if (ret < 0) {
-        LOGE("start capture on second device failed!");
+        ALOGE("start capture on second device failed!");
         status = UNKNOWN_ERROR;
         goto errorStopFirst;
     }
@@ -1840,7 +1840,7 @@ status_t AtomISP::stopContinuousPreview()
     if (stopPreview() != NO_ERROR)
         ++error;
     if (error) {
-        LOGE("@%s: errors (%d) in stopping continuous capture",
+        ALOGE("@%s: errors (%d) in stopping continuous capture",
              __FUNCTION__, error);
         return UNKNOWN_ERROR;
     }
@@ -1922,17 +1922,17 @@ status_t AtomISP::startOfflineCapture(ContinuousCaptureConfig &config)
         return OK;
 
     if (mMode != MODE_CONTINUOUS_CAPTURE) {
-        LOGE("@%s: invalid mode %d", __FUNCTION__, mMode);
+        ALOGE("@%s: invalid mode %d", __FUNCTION__, mMode);
         return INVALID_OPERATION;
     }
     else if (config.offset < 0 &&
              config.offset < mContCaptConfig.offset) {
-        LOGE("@%s: cannot start, offset %d, %d set at preview start",
+        ALOGE("@%s: cannot start, offset %d, %d set at preview start",
              __FUNCTION__, config.offset, mContCaptConfig.offset);
         return UNKNOWN_ERROR;
     }
     else if (config.numCaptures > mContCaptConfig.numCaptures) {
-        LOGE("@%s: cannot start, num captures %d, %d set at preview start",
+        ALOGE("@%s: cannot start, num captures %d, %d set at preview start",
              __FUNCTION__, config.numCaptures, mContCaptConfig.numCaptures);
         return UNKNOWN_ERROR;
     }
@@ -1965,7 +1965,7 @@ status_t AtomISP::stopOfflineCapture()
 {
     LOG1("@%s", __FUNCTION__);
     if (mMode != MODE_CONTINUOUS_CAPTURE) {
-        LOGE("@%s: invalid mode %d", __FUNCTION__, mMode);
+        ALOGE("@%s: invalid mode %d", __FUNCTION__, mMode);
         return INVALID_OPERATION;
     }
 
@@ -1988,7 +1988,7 @@ status_t AtomISP::prepareOfflineCapture(ContinuousCaptureConfig &cfg, bool captu
 {
     LOG1("@%s, numCaptures = %d", __FUNCTION__, cfg.numCaptures);
     if (cfg.offset < continuousBurstNegMinOffset()) {
-        LOGE("@%s: offset %d not supported, minimum %d",
+        ALOGE("@%s: offset %d not supported, minimum %d",
              __FUNCTION__, cfg.offset, continuousBurstNegMinOffset());
         return UNKNOWN_ERROR;
     }
@@ -2028,7 +2028,7 @@ int AtomISP::configureDevice(V4L2VideoNode *device, int deviceMode, AtomBuffer *
         w, h, deviceMode, v4l2Fmt2Str(fourcc), raw);
 
     if ((w <= 0) || (h <= 0)) {
-        LOGE("Wrong Width %d or Height %d", w, h);
+        ALOGE("Wrong Width %d or Height %d", w, h);
         return -1;
     }
 
@@ -2058,7 +2058,7 @@ int AtomISP::configureDevice(V4L2VideoNode *device, int deviceMode, AtomBuffer *
                 LOG1("setting fps: %d", fps);
                 status = mMainDevice->setParameter(&parm);
                 if (status != NO_ERROR) {
-                    LOGE("error setting fps: %d", fps);
+                    ALOGE("error setting fps: %d", fps);
                     return -1;
                 }
                 // Update the configuration with fps from the driver
@@ -2066,7 +2066,7 @@ int AtomISP::configureDevice(V4L2VideoNode *device, int deviceMode, AtomBuffer *
                     mConfig.fps = (float) parm.parm.capture.timeperframe.denominator / parm.parm.capture.timeperframe.numerator;
                     LOG1("Sensor fps: %.2f", mConfig.fps);
                 } else {
-                    LOGW("Sensor driver returned invalid frame rate, using default");
+                    ALOGW("Sensor driver returned invalid frame rate, using default");
                     mConfig.fps = DEFAULT_SENSOR_FPS;
                 }
             }
@@ -2144,7 +2144,7 @@ status_t AtomISP::setPostviewFrameFormat(AtomBuffer& formatDescriptor)
     LOG1("@%s width(%d), height(%d), fourcc(%x)", __FUNCTION__,
          formatDescriptor.width, formatDescriptor.height, formatDescriptor.fourcc);
     if (formatDescriptor.width < 0 || formatDescriptor.height < 0) {
-        LOGE("Invalid postview size requested!");
+        ALOGE("Invalid postview size requested!");
         return BAD_VALUE;
     }
     if (formatDescriptor.width == 0 || formatDescriptor.height == 0) {
@@ -2231,16 +2231,16 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int fourcc)
     }
 
     if (mMode == MODE_VIDEO) {
-        LOGE("Reconfiguration in video mode unsupported. Stop the ISP first");
+        ALOGE("Reconfiguration in video mode unsupported. Stop the ISP first");
         return INVALID_OPERATION;
     }
 
     if (width > mConfig.recordingLimits.maxWidth || width <= 0) {
-        LOGE("invalid recording width %d. override to %d", width, mConfig.recordingLimits.maxWidth);
+        ALOGE("invalid recording width %d. override to %d", width, mConfig.recordingLimits.maxWidth);
         width = mConfig.recordingLimits.maxWidth;
     }
     if (height > mConfig.recordingLimits.maxHeight || height <= 0) {
-        LOGE("invalid recording height %d. override to %d", height, mConfig.recordingLimits.maxHeight);
+        ALOGE("invalid recording height %d. override to %d", height, mConfig.recordingLimits.maxHeight);
         height = mConfig.recordingLimits.maxHeight;
     }
     mConfig.recording.width = width;
@@ -2392,7 +2392,7 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
                 mPreviewTooBigForVFPP = false;
                 bool videoSizeSupported = PlatformData::resolutionSupportedByVFPP(mCameraId, videoWidth, videoWidth);
                 if (!videoSizeSupported) {
-                    LOGE("@%s ERROR: Video recording with preview > video "
+                    ALOGE("@%s ERROR: Video recording with preview > video "
                          "resolution and video resolution > maxPreviewPixelCountForVFPP "
                          "is not yet supported.", __FUNCTION__);
                 }
@@ -2400,7 +2400,7 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
                 mPreviewTooBigForVFPP = true; // video mode, too big preview, not yet swapped for workaround 2
                 mSwapRecordingDevice = true; // swap for this workaround 4, since vfpp is too slow
                 if (previewWidth * previewHeight != videoWidth * videoHeight) {
-                    LOGE("@%s ERROR: Video recording with preview resolution > "
+                    ALOGE("@%s ERROR: Video recording with preview resolution > "
                          "maxPreviewPixelCountForVFPP and recording resolution > "
                          "preview resolution is not yet supported.", __FUNCTION__);
                 }
@@ -2455,7 +2455,7 @@ void AtomISP::getFocusDistances(CameraParameters *params)
                     i ? "," : "", fDistances[i]);
         }
         if (res < 0) {
-            LOGE("Could not generate %s string: %s",
+            ALOGE("Could not generate %s string: %s",
                 CameraParameters::KEY_FOCUS_DISTANCES, strerror(errno));
             return;
         }
@@ -2467,7 +2467,7 @@ status_t AtomISP::setFlash(int numFrames)
 {
     LOG1("@%s: numFrames = %d", __FUNCTION__, numFrames);
     if (PlatformData::cameraFacing(mCameraId) != CAMERA_FACING_BACK) {
-        LOGE("Flash is supported only for primary camera!");
+        ALOGE("Flash is supported only for primary camera!");
         return INVALID_OPERATION;
     }
     if (numFrames) {
@@ -2484,7 +2484,7 @@ status_t AtomISP::setFlash(int numFrames)
         mFlashIsOn = false;
     }
 
-    LOGD("setFlash() mFlashIsOn: %d", mFlashIsOn);
+    ALOGD("setFlash() mFlashIsOn: %d", mFlashIsOn);
     return NO_ERROR;
 }
 
@@ -2492,7 +2492,7 @@ status_t AtomISP::setFlashIndicator(int intensity)
 {
     LOG1("@%s: intensity = %d", __FUNCTION__, intensity);
     if (PlatformData::cameraFacing(mCameraId) != CAMERA_FACING_BACK) {
-        LOGE("Indicator intensity is supported only for primary camera!");
+        ALOGE("Indicator intensity is supported only for primary camera!");
         return INVALID_OPERATION;
     }
 
@@ -2524,7 +2524,7 @@ status_t AtomISP::setTorchHelper(int intensity)
         mFlashIsOn = false;
     }
 
-    LOGD("mFlashIsOn: %d", mFlashIsOn);
+    ALOGD("mFlashIsOn: %d", mFlashIsOn);
     return NO_ERROR;
 }
 
@@ -2533,7 +2533,7 @@ status_t AtomISP::setTorch(int intensity)
     LOG1("@%s: intensity = %d", __FUNCTION__, intensity);
 
     if (PlatformData::cameraFacing(mCameraId) != CAMERA_FACING_BACK) {
-        LOGE("Indicator intensity is supported only for primary camera!");
+        ALOGE("Indicator intensity is supported only for primary camera!");
         return INVALID_OPERATION;
     }
 
@@ -2559,7 +2559,7 @@ status_t AtomISP::applyColorEffect()
 
     // Color effect overrides configs that AIC has set
     if (mMainDevice->setControl(V4L2_CID_COLORFX, mColorEffect, "Colour Effect") < 0){
-        LOGE("Error setting color effect");
+        ALOGE("Error setting color effect");
         return UNKNOWN_ERROR;
     }
     return status;
@@ -2576,7 +2576,7 @@ status_t AtomISP::setZoom(int zoom)
     int ret = atomisp_set_zoom(zoom);
 
     if (ret < 0) {
-        LOGE("Error setting zoom to %d", zoom);
+        ALOGE("Error setting zoom to %d", zoom);
         return UNKNOWN_ERROR;
     }
 
@@ -2598,7 +2598,7 @@ status_t AtomISP::getMakerNote(atomisp_makernote_info *info)
     info->f_number_range = 0;
 
     if (mMainDevice->xioctl(ATOMISP_IOC_ISP_MAKERNOTE, info) < 0) {
-        LOGW("WARNING: get maker note from driver failed!");
+        ALOGW("WARNING: get maker note from driver failed!");
         return UNKNOWN_ERROR;
     }
     return NO_ERROR;
@@ -2609,7 +2609,7 @@ status_t AtomISP::getContrast(int *value)
     LOG1("@%s", __FUNCTION__);
 
     if (mMainDevice->getControl(V4L2_CID_CONTRAST, value) < 0) {
-        LOGW("WARNING: get Contrast from driver failed!");
+        ALOGW("WARNING: get Contrast from driver failed!");
         return UNKNOWN_ERROR;
     }
     LOG1("@%s: got %d", __FUNCTION__, *value);
@@ -2621,7 +2621,7 @@ status_t AtomISP::setContrast(int value)
     LOG1("@%s: value:%d", __FUNCTION__, value);
 
     if (mMainDevice->setControl(V4L2_CID_CONTRAST, value, "Request Contrast") < 0) {
-        LOGW("WARNING: set Contrast from driver failed!");
+        ALOGW("WARNING: set Contrast from driver failed!");
         return UNKNOWN_ERROR;
     }
     return NO_ERROR;
@@ -2632,7 +2632,7 @@ status_t AtomISP::getSaturation(int *value)
     LOG1("@%s", __FUNCTION__);
 
     if (mMainDevice->getControl(V4L2_CID_SATURATION, value) < 0) {
-        LOGW("WARNING: get Saturation from driver failed!");
+        ALOGW("WARNING: get Saturation from driver failed!");
         return UNKNOWN_ERROR;
     }
     LOG1("@%s: got %d", __FUNCTION__, *value);
@@ -2644,7 +2644,7 @@ status_t AtomISP::setSaturation(int value)
     LOG1("@%s: value:%d", __FUNCTION__, value);
 
     if (mMainDevice->setControl(V4L2_CID_SATURATION, value, "Request Saturation") < 0) {
-        LOGW("WARNING: set Saturation from driver failed!");
+        ALOGW("WARNING: set Saturation from driver failed!");
         return UNKNOWN_ERROR;
     }
     return NO_ERROR;
@@ -2655,7 +2655,7 @@ status_t AtomISP::getSharpness(int *value)
     LOG1("@%s", __FUNCTION__);
 
     if (mMainDevice->getControl(V4L2_CID_SHARPNESS, value) < 0) {
-        LOGW("WARNING: get Sharpness from driver failed!");
+        ALOGW("WARNING: get Sharpness from driver failed!");
         return UNKNOWN_ERROR;
     }
     LOG1("@%s: got %d", __FUNCTION__, *value);
@@ -2667,7 +2667,7 @@ status_t AtomISP::setSharpness(int value)
     LOG1("@%s: value:%d", __FUNCTION__, value);
 
     if (mMainDevice->setControl(V4L2_CID_SHARPNESS, value, "Request Sharpness") < 0) {
-        LOGW("WARNING: set Sharpness from driver failed!");
+        ALOGW("WARNING: set Sharpness from driver failed!");
         return UNKNOWN_ERROR;
     }
     return NO_ERROR;
@@ -2765,7 +2765,7 @@ int AtomISP::startFileInject(void)
     int buffer_count = 1;
 
     if (mFileInject.active != true) {
-        LOGE("%s: no input file set",  __func__);
+        ALOGE("%s: no input file set",  __func__);
         return -1;
     }
 
@@ -2784,7 +2784,7 @@ int AtomISP::startFileInject(void)
     parm.parm.output.outputmode = OUTPUT_MODE_FILE;
 
     if (mFileInjectDevice->setParameter(&parm) != NO_ERROR) {
-        LOGE("error setting parameter V4L2_BUF_TYPE_VIDEO_OUTPUT %s", strerror(errno));
+        ALOGE("error setting parameter V4L2_BUF_TYPE_VIDEO_OUTPUT %s", strerror(errno));
         return -1;
     }
 
@@ -2811,14 +2811,14 @@ int AtomISP::startFileInject(void)
 
     mFileInject.dataAddr = new char[mFileInject.formatDescriptor.size];
     if (mFileInject.dataAddr == NULL) {
-        LOGE("Not enough memory to allocate injection buffer");
+        ALOGE("Not enough memory to allocate injection buffer");
         goto error1;
     }
 
     // fill buffer with image data from file
     FILE *file;
     if (!(file = fopen(mFileInject.fileName.string(), "r"))) {
-        LOGE("ERR(%s): Failed to open %s\n", __func__, mFileInject.fileName.string());
+        ALOGE("ERR(%s): Failed to open %s\n", __func__, mFileInject.fileName.string());
         goto error1;
     }
     fread(mFileInject.dataAddr, 1,  mFileInject.formatDescriptor.size, file);
@@ -2902,20 +2902,20 @@ status_t AtomISP::fileInjectSetSize(void)
 
     /* Open the file we will transfer to kernel */
     if ((fileFd = open(mFileInject.fileName.string(), O_RDONLY)) == -1) {
-        LOGE("ERR(%s): Failed to open %s\n", __FUNCTION__, fileName);
+        ALOGE("ERR(%s): Failed to open %s\n", __FUNCTION__, fileName);
         return INVALID_OPERATION;
     }
 
     CLEAR(st);
     if (fstat(fileFd, &st) < 0) {
-        LOGE("ERR(%s): fstat %s failed\n", __func__, fileName);
+        ALOGE("ERR(%s): fstat %s failed\n", __func__, fileName);
         close(fileFd);
         return INVALID_OPERATION;
     }
 
     fileSize = st.st_size;
     if (fileSize == 0) {
-        LOGE("ERR(%s): empty file %s\n", __func__, fileName);
+        ALOGE("ERR(%s): empty file %s\n", __func__, fileName);
         close(fileFd);
         return -1;
     }
@@ -2960,17 +2960,17 @@ int AtomISP::atomisp_set_capture_mode(int deviceMode)
 
     status = mMainDevice->setParameter(&parm);
     if (status != NO_ERROR) {
-        LOGE("error setting the mode %d", deviceMode);
+        ALOGE("error setting the mode %d", deviceMode);
         return -1;
     }
 
     if (mMainDevice->setControl(V4L2_CID_VFPP, vfpp_mode, "V4L2_CID_VFPP") != NO_ERROR) {
         /* Menu-style V4L2_CID_VFPP not available, try legacy V4L2_CID_ENABLE_VFPP */
-        LOGW("warning %s: V4L2_CID_VFPP %i failed, trying V4L2_CID_ENABLE_VFPP", strerror(errno), vfpp_mode);
+        ALOGW("warning %s: V4L2_CID_VFPP %i failed, trying V4L2_CID_ENABLE_VFPP", strerror(errno), vfpp_mode);
         if (mMainDevice->setControl(V4L2_CID_ENABLE_VFPP, vfpp_mode == ATOMISP_VFPP_ENABLE, "V4L2_CID_ENABLE_VFPP") != NO_ERROR) {
-            LOGW("warning %s: V4L2_CID_ENABLE_VFPP failed", strerror(errno));
+            ALOGW("warning %s: V4L2_CID_ENABLE_VFPP failed", strerror(errno));
             if (vfpp_mode != ATOMISP_VFPP_ENABLE) {
-                LOGE("error: can not disable vf_pp");
+                ALOGE("error: can not disable vf_pp");
                 return -1;
             } /* else vf_pp enabled by default, so everything should be all right */
         }
@@ -3048,7 +3048,7 @@ bool AtomISP::waitForHALZSLBuffer(Vector<AtomBuffer> &vector, bool snapshot)
             mHALZSLLock.unlock();
             if (!snapshot)
                 mDeviceMutex[mPreviewDevice->mId].unlock();
-            LOGW("@%s, AtomISP starving from ZSL buffers.", __FUNCTION__);
+            ALOGW("@%s, AtomISP starving from ZSL buffers.", __FUNCTION__);
             usleep(sHALZSLRetryUSleep);
             if (!snapshot)
                 mDeviceMutex[mPreviewDevice->mId].lock(); // this locking order is significant!
@@ -3071,7 +3071,7 @@ status_t AtomISP::getHALZSLPreviewFrame(AtomBuffer *buff)
 
     int index = mPreviewDevice->grabFrame(&bufInfo);
     if(index < 0){
-        LOGE("@%s Error in grabbing frame!", __FUNCTION__);
+        ALOGE("@%s Error in grabbing frame!", __FUNCTION__);
         return BAD_INDEX;
     }
     LOG2("Device: %d. Grabbed frame of size: %d", mPreviewDevice->mId, bufInfo.vbuffer.bytesused);
@@ -3086,7 +3086,7 @@ status_t AtomISP::getHALZSLPreviewFrame(AtomBuffer *buff)
     mHALZSLBuffers[index].status = (FrameBufferStatus)bufInfo.vbuffer.reserved;
 
     if (!waitForHALZSLBuffer(mHALZSLPreviewBuffers, false)) {
-        LOGE("@%s no preview buffers in FIFO!", __FUNCTION__);
+        ALOGE("@%s no preview buffers in FIFO!", __FUNCTION__);
         return UNKNOWN_ERROR;
     }
 
@@ -3125,7 +3125,7 @@ status_t AtomISP::getPreviewFrame(AtomBuffer *buff)
 
     int index = mPreviewDevice->grabFrame(&bufInfo);
     if(index < 0){
-        LOGE("Error in grabbing frame!");
+        ALOGE("Error in grabbing frame!");
         return BAD_INDEX;
     }
 
@@ -3211,12 +3211,12 @@ void AtomISP::returnBuffer(AtomBuffer* buff)
     status_t status;
     if ((buff->type != ATOM_BUFFER_PREVIEW_GFX) &&
         (buff->type != ATOM_BUFFER_PREVIEW)) {
-        LOGE("Received unexpected buffer!");
+        ALOGE("Received unexpected buffer!");
     } else {
         buff->owner = 0;
         status = putPreviewFrame(buff);
         if (status != NO_ERROR) {
-            LOGE("Failed queueing preview frame!");
+            ALOGE("Failed queueing preview frame!");
         }
     }
 }
@@ -3233,7 +3233,7 @@ status_t AtomISP::setGraphicPreviewBuffers(const AtomBuffer *buffs, int numBuffs
         return BAD_VALUE;
 
     if (mConfig.num_preview_buffers != numBuffs) {
-        LOGE("Invalid shared preview buffer count configuration");
+        ALOGE("Invalid shared preview buffer count configuration");
         return UNKNOWN_ERROR;
     }
 
@@ -3268,7 +3268,7 @@ status_t AtomISP::getRecordingFrame(AtomBuffer *buff)
     int index = mRecordingDevice->grabFrame(&buf);
     LOG2("index = %d", index);
     if(index < 0) {
-        LOGE("Error in grabbing frame!");
+        ALOGE("Error in grabbing frame!");
         return BAD_INDEX;
     }
     LOG2("Device: %d. Grabbed frame of size: %d", mRecordingDevice->mId, buf.vbuffer.bytesused);
@@ -3403,7 +3403,7 @@ status_t AtomISP::getHALZSLSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postvie
     Mutex::Autolock mLock(mHALZSLLock);
 
     if (!waitForHALZSLBuffer(mHALZSLCaptureBuffers, true)) {
-        LOGE("@%s no capture buffers in FIFO!", __FUNCTION__);
+        ALOGE("@%s no capture buffers in FIFO!", __FUNCTION__);
         return UNKNOWN_ERROR;
     }
 
@@ -3439,7 +3439,7 @@ status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
 
     snapshotIndex = mMainDevice->grabFrame(&vinfo);
     if (snapshotIndex < 0) {
-        LOGE("Error in grabbing frame from 1'st device!");
+        ALOGE("Error in grabbing frame from 1'st device!");
         return BAD_INDEX;
     }
     LOG1("Device: %d. Grabbed frame of size: %d", V4L2_MAIN_DEVICE, vinfo.vbuffer.bytesused);
@@ -3455,7 +3455,7 @@ status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
 
     postviewIndex = mPostViewDevice->grabFrame(&vinfo);
     if (postviewIndex < 0) {
-        LOGE("Error in grabbing frame from 2'nd device!");
+        ALOGE("Error in grabbing frame from 2'nd device!");
         // If we failed with the second device, return the frame to the first device
         mMainDevice->putFrame(snapshotIndex);
         return BAD_INDEX;
@@ -3468,7 +3468,7 @@ status_t AtomISP::getSnapshot(AtomBuffer *snapshotBuf, AtomBuffer *postviewBuf)
 
     if (snapshotIndex != postviewIndex ||
             snapshotIndex >= MAX_V4L2_BUFFERS) {
-        LOGE("Indexes error! snapshotIndex = %d, postviewIndex = %d", snapshotIndex, postviewIndex);
+        ALOGE("Indexes error! snapshotIndex = %d, postviewIndex = %d", snapshotIndex, postviewIndex);
         // Return the buffers back to driver
         mMainDevice->putFrame(snapshotIndex);
         mPostViewDevice->putFrame(postviewIndex);
@@ -3552,7 +3552,7 @@ bool AtomISP::dataAvailable()
     if (mMode == MODE_PREVIEW || mMode == MODE_CONTINUOUS_CAPTURE)
         return mNumPreviewBuffersQueued > 0;
 
-    LOGE("Query for data in invalid mode");
+    ALOGE("Query for data in invalid mode");
 
     return false;
 }
@@ -3659,7 +3659,7 @@ status_t AtomISP::computeZoomRatios()
 
     mZoomRatios = new char[stringSize];
     if (mZoomRatios == NULL) {
-        LOGE("Error allocation memory for zoom ratios!");
+        ALOGE("Error allocation memory for zoom ratios!");
         return NO_MEMORY;
     }
 
@@ -3713,7 +3713,7 @@ status_t AtomISP::allocateHALZSLBuffers()
             status = MemoryUtils::allocateGraphicBuffer(mHALZSLBuffers[i], mConfig.HALZSL);
 
             if(status != NO_ERROR) {
-                LOGE("@%s: Failed to allocate GraphicBuffer!", __FUNCTION__);
+                ALOGE("@%s: Failed to allocate GraphicBuffer!", __FUNCTION__);
                 break;
             }
 
@@ -3765,7 +3765,7 @@ status_t AtomISP::allocatePreviewBuffers()
         for (int i = 0; i < mConfig.num_preview_buffers; i++) {
             MemoryUtils::allocateGraphicBuffer(tmp, mConfig.preview);
             if (tmp.dataPtr == NULL) {
-                LOGE("Error allocation memory for preview buffers!");
+                ALOGE("Error allocation memory for preview buffers!");
                 status = NO_MEMORY;
                 goto errorFree;
             }
@@ -3793,7 +3793,7 @@ status_t AtomISP::allocatePreviewBuffers()
     if (mHALZSLEnabled) {
         status = allocateHALZSLBuffers();
         if (status != OK) {
-            LOGE("Error allocation memory for HAL ZSL buffers!");
+            ALOGE("Error allocation memory for HAL ZSL buffers!");
             goto errorFree;
         }
     } else {
@@ -3820,7 +3820,7 @@ status_t AtomISP::allocateRecordingBuffers()
 
     mRecordingBuffers = new AtomBuffer[mConfig.num_recording_buffers];
     if (!mRecordingBuffers) {
-        LOGE("Not enough mem for recording buffer array");
+        ALOGE("Not enough mem for recording buffer array");
         status = NO_MEMORY;
         goto errorFree;
     }
@@ -3844,7 +3844,7 @@ status_t AtomISP::allocateRecordingBuffers()
         LOG1("allocate recording buffer[%d], buff=%p size=%d",
                 i, mRecordingBuffers[i].dataPtr, mRecordingBuffers[i].size);
         if (mRecordingBuffers[i].dataPtr == NULL) {
-            LOGE("Error allocation memory for recording buffers!");
+            ALOGE("Error allocation memory for recording buffers!");
             status = NO_MEMORY;
             goto errorFree;
         }
@@ -3904,7 +3904,7 @@ status_t AtomISP::allocateSnapshotBuffers()
 
             MemoryUtils::allocateAtomBuffer(mSnapshotBuffers[i], mConfig.snapshot, mCallbacks);
             if (mSnapshotBuffers[i].dataPtr == NULL) {
-                LOGE("Error allocation memory for snapshot buffers!");
+                ALOGE("Error allocation memory for snapshot buffers!");
                 status = NO_MEMORY;
                 goto errorFree;
             }
@@ -3941,7 +3941,7 @@ status_t AtomISP::allocateSnapshotBuffers()
             }
 
             if (postv.dataPtr == NULL) {
-                LOGE("Error allocation memory for postview buffers!");
+                ALOGE("Error allocation memory for postview buffers!");
                 status = NO_MEMORY;
                 goto errorFree;
             }
@@ -4075,7 +4075,7 @@ status_t AtomISP::allocateMetaDataBuffers()
                 i, mRecordingBuffers[i].metadata_buff->data,
                 mRecordingBuffers[i].metadata_buff->size, mBufferSharingSessionID);
             if (mRecordingBuffers[i].metadata_buff == NULL) {
-                LOGE("Error allocation memory for metadata buffers!");
+                ALOGE("Error allocation memory for metadata buffers!");
                 status = NO_MEMORY;
                 goto errorFree;
             }
@@ -4085,7 +4085,7 @@ status_t AtomISP::allocateMetaDataBuffers()
             delete metaDataBuf;
             metaDataBuf = NULL;
         } else {
-            LOGE("Error allocation memory for metaDataBuf!");
+            ALOGE("Error allocation memory for metaDataBuf!");
             status = NO_MEMORY;
             goto errorFree;
         }
@@ -4220,10 +4220,10 @@ unsigned int AtomISP::getNumOfSkipFrames(void)
 
     ret = mMainDevice->getControl(V4L2_CID_G_SKIP_FRAMES, &num_skipframes);
     if (ret < 0) {
-        LOGD("Failed to query control V4L2_CID_G_SKIP_FRAMES!");
+        ALOGD("Failed to query control V4L2_CID_G_SKIP_FRAMES!");
         num_skipframes = 0;
     } else if (num_skipframes < 0) {
-        LOGD("Negative value for V4L2_CID_G_SKIP_FRAMES!");
+        ALOGD("Negative value for V4L2_CID_G_SKIP_FRAMES!");
         num_skipframes = 0;
     }
     LOG1("%s: skipping %d initial frames", __FUNCTION__, num_skipframes);
@@ -4473,7 +4473,7 @@ status_t AtomISP::storeMetaDataInBuffers(bool enabled, int sID)
     return status;
 
 exitFreeRec:
-    LOGE("Error allocating metadata buffers!");
+    ALOGE("Error allocating metadata buffers!");
     if(mRecordingBuffers) {
         for (int i = 0 ; i < mConfig.num_recording_buffers; i++) {
             MemoryUtils::freeAtomBufferMetadata(mRecordingBuffers[i]);
@@ -4497,14 +4497,14 @@ int AtomISP::dumpFrameInfo(AtomMode mode)
                                     "Video",
                                     "ContinuousCapture"};
 
-        LOGD("FrameInfo: PreviewMode: %s", previewMode[mode+1]);
-        LOGD("FrameInfo: previewSize: %dx%d, bpl: %d",
-                mConfig.preview.width, mConfig.preview.height, mConfig.preview.bpl);
-        LOGD("FrameInfo: PostviewSize: %dx%d, bpl: %d",
-                mConfig.postview.width, mConfig.postview.height, mConfig.postview.bpl);
-        LOGD("FrameInfo: PictureSize: %dx%d, bpl: %d",
-                mConfig.snapshot.width, mConfig.snapshot.height, mConfig.snapshot.bpl);
-        LOGD("FrameInfo: videoSize: %dx%d, bpl: %d",
+        ALOGD("FrameInfo: PreviewMode: %s", previewMode[mode+1]);
+        ALOGD("FrameInfo: previewSize: %dx%d, bpl: %d",
+               mConfig.preview.width, mConfig.preview.height, mConfig.preview.bpl);
+        ALOGD("FrameInfo: PostviewSize: %dx%d, bpl: %d",
+               mConfig.postview.width, mConfig.postview.height, mConfig.postview.bpl);
+        ALOGD("FrameInfo: PictureSize: %dx%d, bpl: %d",
+               mConfig.snapshot.width, mConfig.snapshot.height, mConfig.snapshot.bpl);
+        ALOGD("FrameInfo: videoSize: %dx%d, bpl: %d",
                 mConfig.recording.width, mConfig.recording.height, mConfig.recording.bpl);
     }
 
@@ -4664,13 +4664,13 @@ void AtomISP::getSensorDataFromFile(const char *file_name, sensorPrivateData *se
 
     /* Open the otp data file */
     if ((otp_fd = open(file_name, O_RDONLY)) == -1) {
-        LOGE("ERR(%s): Failed to open %s\n", __func__, file_name);
+        ALOGE("ERR(%s): Failed to open %s\n", __func__, file_name);
         return;
     }
 
     memset(&st, 0, sizeof (st));
     if (fstat(otp_fd, &st) < 0) {
-        LOGE("ERR(%s): fstat %s failed\n", __func__, file_name);
+        ALOGE("ERR(%s): fstat %s failed\n", __func__, file_name);
         close(otp_fd);
         return;
     }
@@ -4678,13 +4678,13 @@ void AtomISP::getSensorDataFromFile(const char *file_name, sensorPrivateData *se
     otpdata.size = st.st_size;
     otpdata.data = malloc(otpdata.size);
     if (otpdata.data == NULL) {
-        LOGD("Failed to allocate memory for OTP data.");
+        ALOGD("Failed to allocate memory for OTP data.");
         close(otp_fd);
         return;
     }
 
     if ( (read(otp_fd, otpdata.data, otpdata.size)) == -1) {
-        LOGD("Failed to read OTP data\n");
+        ALOGD("Failed to read OTP data\n");
         free(otpdata.data);
         close(otp_fd);
         return;
@@ -5003,13 +5003,13 @@ status_t AtomISP::attachObserver(IAtomIspObserver *observer, ObserverType t)
           // to serve multiple observers
           ret = m3AEventSubdevice->open();
           if (ret < 0) {
-              LOGE("Failed to open V4L2_ISP_SUBDEV2!");
+              ALOGE("Failed to open V4L2_ISP_SUBDEV2!");
               return UNKNOWN_ERROR;
           }
 
           ret = m3AEventSubdevice->subscribeEvent(V4L2_EVENT_ATOMISP_3A_STATS_READY);
           if (ret < 0) {
-              LOGE("Failed to subscribe to frame sync event!");
+              ALOGE("Failed to subscribe to frame sync event!");
               m3AEventSubdevice->close();
               return UNKNOWN_ERROR;
           }
@@ -5031,7 +5031,7 @@ status_t AtomISP::detachObserver(IAtomIspObserver *observer, ObserverType t)
 
     ret = mObserverManager.detachObserver(observer, s);
     if (ret != NO_ERROR) {
-        LOGE("%s failed!", __FUNCTION__);
+        ALOGE("%s failed!", __FUNCTION__);
         return ret;
     }
 
@@ -5084,21 +5084,21 @@ status_t AtomISP::AAAStatSource::observe(IAtomIspObserver::Message *msg)
 
     if (!mISP->m3AStatscEnabled) {
         msg->id = IAtomIspObserver::MESSAGE_ID_ERROR;
-        LOGE("3A stat event enabled");
+        ALOGE("3A stat event enabled");
         return INVALID_OPERATION;
     }
 
     ret = mISP->m3AEventSubdevice->poll(FRAME_SYNC_POLL_TIMEOUT);
 
     if (ret <= 0) {
-        LOGE("Stats sync poll failed (%s), waiting recovery", (ret == 0) ? "timeout" : "error");
+        ALOGE("Stats sync poll failed (%s), waiting recovery", (ret == 0) ? "timeout" : "error");
         ret = -1;
     } else {
         // poll was successful, dequeue the event right away
         do {
             ret = mISP->m3AEventSubdevice->dequeueEvent(&event);
             if (ret < 0) {
-                LOGE("Dequeue stats event failed");
+                ALOGE("Dequeue stats event failed");
             }
         } while (event.pending > 0);
     }
@@ -5215,7 +5215,7 @@ try_again:
                 msg->data.frameBuffer.buff.status = FRAME_STATUS_SKIPPED;
         }
     } else {
-        LOGE("@%s v4l2_poll for preview device failed! (%s)", __FUNCTION__, (ret==0)?"timeout":"error");
+        ALOGE("@%s v4l2_poll for preview device failed! (%s)", __FUNCTION__, (ret==0)?"timeout":"error");
         msg->id = IAtomIspObserver::MESSAGE_ID_ERROR;
         status = (ret==0)?TIMED_OUT:UNKNOWN_ERROR;
     }
@@ -5225,10 +5225,10 @@ try_again:
         // for returnBuffer()
         while(mISP->mNumPreviewBuffersQueued < 1) {
             if (++failCounter > retry_count) {
-                LOGD("@%s There were no preview buffers returned in time", __FUNCTION__);
+                ALOGD("@%s There were no preview buffers returned in time", __FUNCTION__);
                 break;
             }
-            LOGW("@%s Preview stream starving from buffers!", __FUNCTION__);
+            ALOGW("@%s Preview stream starving from buffers!", __FUNCTION__);
             usleep(ATOMISP_GETFRAME_STARVING_WAIT);
         }
 
@@ -5262,13 +5262,13 @@ BatteryStatus AtomISP::getBatteryStatus()
 
     fp = ::fopen(CamFlashCtrlFS, "r");
     if (NULL == fp) {
-        LOGW("@%s, file %s open with err:%s", __FUNCTION__, CamFlashCtrlFS, strerror(errno));
+        ALOGW("@%s, file %s open with err:%s", __FUNCTION__, CamFlashCtrlFS, strerror(errno));
         return BATTERY_STATUS_INVALID;
     }
     memset(buf, 0, 4);
     size_t len = ::fread(buf, 1, 1, fp);
     if (len == 0) {
-        LOGW("@%s, fail to read 1 byte from camflash_ctrl", __FUNCTION__);
+        ALOGW("@%s, fail to read 1 byte from camflash_ctrl", __FUNCTION__);
         ::fclose(fp);
         return BATTERY_STATUS_INVALID;
     }
@@ -5279,7 +5279,7 @@ BatteryStatus AtomISP::getBatteryStatus()
         return BATTERY_STATUS_INVALID;
 
     if (status > BATTERY_STATUS_NORMAL)
-        LOGW("@%s warning battery status:%d", __FUNCTION__, status);
+        ALOGW("@%s warning battery status:%d", __FUNCTION__, status);
 
     return (BatteryStatus)status;
 }
