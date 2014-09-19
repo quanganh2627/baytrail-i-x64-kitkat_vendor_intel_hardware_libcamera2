@@ -644,7 +644,7 @@ status_t UltraLowLight::processIntelULL()
         ret = ia_error_to_status_t(error);
     }
 
-    if (getState() == ULL_STATE_PROCESSING) {
+    if (getState() == ULL_STATE_PROCESSING && ret == OK) {
         setState(ULL_STATE_DONE);
         mInputBuffers.removeAt(0);
         mPostviewBuffs.removeAt(0);
