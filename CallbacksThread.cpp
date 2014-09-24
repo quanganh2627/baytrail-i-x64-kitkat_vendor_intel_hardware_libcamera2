@@ -391,7 +391,7 @@ void CallbacksThread::facesDetected(camera_frame_metadata_t *face_metadata)
     } else if (face_metadata->number_of_faces == 0 && mLastReportedNumberOfFaces == 0) {
         // For subsequent zero faces, after the first zero-face cb sent to application
         // -> do nothing
-       // return;
+        return;
     }
 
     int num_faces;
