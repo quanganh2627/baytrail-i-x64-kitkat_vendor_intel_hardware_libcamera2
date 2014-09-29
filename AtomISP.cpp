@@ -2515,18 +2515,23 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
             }
         }
 
-		const char manUsensorBNameOV2680[] = "ov2680";
-		if (strncmp(mSensorHW.getSensorName(), manUsensorBNameOV2680, sizeof(manUsensorBNameOV2680) - 1) == 0) {
-			if (((previewWidth == 1280)&& (previewHeight == 720)) || ((previewWidth == 1600)&& (previewHeight == 900))) {
-				LOGD("720p recording change preview size to 1600 and 900 video size to 1280x720");
-				params->setPreviewSize(1600,900);
-			}
+        const char manUsensorBNameOV2680[] = "ov2680";
+        if (strncmp(mSensorHW.getSensorName(), manUsensorBNameOV2680, sizeof(manUsensorBNameOV2680) - 1) == 0) {
+            if (((previewWidth == 1280)&& (previewHeight == 720)) || ((previewWidth == 1600)&& (previewHeight == 900))) {
+                LOGD("720p recording change preview size to 1600 and 900 video size to 1280x720");
+                params->setPreviewSize(1600,900);
+            }
 
-			if(((previewWidth == 720)&& (previewHeight == 480)) || ((previewWidth == 1272)&& (previewHeight == 848))) {
-				LOGD("480p recording change preview size to 1600x1064 and video size to 720x480");
-				params->setPreviewSize(1600,1064);
-			}
-		}
+            if(((previewWidth == 720)&& (previewHeight == 480)) || ((previewWidth == 1272)&& (previewHeight == 848))) {
+                LOGD("480p recording change preview size to 1600x1064 and video size to 720x480");
+                params->setPreviewSize(1600,1064);
+            }
+
+            if(((previewWidth == 352)&& (previewHeight == 288)) || ((previewWidth == 176)&& (previewHeight == 144))) {
+                LOGD("CIF/QCIF recording change preview size to 704x576!");
+                params->setPreviewSize(704, 576);
+            }
+        }
 
         if (strncmp(mSensorHW.getSensorName(), manUsensorFNameBF3905, sizeof(manUsensorFNameBF3905) - 1) == 0) {
             if (((previewWidth == 640)&& (previewHeight == 480)) ||
