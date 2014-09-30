@@ -898,7 +898,7 @@ status_t PictureThread::allocateInputBuffers(AtomBuffer& formatDescriptor, int n
     // temporary workaround until CSS supports buffers with different bpls
     // until then we need to align all buffers to display subsystem bpl
     // requirements.... even the snapshot buffers that do not go to screen
-    int bpl = SGXandDisplayBpl(formatDescriptor.fourcc, formatDescriptor.bpl);
+    int bpl = SGXandDisplayBpl(formatDescriptor.fourcc, formatDescriptor.width);
     LOG1("@%s bpl %d", __FUNCTION__, bpl);
 
     formatDescriptor.bpl = bpl;
