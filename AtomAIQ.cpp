@@ -1910,6 +1910,7 @@ status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct, in
         statistics_input_parameters.frame_af_parameters = NULL;
         statistics_input_parameters.external_histograms = NULL;
         statistics_input_parameters.num_external_histograms = 0;
+        statistics_input_parameters.awb_results = NULL;
 
         if(m3aState.faces)
             statistics_input_parameters.faces = m3aState.faces;
@@ -1976,6 +1977,10 @@ status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct, in
             if(mCustomExposureWeightGrid.weights != NULL && statistics_input_parameters.frame_ae_parameters != NULL) {
                 ((ia_aiq_ae_results*)statistics_input_parameters.frame_ae_parameters)->weight_grid = &mCustomExposureWeightGrid;
             }
+
+            if(mAwbResults)
+                statistics_input_parameters.awb_results = mAwbResults;
+
             err = ia_aiq_statistics_set(m3aState.ia_aiq_handle, &statistics_input_parameters);
 
             m3aState.stats_valid = true;
