@@ -6803,9 +6803,7 @@ status_t ControlThread::processParamSceneMode(CameraParameters *oldParams,
     status_t status = NO_ERROR;
     String8 newScene = paramsReturnNewIfChanged(oldParams, newParams, CameraParameters::KEY_SCENE_MODE);
 
-    // we can't run this during init() because CTS mandates flash to be off. Thus we will initially be in auto
-    // scene mode with flash off, thanks to CTS. Therefore we check mThreadRunning which is off during init().
-    if (!newScene.isEmpty() && mThreadRunning) {
+    if (!newScene.isEmpty()) {
         SceneMode sceneMode = CAM_AE_SCENE_MODE_AUTO;
         if (newScene == CameraParameters::SCENE_MODE_PORTRAIT) {
             sceneMode = CAM_AE_SCENE_MODE_PORTRAIT;
@@ -6817,7 +6815,7 @@ status_t ControlThread::processParamSceneMode(CameraParameters *oldParams,
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_ISO, PlatformData::defaultIso(mCameraId));
-                newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
+                newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::TRUE);
                 newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
                 newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION, PlatformData::supportedDefaultEV(mCameraId));
                 newParams->set(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION, PlatformData::supportedMaxEV(mCameraId));
@@ -6841,7 +6839,7 @@ status_t ControlThread::processParamSceneMode(CameraParameters *oldParams,
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
                 newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-                newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
+                newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::TRUE);
                 newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
                 newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION, PlatformData::supportedDefaultEV(mCameraId));
                 newParams->set(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION, PlatformData::supportedMaxEV(mCameraId));
@@ -6864,7 +6862,7 @@ status_t ControlThread::processParamSceneMode(CameraParameters *oldParams,
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
                 newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_OUTDOOR);
                 newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-                newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
+                newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::TRUE);
                 newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
                 newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION, PlatformData::supportedDefaultEV(mCameraId));
                 newParams->set(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION, PlatformData::supportedMaxEV(mCameraId));
@@ -6932,7 +6930,7 @@ status_t ControlThread::processParamSceneMode(CameraParameters *oldParams,
                 newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
                 newParams->set(IntelCameraParameters::KEY_BACK_LIGHTING_CORRECTION_MODE, IntelCameraParameters::BACK_LIGHT_COORECTION_OFF);
-                newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
+                newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::TRUE);
                 newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
                 newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION, "0");
                 newParams->set(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION, "0");
@@ -6955,7 +6953,7 @@ status_t ControlThread::processParamSceneMode(CameraParameters *oldParams,
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_OFF);
                 newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-                newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
+                newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::TRUE);
                 newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
                 newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION, PlatformData::supportedDefaultEV(mCameraId));
                 newParams->set(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION, PlatformData::supportedMaxEV(mCameraId));
@@ -6978,7 +6976,7 @@ status_t ControlThread::processParamSceneMode(CameraParameters *oldParams,
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-                newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
+                newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::TRUE);
                 newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
                 newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION, PlatformData::supportedDefaultEV(mCameraId));
                 newParams->set(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION, PlatformData::supportedMaxEV(mCameraId));
@@ -6991,6 +6989,15 @@ status_t ControlThread::processParamSceneMode(CameraParameters *oldParams,
                 selectFlashModeForScene(newParams);
             }
         } else {
+            /* NOTE: This else-branch applies to following Android standard scene modes:
+             * CameraParameters::SCENE_MODE_AUTO
+             * CameraParameters::SCENE_MODE_ACTION
+             * CameraParameters::SCENE_MODE_BEACH
+             * CameraParameters::SCENE_MODE_SNOW
+             * CameraParameters::SCENE_MODE_STEADYPHOTO
+             * CameraParameters::SCENE_MODE_THEATRE
+             */
+
             if (newScene == CameraParameters::SCENE_MODE_CANDLELIGHT) {
                 sceneMode = CAM_AE_SCENE_MODE_CANDLELIGHT;
             } else if (newScene == IntelCameraParameters::SCENE_MODE_BEACH_SNOW) {
@@ -7007,7 +7014,10 @@ status_t ControlThread::processParamSceneMode(CameraParameters *oldParams,
             }
 
             if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_RAW) {
-                if (!PlatformData::isFixedFocusCamera(mCameraId)) {
+                if (!PlatformData::isFixedFocusCamera(mCameraId) &&
+                    newScene != CameraParameters::SCENE_MODE_AUTO) {
+                    // We don't want to force AF mode setting in "auto" scene. We are supposed to
+                    // respect application-set values
                     newParams->set(CameraParameters::KEY_FOCUS_MODE, CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE);
                 }
                 newParams->set(IntelCameraParameters::KEY_ISO, PlatformData::defaultIso(mCameraId));
@@ -7015,14 +7025,17 @@ status_t ControlThread::processParamSceneMode(CameraParameters *oldParams,
                 newParams->set(CameraParameters::KEY_ANTIBANDING, CameraParameters::ANTIBANDING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_AWB_MAPPING_MODE, IntelCameraParameters::AWB_MAPPING_AUTO);
                 newParams->set(IntelCameraParameters::KEY_AE_METERING_MODE, IntelCameraParameters::AE_METERING_MODE_AUTO);
-                newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
+                newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::TRUE);
                 newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
                 newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION, PlatformData::supportedDefaultEV(mCameraId));
                 newParams->set(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION, PlatformData::supportedMaxEV(mCameraId));
                 newParams->set(CameraParameters::KEY_MIN_EXPOSURE_COMPENSATION, PlatformData::supportedMinEV(mCameraId));
                 newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION_STEP, PlatformData::supportedStepEV(mCameraId));
             }
-            if (PlatformData::supportsFlash(mCameraId)) {
+            // CTS CameraTest.testParameters() mandates flash to be 'off', so skip the flash setting at init()
+            // Thus we will *always* initially be in 'auto' scene mode with flash off, thanks to CTS.
+            // Therefore we check mThreadRunning which is 'false' during init().
+            if (PlatformData::supportsFlash(mCameraId) && mThreadRunning) {
                 mSavedFlashSupported = String8("auto,off,on,torch");
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_AUTO);
                 selectFlashModeForScene(newParams);
