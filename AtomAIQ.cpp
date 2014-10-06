@@ -39,6 +39,8 @@ const nsecs_t AIQ_MAX_TIME_FOR_AF = 2500; // milliseconds
 const int TORCH_INTENSITY = 20; // 20%
 const float EPSILON = 0.00001;
 const int RETRY_COUNT = 5;
+const int MKNOTE_SECTION1_SIZE = 128000;
+const int MKNOTE_SECTION2_SIZE = 100000;
 
 namespace android {
 
@@ -201,7 +203,7 @@ status_t AtomAIQ::_init3A()
                       &motorData,
                       &aicNvm);
 
-    mMkn = ia_mkn_init(ia_mkn_cfg_compression, 32000, 100000);
+    mMkn = ia_mkn_init(ia_mkn_cfg_compression, MKNOTE_SECTION1_SIZE, MKNOTE_SECTION2_SIZE);
     if(mMkn == NULL)
         ALOGE("Error makernote init");
     ret = ia_mkn_enable(mMkn, true);
