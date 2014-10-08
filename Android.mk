@@ -222,8 +222,9 @@ LOCAL_CFLAGS += -Wunused-variable -Werror -Wno-unused-parameter -Wno-error=unuse
 # should be set to "true" in BoardConfig.mk
 LOCAL_MODULE := camera.$(TARGET_DEVICE)
 
-LOCAL_MODULE_PATH := $(TARGET_OUT_SHARED_LIBRARIES)/hw
+LOCAL_MODULE_RELATIVE_PATH := hw
 LOCAL_MODULE_TAGS := optional
+LOCAL_MULTILIB := 32
 
 include $(BUILD_SHARED_LIBRARY)
 
