@@ -1180,7 +1180,7 @@ status_t AtomISP::configure(AtomMode mode)
      * at start.
      */
     mInitialSkips = getNumOfSkipFrames();
-    mStatisticSkips = getNumOfSkipStatistics();
+    mStatisticSkips = PlatformData::statisticsInitialSkip(mCameraId);
 
     return status;
 }
@@ -5743,16 +5743,6 @@ unsigned int AtomISP::getNumOfSkipFrames(void)
     LOG1("%s: skipping %d initial frames", __FUNCTION__, num_skipframes);
     return (unsigned int)num_skipframes;
 }
-
-unsigned int AtomISP::getNumOfSkipStatistics(void)
-{
-    int num_skipstats = 0;
-    PlatformData::HalConfig[mCameraId].getValue(num_skipstats, CPF::Statistics, CPF::InitialSkip);
-
-    LOG1("%s: skipping %d initial statistics", __FUNCTION__, num_skipstats);
-    return (unsigned int)num_skipstats;
-}
-
 
 /* ===================  ACCELERATION API EXTENSIONS ====================== */
 /*

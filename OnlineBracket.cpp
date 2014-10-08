@@ -362,9 +362,9 @@ status_t OnlineBracket::startBracketing(int *expIdFrom)
          *  See documentation for OnlineBracket::skipFrames()
          */
         int exposureLag = 0;
-        PlatformData::HalConfig[mCameraId].getValue(exposureLag, CPF::Exposure, CPF::Lag);
+        exposureLag = PlatformData::getSensorExposureLag(mCameraId);
         if (exposureLag == 0) {
-            LOG1("Exposure latency (CPF Exposure.Lag) zero, using static default in bracketing");
+            LOG1("Exposure latency zero, using static default in bracketing");
             exposureLag = 2;
         }
 

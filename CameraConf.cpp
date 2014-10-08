@@ -30,8 +30,8 @@ namespace android {
 using namespace CPF;
 
 const char *cpfConfigPath = "/etc/atomisp/";  // Where CPF files are located
-// FIXME: The spec for following is "dr%02d[0-9][0-9]??????????????.cpf"
-const char *cpfConfigPattern = "%02d*.cpf";  // How CPF file name should look
+// FIXME: The spec for following is "dr%02d[0-9][0-9]??????????????.aiqb"
+const char *cpfConfigPattern = "%02d*.aiqb";  // How CPF file name should look
 
 // Defining and initializing static members
 Vector<struct CpfStore::SensorDriver> CpfStore::RegisteredDrivers;
@@ -122,187 +122,11 @@ void CameraBlob::clear()
      mPtr = 0;
 }
 
-// Common macro to all functions retrieving values from CPF HAL data
-#define GETANY(status, anyPtr, type, tag, warn_if_fail)             \
-    status_t status;                                                \
-                                                                    \
-    va_list args;                                                   \
-    va_start(args, tag);                                            \
-                                                                    \
-    switch ((status = getAny(anyPtr, type, tag, args))) {           \
-    case BAD_VALUE:                                                 \
-    case BAD_TYPE:                                                  \
-    default:                                                        \
-        ALOGE("ERROR %d in %s, for tag %d of type 0x%08x!", status, __FUNCTION__, tag, type); \
-    case OK:                                                        \
-        break;                                                      \
-    case NO_INIT:                                                   \
-    case NAME_NOT_FOUND:                                            \
-        if (warn_if_fail) {                                         \
-            ALOGW("WARNING %d in %s, using default value for tag %d!", status, __FUNCTION__, tag); \
-        }                                                           \
-    }                                                               \
-                                                                    \
-    va_end(args);
-// End of macro to functions retrieving values from CPF HAL data
-
-status_t HalConf::getValue(int& value, cpf_hal_tag_t tag, ...)
-{
-    GETANY(ret, &value, tag_value, tag, 0);
-    return ret;
-}
-
-status_t HalConf::getBool(bool& boolean, cpf_hal_tag_t tag, ...)
-{
-    GETANY(ret, &boolean, tag_bool, tag, 0);
-    return ret;
-}
-
-status_t HalConf::getString(const char *& string, cpf_hal_tag_t tag, ...)
-{
-    GETANY(ret, &string, tag_string, tag, 0);
-    return ret;
-}
-
-status_t HalConf::getFpoint(int32_t& value, cpf_hal_tag_t tag, ...)
-{
-    GETANY(ret, &value, tag_fpoint, tag, 0);
-    return ret;
-}
-
-status_t HalConf::getFloat(float& value, cpf_hal_tag_t tag, ...)
-{
-    GETANY(ret, &value, tag_float, tag, 0);
-    return ret;
-}
-
-int HalConf::getValue(cpf_hal_tag_t tag, ...)
-{
-    int value = 0;
-    GETANY(dummy, &value, tag_value, tag, 1);
-    return value;
-}
-
-bool HalConf::getBool(cpf_hal_tag_t tag, ...)
-{
-    bool boolean = false;
-    GETANY(dummy, &boolean, tag_bool, tag, 1);
-    return boolean;
-}
-
-const char *HalConf::getString(cpf_hal_tag_t tag, ...)
-{
-    const char *stringPtr = 0;
-    GETANY(dummy, &stringPtr, tag_string, tag, 1);
-    return stringPtr;
-}
-
-int32_t HalConf::getFpoint(cpf_hal_tag_t tag, ...)
-{
-    int32_t value = 0;
-    GETANY(dummy, &value, tag_fpoint, tag, 1);
-    return value;
-}
-
-float HalConf::getFloat(cpf_hal_tag_t tag, ...)
-{
-    float value = 0;
-    GETANY(dummy, &value, tag_float, tag, 1);
-    return value;
-}
-
-status_t HalConf::getAny(void *anyPtr, cpf_hal_tagtype_t type, CPF::cpf_hal_tag_t tag, va_list args)
-{
-    // In case HAL CPF is not present, we will see that ptr == 0
-    if (ptr() == 0) {
-        return NO_INIT;
-    }
-
-    cpf_hal_header_t *headerPtr = (cpf_hal_header_t *)(ptr());
-    const int32_t *dataPtr   = (int32_t *)((char *)(headerPtr) + headerPtr->data_offset);
-    const int32_t *tablePtr  = (int32_t *)((char *)(headerPtr) + headerPtr->table_offset);
-    const char    *stringsPtr = (char *)(headerPtr) + headerPtr->string_offset;
-
-    if (tag & 0xffff0000) {
-        return BAD_VALUE;
-    }
-
-    if ((headerPtr->tags_count == 0) || (tag < headerPtr->tags_min) || (tag > headerPtr->tags_max)) {
-        return NAME_NOT_FOUND;
-    }
-
-    const int32_t *flaggedTagPtr;
-    if (headerPtr->flags & sparse_en) {
-        int count = headerPtr->tags_count;
-        for (int i = 0; i < count; i++) {
-            flaggedTagPtr = dataPtr + 2 * i;
-            if (tag == (*flaggedTagPtr & 0xffff)) {
-                goto loop;
-            }
-        }
-        return NAME_NOT_FOUND;
-    } else {
-        flaggedTagPtr = dataPtr + 2 * (tag - headerPtr->tags_min);
-    }
-
-loop:
-    if (*flaggedTagPtr & tag_unused) {
-        return NAME_NOT_FOUND;
-    }
-
-    if (*flaggedTagPtr & tag_table) {
-        int32_t *newTablePtr = (int32_t *)((char *)(tablePtr) + *(flaggedTagPtr + 1));
-        int count = *newTablePtr++;
-        tag = cpf_hal_tag_t(va_arg(args, int));
-        if (tag & 0xffff0000) {
-            return BAD_VALUE;
-        }
-        for (int i = 0; i < count; i++) {
-            flaggedTagPtr = newTablePtr + 2 * i;
-            if (tag == (*flaggedTagPtr & 0xffff)) {
-                goto loop;
-            }
-        }
-        return NAME_NOT_FOUND;
-    }
-
-    // Use of "tag_value" wasn't mandatory in old CPF files, so we are
-    // ignoring it for now. Also, floats are represented as fpoints...
-    cpf_hal_tagtype_t testType = (type == tag_float ? tag_fpoint : type);
-    if (((*flaggedTagPtr++ & 0xffff0000) ^ testType) & ~tag_value) {
-        return BAD_TYPE;
-    }
-
-    // Different types need to be handled differently
-    const int32_t &value = *flaggedTagPtr;
-    switch (type) {
-    case tag_string:
-        *((const char **)(anyPtr)) = stringsPtr + value;
-        break;
-    case tag_value:
-        *((int *)(anyPtr)) = value;
-        break;
-    case tag_bool:
-        *((bool *)(anyPtr)) = value;
-        break;
-    case tag_fpoint:
-        *((int32_t *)(anyPtr)) = value;
-        break;
-    case tag_float:
-        *((float *)(anyPtr)) = (float)(value) / 65536.0;
-        break;
-    default:
-        return BAD_VALUE;
-    }
-
-    return 0;
-}
-
 CpfStore::CpfStore(const int cameraId)
     : mCameraId(cameraId)
     , mIsOldConfig(false)
 {
-    CameraBlob aiqConf, halConf;
+    CameraBlob aiqConf;
 
     // If anything goes wrong here, we simply return silently.
     // CPF should merely be seen as a way to do multiple configurations
@@ -322,7 +146,7 @@ CpfStore::CpfStore(const int cameraId)
     }
 
     // Obtain the configurations
-    if (initConf(aiqConf, halConf)) {
+    if (initConf(aiqConf)) {
         // Error message given already
         return;
     }
@@ -331,13 +155,7 @@ CpfStore::CpfStore(const int cameraId)
     // quality purposes, and continue further even if errors did occur.
     // Pointer to that data is cleared later, whenever seen suitable,
     // so that the memory reserved for CPF data can then be freed
-    processAiqConf(aiqConf);
-
-    // Process (make a copy of...) configuration data to HAL, and
-    // continue further even if errors did occur. Clean pointer to
-    // that data, so that the memory reserved for CPF data can then
-    // be freed
-    processHalConf(halConf);
+    AiqConfig = aiqConf;
 }
 
 CpfStore::~CpfStore()
@@ -587,25 +405,15 @@ status_t CpfStore::findConfigWithDriverHelper(const String8& fileName, String8& 
     return ret;
 }
 
-status_t CpfStore::initConf(CameraBlob& aiqConf, CameraBlob& halConf)
+status_t CpfStore::initConf(CameraBlob& aiqConf)
 {
-    CameraBlob allConf;
     status_t ret = 0;
 
     // First, we load the correct configuration file.
     // It will be behind reference counted MemoryHeapBase
     // object "allConf", meaning that the memory will be
     // automatically freed when it is no longer being pointed at
-    if ((ret = loadConf(allConf)))
-        return ret;
-
-    // Then, we will dig out component specific configuration
-    // data from within "allConf". That will be placed behind
-    // reference counting MemoryBase memory descriptors.
-    // We only need to verify checksum once
-    if ((ret = fetchConf(allConf, aiqConf, tbd_class_aiq, "AIQ")))
-        return ret;
-    if ((ret = fetchConf(allConf, halConf, tbd_class_hal, "HAL")))
+    if ((ret = loadConf(aiqConf)))
         return ret;
 
     return ret;
@@ -665,121 +473,7 @@ status_t CpfStore::loadConf(CameraBlob& allConf)
         if (!ret) ret = EPERM;
     }
 
-    if (!ret) {
-        ret = validateConf(allConf, statCurrent);
-    }
-
     return ret;
-}
-
-status_t CpfStore::validateConf(const CameraBlob& allConf, const struct stat& statCurrent)
-{
-    // In case the very same CPF configuration file has been verified
-    // already earlier, checksum calculation will be skipped this time.
-    // Files are identified by their stat structure. If we set the
-    // cache size equal to number of cameras in the system, checksum
-    // calculations are avoided when user switches between cameras.
-    // Note: the capacity could be set to zero as well if one wants
-    // to validate the file in every case
-    ValidatedCpfFiles.setCapacity(PlatformData::numberOfCameras());
-    bool& canSkipChecksum = mIsOldConfig = false;
-
-    // See if we know the file already
-    for (int i = ValidatedCpfFiles.size() - 1; i >= 0; i--) {
-        if (!memcmp(&ValidatedCpfFiles[i], &statCurrent, sizeof(struct stat))) {
-            canSkipChecksum = true;
-            break;
-        }
-    }
-
-    if (canSkipChecksum) {
-        ALOGD("CPF file already validated");
-    } else {
-        ALOGD("CPF file not validated yet, validating...");
-        if (tbd_validate(allConf, allConf.size(), tbd_tag_cpff)) {
-            // Error, looks like we had unknown file
-            ALOGE("ERROR corrupted CPF file!");
-            return DEAD_OBJECT;
-        }
-    }
-
-    // If we are here, the file was ok. If it wasn't cached already,
-    // then do so now (adding to end of cache, removing from beginning)
-    if (!canSkipChecksum) {
-        if (ValidatedCpfFiles.size() < ValidatedCpfFiles.capacity()) {
-            ValidatedCpfFiles.push_back(statCurrent);
-        } else {
-            if (ValidatedCpfFiles.size() > 0) {
-                ValidatedCpfFiles.removeAt(0);
-                ValidatedCpfFiles.push_back(statCurrent);
-            }
-        }
-    }
-
-    return 0;
-}
-
-status_t CpfStore::fetchConf(const CameraBlob& allConf, CameraBlob& recConf, tbd_class_t recordClass, const char *blockDebugName)
-{
-    status_t ret = 0;
-
-    if (!allConf) {
-        // This should never happen; CPF file has not been loaded properly
-        ALOGE("ERROR null pointer provided!");
-        return NO_MEMORY;
-    }
-
-    // The contents have been validated already, let's look for specific record
-    void *data;
-    size_t size;
-    if (!(ret = tbd_get_record(allConf, recordClass, tbd_format_any, &data, &size))) {
-        if (data && size) {
-            recConf = CameraBlob(allConf, data, size);
-            if (!recConf) {
-                ALOGE("ERROR no memory in %s!", __func__);
-                return NO_MEMORY;
-            } else {
-                ALOGD("CPF %s record found!", blockDebugName);
-            }
-        } else {
-            // Looks like we didn't have the requested record in CPF file
-            ALOGD("CPF %s record missing!", blockDebugName);
-        }
-    }
-
-    return ret;
-}
-
-status_t CpfStore::processAiqConf(CameraBlob& aiqConf)
-{
-    AiqConfig = aiqConf;
-    return 0;
-}
-
-status_t CpfStore::processHalConf(CameraBlob& halConf)
-{
-    if (halConf) {
-        // We are only interested in actual HAL data, not the header
-        void *data;
-        size_t size;
-        if (tbd_get_record(halConf, tbd_class_hal, tbd_format_any, &data, &size) || (data == 0) || (size == 0)) {
-            // Looks like the HAL record was broken
-            ALOGE("ERROR corrupted HAL record!");
-            return DEAD_OBJECT;
-        }
-        // CPF HAL contains lot of strings, so the easiest way to allow
-        // freeing of the original CPF data (with AIQ data) and
-        // still having the strings stored somewhere is to make a copy
-        // of the entire CPF HAL data
-        HalConfig = CameraBlob(halConf, data, size).copy();
-        if (!HalConfig) {
-            ALOGE("ERROR no memory in %s!", __func__);
-            return NO_MEMORY;
-        }
-
-    }
-
-    return 0;
 }
 
 } // namespace android

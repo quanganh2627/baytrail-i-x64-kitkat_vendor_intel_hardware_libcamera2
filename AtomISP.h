@@ -491,7 +491,6 @@ private:
 
     size_t setupCameraInfo();
     unsigned int getNumOfSkipFrames(void);
-    unsigned int getNumOfSkipStatistics(void);
     status_t applySensorFlip(void);
     void fetchIspVersions();
 

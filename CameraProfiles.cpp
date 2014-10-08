@@ -169,6 +169,8 @@ void CameraProfiles::handleCommon(CameraProfiles *profiles, const char *name, co
         PlatformBase::mMaxISPTimeoutCount = atoi(atts[1]);
     } else if (strcmp(name, "extendedMakernote") == 0) {
         PlatformBase::mExtendedMakernote = (strcmp(atts[1], "true") == 0);
+    } else if (strcmp(name, "ispVamemType") == 0) {
+        PlatformBase::mIspVamemType = atoi(atts[1]);
     }
 }
 
@@ -198,6 +200,8 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         pCurrentCam->stepEV = atts[1];
     } else if (strcmp(name, "defaultEV") == 0) {
         pCurrentCam->defaultEV = atts[1];
+    } else if (strcmp(name, "exposureLag") == 0) {
+        pCurrentCam->exposureLag = atoi(atts[1]);
     } else if (strcmp(name, "supportedPreviewSizes") == 0) {
         pCurrentCam->supportedPreviewSizes = atts[1];
     } else if (strcmp(name, "supportedVideoSizes") == 0) {
@@ -260,6 +264,8 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         pCurrentCam->defaultIso = atts[1];
     } else if (strcmp(name, "supportedIso") == 0) {
         pCurrentCam->supportedIso = atts[1];
+    } else if (strcmp(name, "gainLag") == 0) {
+        pCurrentCam->gainLag = atoi(atts[1]);
     } else if (strcmp(name, "defaultAeMetering") == 0) {
         pCurrentCam->defaultAeMetering = atts[1];
     } else if (strcmp(name, "supportedAeMetering") == 0) {
@@ -385,6 +391,8 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         pCurrentCam->supportedIntelligentMode = atts[1];
     } else if (strcmp(name, "disable3A") == 0) {
         pCurrentCam->disable3A = ((strcmp(atts[1], "true") == 0) ? true : false);
+    } else if (strcmp(name, "statisticsInitialSkip") == 0) {
+        pCurrentCam->statisticsInitialSkip = atoi(atts[1]);
     } else if (strcmp(name, "defaultDepthFocalLength") == 0) {
         pCurrentCam->defaultDepthFocalLength = atoi(atts[1]);
     } else if (strcmp(name, "maxDepthPreviewBufferQueueSize") == 0) {
@@ -716,6 +724,7 @@ void CameraProfiles::dump(void)
     ALOGD("line%d, in DeviceData, mMaxContinuousRawRingBuffer:%d ", __LINE__, mMaxContinuousRawRingBuffer);
     ALOGD("line%d, in DeviceData, mBoardName:%s ", __LINE__, mBoardName.string());
     ALOGD("line%d, in DeviceData, mUseIntelULL:%d ", __LINE__, mUseIntelULL);
+    ALOGD("line%d, in DeviceData, mIspVamemType:%d ", __LINE__, mIspVamemType);
 }
 
 }

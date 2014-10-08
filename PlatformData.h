@@ -137,7 +137,6 @@ class PlatformData {
  public:
 
     static AiqConf AiqConfig[MAX_CAMERAS];
-    static HalConf HalConfig[MAX_CAMERAS];
 
     enum SensorFlip {
         SENSOR_FLIP_NA     = -1,   // Support Not-Available
@@ -1126,12 +1125,21 @@ class PlatformData {
     static float horizontalFOV(int cameraId, int width, int height);
 
     /**
-     * Retrns focal length of depth mode
+     * Returns focal length of depth mode
      *
      * \param cameraId identifier passed to android.hardware.Camera.open()
      * \return int focal length
      */
     static int defaultDepthFocalLength(int cameraId);
+
+    /**
+     * Returns the number of frames from which the statistics are ignored
+     * in order to avoid using corrupt statistics
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return int number of skipped statistics
+     */
+    static int statisticsInitialSkip(int cameraId);
 
     /**
      * Whether Postview output is supported?
@@ -1275,6 +1283,15 @@ class PlatformData {
      */
     static const char* supportedIntelligentMode(int cameraId);
 
+    /**
+     * Type of the memory that the isp has.
+     * The memory size is different depending on the type.
+     *
+     * \param cameraId identifier passed to android.hardware.Camera.open()
+     * \return the isp memory type
+     */
+    static int ispVamemType(int cameraId);
+
 };
 
 /**
@@ -1308,13 +1325,12 @@ public:
         ,mNumPreviewBuffers(6)
         ,mSupportDualMode(false)
         ,mSupportPreviewLimitation(true)
-        ,mSensorGainLag(2)
-        ,mSensorExposureLag(2)
         ,mUseIntelULL(false)
         ,mFaceCallbackDivider(1)
         ,mCacheLineSize(64)
         ,mMaxISPTimeoutCount(60)
         ,mExtendedMakernote(false)
+        ,mIspVamemType(1)
     {}
 
 protected:
@@ -1346,11 +1362,12 @@ protected:
             supportedBurstFPS = "1,3,5,7,15";
             supportedBurstLength = "1,3,5,10";
             defaultBurstLength = "10";
-            //EV
+            //Exposure
             maxEV = "2";
             minEV = "-2";
             stepEV = "0.33333333";
             defaultEV = "0";
+            exposureLag = 2;
             //Saturation
             maxSaturation = "";
             minSaturation = "";
@@ -1385,6 +1402,8 @@ protected:
             //Iso
             supportedIso = "iso-auto,iso-100,iso-200,iso-400,iso-800";
             defaultIso = "iso-auto";
+            // gain
+            gainLag = 2;
             //sceneMode
             supportedSceneModes.appendFormat("%s,%s,%s,%s,%s,%s,%s"
                 ,CameraParameters::SCENE_MODE_AUTO
@@ -1493,6 +1512,7 @@ protected:
             useMultiStreamsForSoC = false;
             mPreviewFourcc = V4L2_PIX_FMT_NV12;
             defaultDepthFocalLength = 0;
+            statisticsInitialSkip = 0;
             maxDepthPreviewBufferQueueSize = 0;
             mSupportsPostviewOutput = true;
             mISPSupportContinuousCaptureMode = true;
@@ -1531,6 +1551,7 @@ protected:
         String8 minEV;
         String8 stepEV;
         String8 defaultEV;
+        int exposureLag;
         // AE metering
         String8 supportedAeMetering;
         String8 defaultAeMetering;
@@ -1565,6 +1586,8 @@ protected:
         // iso
         String8 supportedIso;
         String8 defaultIso;
+        // gain
+        int gainLag;
         // scene modes
         String8 supportedSceneModes;
         String8 defaultSceneMode;
@@ -1672,6 +1695,7 @@ protected:
         int mPreviewFourcc;
 
         int defaultDepthFocalLength;
+        int statisticsInitialSkip;
         int maxDepthPreviewBufferQueueSize;
 
         // Postview output support
@@ -1736,11 +1760,6 @@ protected:
     /* blackbay, or merr_vv, or redhookbay, or victoriabay... */
     String8 mBoardName;
 
-
-    int mSensorGainLag;
-
-    int mSensorExposureLag;
-
     // Ultra Low Light
     bool mUseIntelULL;
 
@@ -1755,6 +1774,9 @@ protected:
 
     // For extended Makernote data usage
     bool mExtendedMakernote;
+
+    // Type of the memory in ISP
+    int mIspVamemType;
 
 private:
     static status_t getSensorInfo(Vector<SensorNameAndPort>& sensorInfo);

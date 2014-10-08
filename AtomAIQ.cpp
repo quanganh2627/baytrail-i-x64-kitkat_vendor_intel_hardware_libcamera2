@@ -96,7 +96,6 @@ AtomAIQ::AtomAIQ(HWControlGroup &hwcg, int cameraId):
     CLEAR(mPrintFunctions);
     CLEAR(m3aState);
     CLEAR(mStatisticsInputParameters);
-    CLEAR(mCustomExposureWeightGrid);
     CLEAR(mAfInputParameters);
     CLEAR(mAfState);
     CLEAR(mAeInputParameters);
@@ -237,9 +236,6 @@ status_t AtomAIQ::_init3A()
     m3aState.stats_valid = false;
     CLEAR(m3aState.results);
 
-    if(init_weighting_map() != NO_ERROR)
-        LOG2("There is no weight map in cpf file");
-
     return status;
 }
 
@@ -255,39 +251,6 @@ status_t AtomAIQ::getAiqConfig(ia_binary_data *cpfData)
         status = UNKNOWN_ERROR;
     }
     return status;
-}
-
-status_t AtomAIQ::init_weighting_map()
-{
-    LOG2("@%s", __FUNCTION__);
-    status_t ret = NO_ERROR;
-    int weight_width = 0, weight_height = 0;
-    PlatformData::HalConfig[mCameraId].getValue(weight_width, CPF::ExposureWeights, CPF::Width);
-    PlatformData::HalConfig[mCameraId].getValue(weight_height, CPF::ExposureWeights, CPF::Height);
-    if(weight_width > 0 && weight_height > 0) {
-        const char *  weight_p= NULL;
-        char * end_ptr = NULL;
-        const int weight_len = weight_width * weight_height;
-        unsigned char * exposure_weight_value = (unsigned char *)malloc(sizeof(unsigned char) * weight_len);
-        if(exposure_weight_value == NULL) {
-            ret = NO_MEMORY;
-            return ret;
-        }
-        memset(exposure_weight_value, 0, sizeof(unsigned char) * weight_len);
-        weight_p = PlatformData::HalConfig[mCameraId].getString(CPF::ExposureWeights, CPF::WeightGrid);
-        if(weight_p == NULL){
-            ret = BAD_VALUE;
-            return ret;
-        }
-        for(int i = 0; i < weight_len; i++) {
-            exposure_weight_value[i] = strtol(weight_p, &end_ptr, 10);
-            weight_p = end_ptr + 1;
-        }
-        mCustomExposureWeightGrid.width = (unsigned short int)weight_width;
-        mCustomExposureWeightGrid.height = (unsigned short int)weight_height;
-        mCustomExposureWeightGrid.weights = exposure_weight_value;
-    }
-    return ret;
 }
 
 status_t AtomAIQ::deinit3A()
@@ -308,8 +271,6 @@ status_t AtomAIQ::deinit3A()
     mAfMode = CAM_AF_MODE_NOT_SET;
     mAwbMode = CAM_AWB_MODE_NOT_SET;
     mFocusPosition = 0;
-    free(mCustomExposureWeightGrid.weights);
-    mCustomExposureWeightGrid.weights = NULL;
     return NO_ERROR;
 }
 
@@ -2018,10 +1979,6 @@ status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct, in
                   statistics_input_parameters.rgbs_grids[0]->blocks_ptr->avg_gb,
                   statistics_input_parameters.rgbs_grids[0]->blocks_ptr->avg_b);
 
-            if(mCustomExposureWeightGrid.weights != NULL && statistics_input_parameters.frame_ae_parameters != NULL) {
-                ((ia_aiq_ae_results*)statistics_input_parameters.frame_ae_parameters)->weight_grid = &mCustomExposureWeightGrid;
-            }
-
             if(mAwbResults)
                 statistics_input_parameters.awb_results = mAwbResults;
 
@@ -2819,8 +2776,7 @@ void IaIsp15::initIaIspAdaptor(const ia_binary_data *cpfData,
 {
     LOG1("@%s", __FUNCTION__);
 
-    int value = 0;
-    PlatformData::HalConfig[cameraId].getValue(value, CPF::IspVamemType);
+    int value = PlatformData::ispVamemType(cameraId);
     mIaIsp15InputParams.isp_vamem_type = value;
 
     mIspHandle = ia_isp_1_5_init(cpfData,
@@ -2888,8 +2844,7 @@ void IaIsp22::initIaIspAdaptor(const ia_binary_data *cpfData,
 {
     LOG1("@%s", __FUNCTION__);
 
-    int value = 0;
-    PlatformData::HalConfig[cameraId].getValue(value, CPF::IspVamemType);
+    int value = PlatformData::ispVamemType(cameraId);
     mIaIsp22InputParams.isp_vamem_type = value;
 
     mIspHandle = ia_isp_2_2_init(cpfData,

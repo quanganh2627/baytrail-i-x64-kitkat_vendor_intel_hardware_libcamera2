@@ -67,28 +67,6 @@ public:
     inline virtual ~AiqConf() {}
 };
 
-class HalConf : public CameraBlob
-{
-public:
-    explicit inline HalConf() {}
-    inline HalConf(const CameraBlob& refBlob) : CameraBlob(refBlob) {}
-    inline virtual ~HalConf() {}
-    // Queries with return codes
-    status_t getValue(int& value, CPF::cpf_hal_tag_t tag, ...);
-    status_t getBool(bool& boolean, CPF::cpf_hal_tag_t tag, ...);
-    status_t getString(const char *& string, CPF::cpf_hal_tag_t tag, ...);
-    status_t getFpoint(int32_t& value, CPF::cpf_hal_tag_t tag, ...);
-    status_t getFloat(float& value, CPF::cpf_hal_tag_t tag, ...);
-    // Straightforward queries
-    int getValue(CPF::cpf_hal_tag_t tag, ...);
-    bool getBool(CPF::cpf_hal_tag_t tag, ...);
-    const char *getString(CPF::cpf_hal_tag_t tag, ...);
-    int32_t getFpoint(CPF::cpf_hal_tag_t tag, ...);
-    float getFloat(CPF::cpf_hal_tag_t tag, ...);
-private:
-    status_t getAny(void *anyPtr, cpf_hal_tagtype_t type, CPF::cpf_hal_tag_t tag, va_list args);
-};
-
 class CpfStore
 {
     struct SensorDriver {
@@ -101,7 +79,6 @@ public:
     virtual ~CpfStore();
 public:
     AiqConf AiqConfig;
-    HalConf HalConfig;
 private:
     status_t initFileNames(String8& cpfPathName);
     status_t initDriverList();
@@ -109,12 +86,8 @@ private:
     status_t findConfigWithDriver(String8& cpfName, int& drvIndex);
     status_t findConfigWithDriverHelper(const String8& fileName, String8& cpfName, int& index);
     status_t findBusAddress(const int drvIndex, int& i2cBus, int& i2cAddress);
-    status_t initConf(CameraBlob& aiqConf, CameraBlob& halConf);
+    status_t initConf(CameraBlob& aiqConf);
     status_t loadConf(CameraBlob& allConf);
-    status_t validateConf(const CameraBlob& allConf, const struct stat& statCurrent);
-    status_t fetchConf(const CameraBlob& allConf, CameraBlob& recConf, tbd_class_t recordClass, const char *blockDebugName = 0);
-    status_t processAiqConf(CameraBlob& aiqConf);
-    status_t processHalConf(CameraBlob& halConf);
 private:
     int mCameraId;
     bool mIsOldConfig;

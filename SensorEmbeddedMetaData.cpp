@@ -62,35 +62,11 @@ status_t SensorEmbeddedMetaData::init()
 
     ia_binary_data cpfData;
     CLEAR(cpfData);
-    if (PlatformData::sensorType(mCameraId) == SENSOR_TYPE_SOC) {
-        int size = 0;
-        const char *data = NULL;
-        if (PlatformData::HalConfig[mCameraId].getValue(size, CPF::EmdHeadFile, CPF::Size))
-            return NO_ERROR;
-        if (PlatformData::HalConfig[mCameraId].getBool(mSbsMetadata, CPF::EmdHeadFile, CPF::SbsMetadata))
-            return NO_ERROR;
-        data = PlatformData::HalConfig[mCameraId].getString(CPF::EmdHeadFile, CPF::Data);
-        if (data != NULL) {
-            unsigned char *tmp = (unsigned char*)malloc(sizeof(unsigned char) * size);
-            char *endptr = NULL;
-            if (tmp != NULL) {
-                for (int i = 0; i < size; ++i) {
-                    tmp[i] = strtol(data, &endptr, 16);
-                    data = endptr + 1;
-                }
-                cpfData.data = (void*)tmp;
-                cpfData.size = size;
-                mEmbeddedMetaDecoderHandler = ia_emd_decoder_init(&cpfData);
-                free(tmp);
-                tmp = NULL;
-            }
-        }
-    } else {
-        if (PlatformData::AiqConfig[mCameraId]) {
-            cpfData.data = PlatformData::AiqConfig[mCameraId].ptr();
-            cpfData.size = PlatformData::AiqConfig[mCameraId].size();
-            mEmbeddedMetaDecoderHandler = ia_emd_decoder_init(&cpfData);
-        }
+
+    if (PlatformData::AiqConfig[mCameraId]) {
+        cpfData.data = PlatformData::AiqConfig[mCameraId].ptr();
+        cpfData.size = PlatformData::AiqConfig[mCameraId].size();
+        mEmbeddedMetaDecoderHandler = ia_emd_decoder_init(&cpfData);
     }
 
     if (mEmbeddedMetaDecoderHandler == NULL)
