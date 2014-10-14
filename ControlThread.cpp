@@ -6761,7 +6761,14 @@ void ControlThread::preProcessFlashMode(CameraParameters *newParams)
         // Save flash mode in burst mode or low battery state.
         mSavedFlashMode = currRequestedFlashMode;
 
-        newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, CameraParameters::FLASH_MODE_OFF);
+        if (lowBattery && !mIntelParamsAllowed) {
+            ALOGD("Low battery mode not enabled for Android standard Camera API");
+        } else {
+            // Only change the supported flash mode in case the Intel Camera API is used.
+            // The GMS application does not honor supported flash mode changes. JIRA: IMINAN-2343
+            newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, CameraParameters::FLASH_MODE_OFF);
+        }
+
         newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
     } else if ((mBurstLength == 1 || mBurstLength == 0) && !mHdr.enabled && !lowBattery) {
         // When not in burst mode or low battery state, we should restore flash mode
@@ -6791,7 +6798,7 @@ void ControlThread::selectFlashModeForScene(CameraParameters *newParams)
         newParams->set(CameraParameters::KEY_FLASH_MODE, mSavedFlashMode.string());
     } else {
         LOG1("Forcing flash off");
-        newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "off");
+        newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, CameraParameters::FLASH_MODE_OFF);
         newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
     }
 }
