@@ -4094,10 +4094,9 @@ status_t AtomISP::allocateMetaDataBuffers()
 
 errorFree:
     // On error, free the allocated buffers
-    if (mRecordingBuffers != NULL) {
-        for (int i = 0 ; i < allocatedBufs; i++)
-            MemoryUtils::freeAtomBuffer(mRecordingBuffers[i]);
-    }
+    for (int i = 0 ; i < allocatedBufs; i++)
+        MemoryUtils::freeAtomBuffer(mRecordingBuffers[i]);
+
     if (metaDataBuf) {
         delete metaDataBuf;
         metaDataBuf = NULL;
