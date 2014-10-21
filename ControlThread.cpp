@@ -4768,13 +4768,8 @@ status_t ControlThread::captureULLPic()
             m3AControls->getExposureParameters(&exposure);
             mULL->addSnapshotMetadata(ullPicMetaData, exposure);
 
-            mULL->allocateCopyBuffers(mISP->getSnapshotDescriptor(), mISP->getPostviewDescriptor());
-
-            AtomBuffer *snapshotCopy = mULL->getSnapshotCopyZoom(&snapshotBuffer);
-            AtomBuffer *postviewCopy = mULL->getPostviewCopyZoom(&postviewBuffer);
-
             if (displayPostview)
-                mPreviewThread->postview(postviewCopy, true);
+                mPreviewThread->postview(&postviewBuffer, true);
             /*
              *  Mark the snapshot as skipped.
              *  This is done so that the snapshot buffer is not made available after
@@ -4784,8 +4779,8 @@ status_t ControlThread::captureULLPic()
              *  mAvailableSnapshotBuffers vector
              */
             snapshotBuffer.status = FRAME_STATUS_SKIPPED;
-            snapshotCopy->status = FRAME_STATUS_SKIPPED;
-            status = mPictureThread->encode(firstPicMetaData, snapshotCopy, postviewCopy);
+            postviewBuffer.status = FRAME_STATUS_SKIPPED;
+            status = mPictureThread->encode(firstPicMetaData, &snapshotBuffer, &postviewBuffer);
             if (status != NO_ERROR) {
                 // normally this is done by PictureThread, but as no
                 // encoding was done, free the allocated metadata
@@ -5716,7 +5711,6 @@ status_t ControlThread::processDynamicParameters(const CameraParameters *oldPara
     if (zoomSupported) {
         status = mHwcg.mIspCI->setZoom(newZoom);
         mPostProcThread->setZoom(mHwcg.mIspCI->zoomRatio(newZoom));
-        mULL->setZoomFactor(mHwcg.mIspCI->zoomRatio(newZoom));
     } else {
         ALOGD("not supported zoom setting");
     }
@@ -6675,14 +6669,11 @@ status_t ControlThread::processParamULL(const CameraParameters *oldParams,
         if (newVal == "on") {
             mULL->setMode(UltraLowLight::ULL_ON);
             ullActive = true;
-            mISP->setSRESmode(true);
         } else if (newVal == "auto") {
             mULL->setMode(UltraLowLight::ULL_AUTO);
             ullActive = true;
-            mISP->setSRESmode(false);
         } else {
             mULL->setMode(UltraLowLight::ULL_OFF);
-            mISP->setSRESmode(false);
         }
 
         if (ullActive) {
