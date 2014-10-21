@@ -110,6 +110,8 @@ const char* ControlThread::sCaptureSubstateStrings[]= {
       "CONTINUOUS_SHOOTING"
 };
 
+static const unsigned long MEM_2G = 2147483648U;
+
 ControlThread::ControlThread(int cameraId) :
     Thread(true) // callbacks may call into java
     ,mCameraId(cameraId)
@@ -8649,11 +8651,14 @@ status_t ControlThread::hdrInit(int pvSize, int pvWidth, int pvHeight)
     int height = mAllocatedSnapshotBuffers[0].height;
     int fourcc = mAllocatedSnapshotBuffers[0].fourcc;
 
-    mCallbacks->allocateMemory(&mHdr.outMainBuf, size);
-    if (mHdr.outMainBuf.dataPtr == NULL) {
-        ALOGE("HDR: Error allocating memory for HDR main buffer!");
-        return NO_MEMORY;
-    }
+    AtomBuffer formatDescriptorHDR =
+        AtomBufferFactory::createAtomBuffer(ATOM_BUFFER_FORMAT_DESCRIPTOR,
+                                                fourcc, width, height, bpl, size);
+    if (PlatformData::getTotalRam() > MEM_2G)
+        MemoryUtils::allocateGraphicBuffer(mHdr.outMainBuf, formatDescriptorHDR);
+    else
+        MemoryUtils::allocateAtomBuffer(mHdr.outMainBuf, formatDescriptorHDR, mCallbacks);
+
     mHdr.outMainBuf.shared = false;
     // merging multiple images from ISP, so just set counter to 1
     mHdr.outMainBuf.frameCounter = 1;
