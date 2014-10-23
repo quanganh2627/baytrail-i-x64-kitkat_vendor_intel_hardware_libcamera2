@@ -6739,9 +6739,12 @@ void ControlThread::preProcessFlashMode(CameraParameters *newParams)
     const char* requestedFlashMode  = newParams->get(CameraParameters::KEY_FLASH_MODE);
     String8 currRequestedFlashMode(requestedFlashMode, requestedFlashMode == NULL ? 0 : strlen(requestedFlashMode));
 
-    // If burst or HDR is enabled, the only supported flash mode is "off".
+    bool onlyFlashOffSupported = currSupportedFlashModes == CameraParameters::FLASH_MODE_OFF;
+
+    // If burst or HDR is enabled, the only supported flash mode is "off",
+    // NOTE: for GMS application we need to allow other supported flash modes, as it does not check the changed support list.
     // Also, we only want to record only the first change to "off".
-    if (((mBurstLength > 1 || mHdr.enabled) && currSupportedFlashModes != CameraParameters::FLASH_MODE_OFF)
+    if (((mBurstLength > 1 || mHdr.enabled) && !onlyFlashOffSupported)
             || (lowBattery && currRequestedFlashMode != CameraParameters::FLASH_MODE_OFF)) {
         if (lowBattery) {
             ALOGW("@%s low battery for flash, force set flash mode to off", __FUNCTION__);
@@ -6754,7 +6757,7 @@ void ControlThread::preProcessFlashMode(CameraParameters *newParams)
 
         if (lowBattery && !mIntelParamsAllowed) {
             ALOGD("Low battery mode not enabled for Android standard Camera API");
-        } else {
+        } else if (mIntelParamsAllowed && !onlyFlashOffSupported) {
             // Only change the supported flash mode in case the Intel Camera API is used.
             // The GMS application does not honor supported flash mode changes. JIRA: IMINAN-2343
             newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, CameraParameters::FLASH_MODE_OFF);
@@ -6789,7 +6792,11 @@ void ControlThread::selectFlashModeForScene(CameraParameters *newParams)
         newParams->set(CameraParameters::KEY_FLASH_MODE, mSavedFlashMode.string());
     } else {
         LOG1("Forcing flash off");
-        newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, CameraParameters::FLASH_MODE_OFF);
+        if (mIntelParamsAllowed) {
+            newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, CameraParameters::FLASH_MODE_OFF);
+        } else {
+            ALOGD("Supported flash modes not forced to %s for Android standard API", CameraParameters::FLASH_MODE_OFF);
+        }
         newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
     }
 }
@@ -6935,8 +6942,19 @@ status_t ControlThread::processParamSceneMode(CameraParameters *oldParams,
                 newParams->set(CameraParameters::KEY_MIN_EXPOSURE_COMPENSATION, "0");
                 newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION_STEP, "0");
             }
+
             if (PlatformData::supportsFlash(mCameraId)) {
-                mSavedFlashSupported = String8("off");
+                if (mIntelParamsAllowed) {
+                    // Only allow forcing supported flash modes to "off" for Intel extensions.
+                    mSavedFlashSupported = String8(CameraParameters::FLASH_MODE_OFF);
+                } else {
+                    // For Android standard parameters, set supported flash modes to the default set.
+                    // Due to GMS Camera app not checking supported flash modes after setting HDR scene mode,
+                    // the flash parameter validation will fail when coming out of HDR mode. GMS app sets
+                    // flash to "auto", when only "off" is supported. JIRA: IMINAN-2689
+                    mSavedFlashSupported = PlatformData::supportedFlashModes(mCameraId);
+                }
+
                 mSavedFlashMode = String8(CameraParameters::FLASH_MODE_OFF);
                 selectFlashModeForScene(newParams);
             }
@@ -7007,7 +7025,7 @@ status_t ControlThread::processParamSceneMode(CameraParameters *oldParams,
             } else if (newScene == IntelCameraParameters::SCENE_MODE_BACKLIGHT) {
                 sceneMode = CAM_AE_SCENE_MODE_BACKLIGHT;
             } else {
-                LOG1("Unsupported %s: %s. Using AUTO!", CameraParameters::KEY_SCENE_MODE, newScene.string());
+                LOG1("Scene mode %s: %s. Using AUTO!", CameraParameters::KEY_SCENE_MODE, newScene.string());
                 sceneMode = CAM_AE_SCENE_MODE_AUTO;
             }
 
