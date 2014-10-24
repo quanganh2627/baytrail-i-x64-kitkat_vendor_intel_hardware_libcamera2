@@ -181,7 +181,7 @@ static void validateReadOnlyParameters(const CameraParameters *oldParams, const 
     va_end(arguments);
 }
 
-status_t validateParameters(const CameraParameters *oldParams, const CameraParameters *params, int cameraId)
+status_t validateParameters(const CameraParameters *oldParams, CameraParameters *params, int cameraId)
 {
     LOG1("@%s: oldparams= %p, params = %p", __FUNCTION__, oldParams, params);
 
@@ -506,8 +506,13 @@ status_t validateParameters(const CameraParameters *oldParams, const CameraParam
     int minExposure = params->getInt(CameraParameters::KEY_MIN_EXPOSURE_COMPENSATION);
     int maxExposure = params->getInt(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION);
     if (exposure > maxExposure || exposure < minExposure) {
-        ALOGE("bad exposure compensation value: %d", exposure);
-        return BAD_VALUE;
+        int newExposure;
+        // Note: this workaround is necessary because the GMS camera app neither checks ranges nor handles errors.
+        newExposure = (exposure > maxExposure) ? maxExposure : minExposure;
+        ALOGE("bad exposure compensation value: %d (valid range: [%d,%d]; limiting to: %d",
+              exposure, minExposure, maxExposure, newExposure);
+        params->set(CameraParameters::KEY_EXPOSURE_COMPENSATION, newExposure);
+        //return BAD_VALUE;
     }
 
     //Note: here for Intel expand parameters, add additional validity check
