@@ -58,6 +58,8 @@ public:
     void initIACP(void)STAT_STUB;
     void deinitIACP(void)STAT_STUB;
 
+    ia_cp_context * getIaCpContext(void) const { return mIaCpContext; }
+
 // prevent copy constructor and assignment operator
 private:
     AtomCP(const AtomCP& other);
@@ -68,6 +70,8 @@ private:
     ia_acceleration mAccAPI;
     IHWIspControl *mISP;
     Mutex mLock;
+    ia_cp_context *mIaCpContext;
+    ia_cp_hdr *mIaCpHdr;
     ia_cp_hdr_cfg *mIntelHdrCfg;
     bool mInitIACP;
 };

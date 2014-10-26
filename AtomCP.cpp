@@ -45,6 +45,8 @@ static void vinfo(const char *fmt, va_list ap)
 #ifdef ENABLE_INTEL_EXTRAS
 AtomCP::AtomCP(HWControlGroup &hwcg) :
     mISP(hwcg.mIspCI),
+    mIaCpContext(NULL),
+    mIaCpHdr(NULL),
     mIntelHdrCfg(NULL),
     mInitIACP(false)
 {
@@ -106,15 +108,17 @@ void AtomCP::initIACP(void)
             mAccAPI.version_css.major, mAccAPI.version_css.minor,
             mAccAPI.version_isp.major, mAccAPI.version_isp.minor);
 
-    ia_cp_init(&mAccAPI, &mPrintFunctions, NULL);
+    ia_cp_init(&mIaCpContext, &mAccAPI, &mPrintFunctions, NULL);
 
     mInitIACP = true;
 }
 
 void AtomCP::deinitIACP(void)
 {
-    if (mInitIACP)
-        ia_cp_uninit();
+    if (mInitIACP) {
+        ia_cp_uninit(mIaCpContext);
+        mIaCpContext = NULL;
+    }
 
     mInitIACP = false;
 }
@@ -133,7 +137,8 @@ status_t AtomCP::composeHDR(const CiUserBuffer& inputBuf, const CiUserBuffer& ou
     mIntelHdrCfg->gbce.ctc_gains_lut_size = gbce_results.ctc_gains_lut_size;
     mIntelHdrCfg->gbce.ctc_gains_lut      = gbce_results.ctc_gains_lut;
 
-    status = ia_cp_hdr_compose(outputBuf.ciMainBuf,
+    status = ia_cp_hdr_compose(mIaCpHdr,
+                               outputBuf.ciMainBuf,
                                outputBuf.ciPostviewBuf,
                                inputBuf.ciMainBuf,
                                inputBuf.ciPostviewBuf,
@@ -159,7 +164,7 @@ status_t AtomCP::initializeHDR(unsigned width, unsigned height, ia_binary_data *
         return NO_MEMORY;
     }
 
-    ia_err = ia_cp_hdr_init(width, height, aiqb_data, ia_cp_tgt_ipu);
+    ia_err = ia_cp_hdr_init(&mIaCpHdr, mIaCpContext, width, height, aiqb_data, ia_cp_tgt_ipu);
     if (ia_err != ia_err_none) {
         ALOGE("@%s: failed to allocate HDR intermediate buffers", __FUNCTION__);
         return NO_MEMORY;
@@ -173,14 +178,16 @@ status_t AtomCP::uninitializeHDR(void)
     LOG1("@%s", __FUNCTION__);
     ia_err ia_err;
 
-    ia_err = ia_cp_hdr_uninit();
-    if (ia_err != ia_err_none)
-        return INVALID_OPERATION;
+    ia_err = ia_cp_hdr_uninit(mIaCpHdr);
+    mIaCpHdr = NULL;
 
     if (mIntelHdrCfg) {
         delete mIntelHdrCfg;
         mIntelHdrCfg = NULL;
     }
+
+    if (ia_err != ia_err_none)
+        return INVALID_OPERATION;
 
     PERFORMANCE_TRACES_BREAKDOWN_STEP_NOPARAM();
 

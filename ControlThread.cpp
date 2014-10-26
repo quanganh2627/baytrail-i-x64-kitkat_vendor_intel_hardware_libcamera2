@@ -2183,7 +2183,7 @@ status_t ControlThread::startPreviewCore(bool videoMode)
     } else {
         if (mode == MODE_CONTINUOUS_CAPTURE) {
             mCP->initIACP();
-            ia_cp_load_extensions();
+            ia_cp_load_extensions(mCP->getIaCpContext());
             mCPExtensionsLoaded = true;
         }
         mNumBuffers = PlatformData::getPreviewBufNum();
@@ -2470,7 +2470,7 @@ status_t ControlThread::stopPreviewCore(bool flushPictures)
     }
 
     if (mCPExtensionsLoaded) {
-        ia_cp_unload_extensions();
+        ia_cp_unload_extensions(mCP->getIaCpContext());
         mCPExtensionsLoaded = false;
     }
 
@@ -4722,7 +4722,7 @@ status_t ControlThread::captureULLPic()
     if (status != NO_ERROR)
         ALOGW("@%s: cannot retrieve CPF binary data for ULL capture", __FUNCTION__);
 
-    status = mULL->init(picWidth,picHeight,0,&aiqb_data);
+    status = mULL->init(mCP->getIaCpContext(), picWidth,picHeight,0,&aiqb_data);
     if (status != NO_ERROR) {
       mULL->deinit();
       ALOGE("Failed to initialize the ULL algorithm");

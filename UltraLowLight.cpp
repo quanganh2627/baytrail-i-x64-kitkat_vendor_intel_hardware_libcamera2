@@ -66,7 +66,8 @@ UltraLowLight::UltraLowLight(Callbacks *callbacks, sp<WarperService> warperServi
                                  mUseIntelULL(PlatformData::useIntelULL()),
                                  mWarper(warperService),
                                  mZoomFactor(0),
-                                 mCopyBuffsAllocated(false)
+                                 mCopyBuffsAllocated(false),
+                                 mIaCpUll(NULL)
 {
     if (mUseIntelULL) {
         mState = ULL_STATE_UNINIT;
@@ -114,7 +115,7 @@ void UltraLowLight::setMode(ULLMode aMode) {
  * \param h height of the images to process
  * \param aPreset One of the ULL algorithm presets
  */
-status_t UltraLowLight::init( int w, int h, int aPreset, ia_binary_data *aiqb_data)
+status_t UltraLowLight::init(ia_cp_context *iaCpContext, int w, int h, int aPreset, ia_binary_data *aiqb_data)
 {
     LOG1("@%s : w=%d h=%d preset=%d", __FUNCTION__, w, h, aPreset);
     status_t ret = NO_ERROR;
@@ -134,7 +135,7 @@ status_t UltraLowLight::init( int w, int h, int aPreset, ia_binary_data *aiqb_da
     case ULL_STATE_DONE:
         startTime= systemTime();
         if (mUseIntelULL)
-            ret = initIntelULL(w, h, aiqb_data);
+            ret = initIntelULL(iaCpContext, w, h, aiqb_data);
         else
             ret = initMorphoLib(w, h, aPreset);
 
@@ -145,7 +146,7 @@ status_t UltraLowLight::init( int w, int h, int aPreset, ia_binary_data *aiqb_da
         if (mUseIntelULL) {
             deinitIntelULL();
             mInputBuffers.clear();
-            ret = initIntelULL(w, h, aiqb_data);
+            ret = initIntelULL(iaCpContext, w, h, aiqb_data);
         } else {
             deinitMorphoLib();
             mInputBuffers.clear();
@@ -454,10 +455,12 @@ static status_t ia_error_to_status_t(ia_err status)
     }
 }
 
-status_t UltraLowLight::initIntelULL(int w, int h, ia_binary_data *aiqb_data)
+status_t UltraLowLight::initIntelULL(ia_cp_context *iaCpContext, int w, int h, ia_binary_data *aiqb_data)
 {
     LOG1("@%s", __FUNCTION__);
     ia_err err;
+
+    mIaCpContext = iaCpContext;
 
     mIntelUllCfg = new ia_cp_ull_cfg;
     if (!mIntelUllCfg) {
@@ -468,7 +471,7 @@ status_t UltraLowLight::initIntelULL(int w, int h, ia_binary_data *aiqb_data)
     // set image registration to be done inside ia_cp_ull_compose()
     mIntelUllCfg->imreg_fallback = NULL;
 
-    err = ia_cp_ull_init(w, h, aiqb_data, ia_cp_tgt_ipu);
+    err = ia_cp_ull_init(&mIaCpUll, mIaCpContext, w, h, aiqb_data, ia_cp_tgt_ipu);
     if (err != ia_err_none) {
         ALOGE("@%s: failed to initialize ULL capture", __FUNCTION__);
         return ia_error_to_status_t(err);
@@ -538,6 +541,7 @@ void UltraLowLight::deinitIntelULL()
         mIntelUllCfg = NULL;
     }
 
+    mIaCpContext = NULL;
     mWidth = 0;
     mHeight = 0;
     mCurrentPreset = 0;
@@ -633,12 +637,13 @@ status_t UltraLowLight::processIntelULL()
     mIntelUllCfg->zoom_factor = mZoomFactor;
 
     LOG1("Intel ULL processing...");
-    ia_err error = ia_cp_ull_compose(&out, &out_pv, input, postview, mInputBuffers.size(), mIntelUllCfg);
+    ia_err error = ia_cp_ull_compose(mIaCpUll, &out, &out_pv, input, postview, mInputBuffers.size(), mIntelUllCfg);
     if (error != ia_err_none) {
         ALOGE("Intel ULL failed with error status %d", error);
         ret = ia_error_to_status_t(error);
     }
-    error = ia_cp_ull_uninit();
+    error = ia_cp_ull_uninit(mIaCpUll);
+    mIaCpUll = NULL;
     if (error != ia_err_none) {
         ALOGE("Failed to uninit Intel ULL %d", error);
         ret = ia_error_to_status_t(error);
@@ -933,7 +938,7 @@ status_t UltraLowLight::gpuImageRegistration(AtomBuffer *target, AtomBuffer *sou
     cfg.pyr_depth = 4;
     cfg.model = ia_cp_me_projective;
     ia_cp_me_result result;
-    ia_cp_global_me(&target_ia, &source_ia, &cfg, &result);
+    ia_cp_global_me(&result, &target_ia, &source_ia, &cfg);
 
     // warping on the GPU
     if (!result.fallback) {
