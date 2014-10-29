@@ -247,6 +247,7 @@ private:
 
     // 3A control
     status_t _init3A();
+    status_t reInit3A();
     int run3aInit();
     int processForFlash();
     void get3aGridInfo(struct atomisp_grid_info *pgrid);

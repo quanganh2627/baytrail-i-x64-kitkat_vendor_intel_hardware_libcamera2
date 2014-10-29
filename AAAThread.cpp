@@ -288,6 +288,14 @@ status_t AAAThread::setFaces(const ia_face_state& faceState)
     return status;
 }
 
+status_t AAAThread::reInit3A()
+{
+    LOG1("@%s", __FUNCTION__);
+    Message msg;
+    msg.id = MESSAGE_ID_REINIT_3A;
+    return mMessageQueue.send(&msg);
+}
+
 int32_t AAAThread::getFaceNum(void) const
 {
     LOG1("@%s", __FUNCTION__);
@@ -493,6 +501,12 @@ status_t AAAThread::handleAutoFocusExtIsp(const AtomBuffer *buff)
     }
 
     return NO_ERROR;
+}
+
+status_t AAAThread::handleMessageReInit3A()
+{
+    LOG1("@%s", __FUNCTION__);
+    return m3AControls->reInit3A();
 }
 
 /**
@@ -1041,6 +1055,10 @@ status_t AAAThread::waitForAndExecuteMessage()
 
         case MESSAGE_ID_SET_ORIENTATION:
             status = handleMessageSetOrientation(&msg.data.orientation);
+            break;
+
+        case MESSAGE_ID_REINIT_3A:
+            status = handleMessageReInit3A();
             break;
 
         default:

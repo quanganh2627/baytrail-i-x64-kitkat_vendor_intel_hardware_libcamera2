@@ -62,6 +62,7 @@ public:
     virtual unsigned int getExposureDelay() const { return 0; }
     virtual status_t init3A();
     virtual status_t deinit3A();
+    virtual status_t reInit3A();
     virtual void getDefaultParams(CameraParameters *params, CameraParameters *intel_params);
     virtual status_t setAeMode(AeMode mode);
     virtual AeMode getAeMode();

@@ -151,6 +151,8 @@ public:
     // IOrientationListener
     void orientationChanged(int orientation);
 
+    status_t reInit3A();
+
 // callback methods
 private:
     virtual void previewBufferCallback(AtomBuffer *buff, ICallbackPreview::CallbackType t);

@@ -101,6 +101,7 @@ public:
     status_t applyRedEyeRemoval(AtomBuffer *snapshotBuffer, AtomBuffer *postviewBuffer, int width, int height, int fourcc);
     status_t switchModeAndRate(AtomMode mode, float fps);
     status_t setFaces(const ia_face_state& faceState);
+    status_t reInit3A();
     int32_t getFaceNum(void) const;
     status_t getFaces(ia_face_state& faceState) const;
     void getCurrentSmartScene(String8 &sceneMode, bool &sceneHdr);
@@ -124,6 +125,7 @@ private:
         MESSAGE_ID_FLASH_STAGE,
         MESSAGE_ID_SWITCH_MODE_AND_RATE,
         MESSAGE_ID_SET_ORIENTATION,
+        MESSAGE_ID_REINIT_3A,
         // max number of messages
         MESSAGE_ID_MAX
     };
@@ -203,6 +205,7 @@ private:
     status_t handleMessageFlashStage(MessageFlashStage* msg);
     status_t handleMessageSwitchModeAndRate(MessageSwitchInfo *msg);
     status_t handleMessageSetOrientation(MessageOrientation *msg);
+    status_t handleMessageReInit3A();
 
     // Miscellaneous helper methods
     void updateULLTrigger(void);

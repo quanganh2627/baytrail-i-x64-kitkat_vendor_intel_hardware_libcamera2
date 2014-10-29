@@ -9576,4 +9576,15 @@ bool ControlThread::isVideoMode(const CameraParameters &params)
     return false;
 }
 
+/**
+ * This function is used for Live Tuning where a new tuning file
+ * is pushed into the device and the changes need to be seen
+ * without restarting the camera
+ */
+status_t ControlThread::reInit3A()
+{
+    LOG1("@%s", __FUNCTION__);
+    return m3AThread->reInit3A();
+}
+
 } // namespace android

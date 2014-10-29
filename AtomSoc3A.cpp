@@ -74,6 +74,11 @@ status_t AtomSoc3A::deinit3A()
     return NO_ERROR;
 }
 
+status_t AtomSoc3A::reInit3A()
+{
+    return NO_ERROR;
+}
+
 status_t AtomSoc3A::setAeMode(AeMode mode)
 {
     LOG1("@%s: %d", __FUNCTION__, mode);

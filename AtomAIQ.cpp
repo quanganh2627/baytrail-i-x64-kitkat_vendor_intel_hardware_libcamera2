@@ -125,6 +125,37 @@ status_t AtomAIQ::init3A()
     mFileInjection = (mCameraId == INTEL_FILE_INJECT_CAMERA_ID);
     status_t status = _init3A();
 
+    m3aState.frame_use = ia_aiq_frame_use_preview;
+    m3aState.dsd_enabled = false;
+
+    run3aInit();
+
+    m3aState.stats = NULL;
+    m3aState.stats_valid = false;
+    CLEAR(m3aState.results);
+
+    return status;
+}
+
+/**
+ * This function is used for Live Tuning where a new tuning file
+ * is pushed into the device and the changes need to be seen
+ * without restarting the camera
+ */
+status_t AtomAIQ::reInit3A()
+{
+    LOG1("@%s", __FUNCTION__);
+
+    status_t status = NO_ERROR;
+    ia_aiq_deinit(m3aState.ia_aiq_handle);
+    delete mISPAdaptor;
+    mISPAdaptor = NULL;
+
+    CpfStore cpf(mCameraId); // open the new CPF file
+    PlatformData::AiqConfig[mCameraId] = cpf.AiqConfig;
+
+    status = _init3A();
+
     return status;
 }
 
@@ -135,8 +166,8 @@ status_t AtomAIQ::_init3A()
     ia_err ret = ia_err_none;
     String8 fullName, spIdName;
     int spacePos;
-
     ia_binary_data cpfData;
+
     status = getAiqConfig(&cpfData);
     if (status != NO_ERROR) {
         ALOGE("Error retrieving sensor params");
@@ -226,15 +257,7 @@ status_t AtomAIQ::_init3A()
         return UNKNOWN_ERROR;
     }
 
-    m3aState.frame_use = ia_aiq_frame_use_preview;
-    m3aState.dsd_enabled = false;
-
-    run3aInit();
-
     cameranvm_delete(aicNvm);
-    m3aState.stats = NULL;
-    m3aState.stats_valid = false;
-    CLEAR(m3aState.results);
 
     return status;
 }

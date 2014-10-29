@@ -179,6 +179,7 @@ public:
     virtual ~I3AControls() {}
     virtual status_t init3A() = 0;
     virtual status_t deinit3A() = 0;
+    virtual status_t reInit3A() = 0;
 
     virtual SensorType getType() = 0;
     virtual unsigned int getExposureDelay() const = 0;

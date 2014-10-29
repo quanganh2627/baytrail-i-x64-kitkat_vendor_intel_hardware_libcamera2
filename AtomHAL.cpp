@@ -328,7 +328,17 @@ static void atom_release(struct camera_device * device)
 static int atom_dump(struct camera_device * device, int fd)
 {
     ALOGD("%s", __FUNCTION__);
-    // TODO: implement
+
+    // This function is invoked by: adb shell su -- dumpsys media.camera
+    // and used for re-initialising the ia_aiq library. The purpose of this is
+    // to provide a means for the IQ Tool to see the effects of a new tuning file
+    // without restarting the camera.
+    if (device) {
+        atom_camera *cam = (atom_camera *)(device->priv);
+        if (cam)
+            cam->control_thread->reInit3A();
+    }
+
     return 0;
 }
 
