@@ -198,7 +198,7 @@ bool AAAThread::atomIspNotify(IAtomIspObserver::Message *msg, const ObserverStat
                     newStats(mCachedStatsEventMsg.data.event.timestamp, mCachedStatsEventMsg.data.event.sequence);
                     CLEAR(mCachedStatsEventMsg);
                 }
-                return NO_ERROR;
+                return false;
             }
             if (msg->data.event.type == EVENT_TYPE_STATISTICS_READY) {
                 mTrigger3A |= EVENT_TYPE_STATISTICS_READY;
@@ -208,7 +208,7 @@ bool AAAThread::atomIspNotify(IAtomIspObserver::Message *msg, const ObserverStat
                 } else {
                     mCachedStatsEventMsg = *msg;
                 }
-                return NO_ERROR;
+                return false;
             }
         }else if (msg->data.event.type == EVENT_TYPE_STATISTICS_READY) {
             LOG2("-- STATS READY, seq %d, ts %lldus, systemTime %lldms ---",
