@@ -1298,7 +1298,7 @@ status_t AtomAIQ::getManualIso(int *ret)
     return status;
 }
 
-status_t AtomAIQ::applyPreFlashProcess(FlashStage stage, struct timeval captureTimestamp, int orientation)
+status_t AtomAIQ::applyPreFlashProcess(FlashStage stage, struct timeval captureTimestamp, int orientation, uint32_t expId)
 {
     LOG2("@%s", __FUNCTION__);
 
@@ -1325,7 +1325,7 @@ status_t AtomAIQ::applyPreFlashProcess(FlashStage stage, struct timeval captureT
 
         mAeInputParameters.frame_use = ia_aiq_frame_use_still;
 
-        ret = apply3AProcess(true, &captureTimestamp, orientation);
+        ret = apply3AProcess(true, &captureTimestamp, orientation, expId);
 
         mAeInputParameters.frame_use = m3aState.frame_use;
 
@@ -1336,7 +1336,7 @@ status_t AtomAIQ::applyPreFlashProcess(FlashStage stage, struct timeval captureT
     }
     else
     {
-        ret = apply3AProcess(true, &captureTimestamp, orientation);
+        ret = apply3AProcess(true, &captureTimestamp, orientation, expId);
 
         if (mAwbResults)
             mAwbStoredResults = *mAwbResults;
@@ -1353,13 +1353,13 @@ status_t AtomAIQ::setFlash(int numFrames)
 
 status_t AtomAIQ::apply3AProcess(bool read_stats,
                                  struct timeval *frame_timestamp,
-                                 int orientation)
+                                 int orientation, uint32_t expId)
 {
     LOG2("@%s: read_stats = %d", __FUNCTION__, read_stats);
     status_t status = NO_ERROR;
 
     if (read_stats) {
-        status = getStatistics(frame_timestamp, orientation);
+        status = getStatistics(frame_timestamp, orientation, expId);
     }
 
     if (m3aState.stats_valid) {
@@ -1872,13 +1872,20 @@ bool AtomAIQ::changeSensorMode(void)
     return true;
 }
 
-status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct, int orientation)
+/*
+ * \brief Dequeues 3A statistics from the ISP
+ *
+ * This function dequeues the statistics from the ISP and stores them internally
+ * to the AtomAIQ object.
+ *
+ * This method can also be used by outside callers to synchronize
+ * the statistics, for example in pre-flash sequence, if needed.
+ */
+status_t AtomAIQ::dequeueStatistics()
 {
-    LOG2("@%s", __FUNCTION__);
     status_t ret = NO_ERROR;
-
-    PERFORMANCE_TRACES_AAA_PROFILER_START();
     ret = mISP->getIspStatistics(m3aState.stats);
+
     if (ret == -EAGAIN) {
         ALOGV("buffer for isp statistics reallocated according resolution changing\n");
         if (changeSensorMode() == false)
@@ -1889,6 +1896,43 @@ status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct, in
     if (m3aState.stats) {
         LOG2("m3aState.stats: grid_info: %d  %d %d ",
               m3aState.stats->grid_info.s3a_width,m3aState.stats->grid_info.s3a_height,m3aState.stats->grid_info.s3a_bqs_per_grid_cell);
+    }
+
+    return ret;
+}
+
+status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct, int orientation, uint32_t expId)
+{
+    LOG2("@%s", __FUNCTION__);
+    status_t ret = NO_ERROR;
+
+    PERFORMANCE_TRACES_AAA_PROFILER_START();
+
+    ret = dequeueStatistics();
+
+    if (ret != NO_ERROR) {
+        ALOGE("Error dequeuing statistics: %d", ret);
+    } else if (!m3aState.stats) {
+        ALOGE("Statistics dequeued; returned NULL statistics.");
+    }
+
+    while (m3aState.stats && expId != EXPOSURE_ID_NOT_DEFINED && expId != m3aState.stats->exp_id) {
+        // Get statistics from the driver stats queue, until the one
+        // matching to the requested ID is gotten.
+        // This operation is needed in pre-flash sequence, in which the stats handling
+        // is skipped in AAAThread::handleMessageNewStats(). The stats will then pile up
+        // in the driver queue, and we will fall out of sync with the stats. This is how we ensure
+        // getting the most recent stats, matching to the expId requested (the expId of the preview frame)
+        ret = dequeueStatistics();
+
+        if (!m3aState.stats) {
+            ALOGE("Statistics dequeued; returned NULL statistics, ret: %d, requested expId: %u.", ret, expId);
+        } else if (ret != NO_ERROR) {
+            ALOGW("Error dequeuing requested statistics with expId %u. We have %u", expId, m3aState.stats->exp_id);
+        } else {
+            LOG2("Finding matching stats: requested expId: %u, stats expId: %u - %s",
+                 expId,  m3aState.stats->exp_id, (expId == m3aState.stats->exp_id) ? "MATCH": "");
+        }
     }
 
     PERFORMANCE_TRACES_AAA_PROFILER_STOP();

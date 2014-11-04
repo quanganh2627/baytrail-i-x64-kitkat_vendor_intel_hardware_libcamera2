@@ -234,7 +234,7 @@ private:
     void setTorchHelper(int intensity);
 
     //staticstics
-    status_t getStatistics(const struct timeval *frame_timestamp, int orientation);
+    status_t getStatistics(const struct timeval *frame_timestamp, int orientation, uint32_t expId = EXPOSURE_ID_NOT_DEFINED);
     struct atomisp_3a_statistics * allocateStatistics(int grid_size);
     void freeStatistics(struct atomisp_3a_statistics *stats);
     bool needStatistics();
@@ -250,7 +250,6 @@ private:
     int run3aInit();
     int processForFlash();
     void get3aGridInfo(struct atomisp_grid_info *pgrid);
-    void get3aStat();
     status_t populateFrameInfo(const struct timeval *frame_timestamp,
                                const struct timeval *sof_timestamp);
     status_t init_weighting_map();
@@ -328,6 +327,9 @@ public:
     virtual status_t deinit3A();
     virtual status_t switchModeAndRate(AtomMode mode, float fps);
 
+    // statistics
+    status_t dequeueStatistics();
+
     // Getters and Setters
     virtual status_t getAiqConfig(ia_binary_data *cpfData);
     virtual status_t setAeWindow(CameraWindow *window, const AAAWindowInfo *convWindow = NULL);
@@ -400,13 +402,13 @@ public:
     virtual status_t setFlash(int numFrames);
 
     // ISP processing functions
-    status_t apply3AProcess(bool read_stats, struct timeval *frame_timestamp, int orientation);
+    status_t apply3AProcess(bool read_stats, struct timeval *frame_timestamp, int orientation, uint32_t expId = EXPOSURE_ID_NOT_DEFINED);
 
     status_t startStillAf();
     status_t stopStillAf();
     AfStatus isStillAfComplete();
 
-    status_t applyPreFlashProcess(FlashStage stage, struct timeval captureTimestamp, int orientation);
+    status_t applyPreFlashProcess(FlashStage stage, struct timeval captureTimestamp, int orientation, uint32_t expId = EXPOSURE_ID_NOT_DEFINED);
 
     // Makernote
     ia_binary_data *get3aMakerNote(ia_mkn_trg mode);

@@ -605,7 +605,7 @@ status_t AAAThread::handleMessageFlashStage(MessageFlashStage *msg)
  * returns true if sequence is running and normal 3A should
  * not be executed
  */
-bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus, struct timeval capture_timestamp)
+bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus, struct timeval capture_timestamp, uint32_t expId)
 {
     // TODO: Make aware of frame sync and changes in exposure to
     //       reduce unneccesary skipping and consider processing for
@@ -645,7 +645,7 @@ bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus, struct timeva
             // Enter Stage 1
             mFramesTillExposed = 0;
             mSkipForEv = m3AControls->getExposureDelay();
-            status = m3AControls->applyPreFlashProcess(CAM_FLASH_STAGE_NONE, capture_timestamp, mOrientation);
+            status = m3AControls->applyPreFlashProcess(CAM_FLASH_STAGE_NONE, capture_timestamp, mOrientation, expId);
             mFlashStage = FLASH_STAGE_PRE_PHASE1;
             break;
         case FLASH_STAGE_PRE_PHASE1:
@@ -658,7 +658,7 @@ bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus, struct timeva
             }
             // Enter Stage 2
             mSkipForEv = m3AControls->getExposureDelay();
-            status = m3AControls->applyPreFlashProcess(CAM_FLASH_STAGE_PRE, capture_timestamp, mOrientation);
+            status = m3AControls->applyPreFlashProcess(CAM_FLASH_STAGE_PRE, capture_timestamp, mOrientation, expId);
             mFlashStage = FLASH_STAGE_PRE_PHASE2;
             break;
         case FLASH_STAGE_PRE_PHASE2:
@@ -681,7 +681,7 @@ bool AAAThread::handleFlashSequence(FrameBufferStatus frameStatus, struct timeva
             mFramesTillExposed++;
             if (frameStatus == FRAME_STATUS_FLASH_EXPOSED) {
                 m3AControls->setFlash(0);
-                m3AControls->applyPreFlashProcess(CAM_FLASH_STAGE_MAIN, capture_timestamp, mOrientation);
+                m3AControls->applyPreFlashProcess(CAM_FLASH_STAGE_MAIN, capture_timestamp, mOrientation, expId);
                 if (mFlashStage == FLASH_STAGE_SHOT_WAITING) {
                     LOG1("ShotFlash@Frame %d: SUCCESS    (stopping...)", mFramesTillExposed);
                     mFlashStage = FLASH_STAGE_SHOT_EXPOSED;
@@ -758,7 +758,7 @@ status_t AAAThread::handleMessageNewFrame(MessageNewFrame *msg)
         // external ISP autoFocus
         handleAutoFocusExtIsp(msg->buff);
     } else {
-        handleFlashSequence(msg->buff->status, msg->buff->capture_timestamp);
+        handleFlashSequence(msg->buff->status, msg->buff->capture_timestamp, msg->buff->expId);
     }
 
     return NO_ERROR;
@@ -782,8 +782,13 @@ status_t AAAThread::handleMessageNewStats(MessageNewStats *msgFrame)
         return status;
 
     /* Do not run 3A if we are in the pre-flash sequence */
-    if (mFlashStage != FLASH_STAGE_NA)
+    if (mFlashStage != FLASH_STAGE_NA) {
+        // NOTE: For flash sequence the 3A is driven by preview frames,
+        // but unread stats will be left queued in the driver, since we skip the stats reading here
+        // For up-to-date statistics in flash sequence, the old stats will be dequeued in
+        // AtomAIQ::getStatistics()
         return status;
+    }
 
     if (mSkipStatistics > 0) {
         LOG1("3A statistics skipped. Partially exposed or wait for exposure. (%d)", mSkipStatistics);

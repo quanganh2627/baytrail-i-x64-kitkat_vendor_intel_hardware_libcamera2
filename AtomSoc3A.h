@@ -117,11 +117,11 @@ public:
     virtual FlashStage getAeFlashNecessity() { return CAM_FLASH_STAGE_NONE; }
     virtual AwbMode getLightSource() { return CAM_AWB_MODE_NOT_SET; }
     virtual status_t setAeBacklightCorrection(bool en) { return INVALID_OPERATION; }
-    virtual status_t apply3AProcess(bool read_stats, struct timeval *frame_timestamp, int orientation) { return INVALID_OPERATION; }
+    virtual status_t apply3AProcess(bool read_stats, struct timeval *frame_timestamp, int orientation, uint32_t expId = EXPOSURE_ID_NOT_DEFINED) { return INVALID_OPERATION; }
     virtual status_t startStillAf() { return INVALID_OPERATION; }
     virtual status_t stopStillAf() { return INVALID_OPERATION; }
     virtual AfStatus isStillAfComplete() { return CAM_AF_STATUS_FAIL; }
-    virtual status_t applyPreFlashProcess(FlashStage stage, struct timeval captureTimestamp, int orientation) { return INVALID_OPERATION; }
+    virtual status_t applyPreFlashProcess(FlashStage stage, struct timeval captureTimestamp, int orientation, uint32_t expId = EXPOSURE_ID_NOT_DEFINED) { return INVALID_OPERATION; }
     virtual status_t getGBCEResults(ia_aiq_gbce_results *gbce_results) { return INVALID_OPERATION; }
     virtual status_t getExposureParameters(ia_aiq_exposure_parameters *exposure) { return INVALID_OPERATION; }
 
@@ -136,6 +136,9 @@ public:
     virtual status_t setSmartSceneDetection(bool en) { return INVALID_OPERATION; }
     virtual bool     getSmartSceneDetection() { return false; }
     virtual status_t switchModeAndRate(AtomMode mode, float fps) { return INVALID_OPERATION; }
+
+    // statistics
+    status_t dequeueStatistics() { return INVALID_OPERATION; }
 
     virtual AfStatus getCAFStatus() { return CAM_AF_STATUS_FAIL; }
     status_t getSmartSceneMode(String8 &sceneMode, bool &sceneHdr) { return INVALID_OPERATION; }

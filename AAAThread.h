@@ -211,7 +211,7 @@ private:
     AfStatus parseAfMeta(const AtomBuffer *buff);
 
     // flash sequence handler
-    bool handleFlashSequence(FrameBufferStatus frameStatus, struct timeval capture_timestamp);
+    bool handleFlashSequence(FrameBufferStatus frameStatus, struct timeval capture_timestamp, uint32_t expId);
 
     // main message function
     status_t waitForAndExecuteMessage();

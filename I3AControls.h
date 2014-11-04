@@ -31,6 +31,10 @@ namespace android {
 #define EV_LOWER_BOUND         -100
 #define EV_UPPER_BOUND          100
 
+// This works as long as eposure ID does not get values as big as uint32_t
+// At the moment the atomisp_3a_statistics::exp_id value range is 1..250
+const uint32_t EXPOSURE_ID_NOT_DEFINED = UINT32_MAX;
+
 enum AeMode
 {
     CAM_AE_MODE_NOT_SET = -1,
@@ -249,11 +253,15 @@ public:
     virtual bool getAeUllTrigger() = 0;
 
     virtual status_t switchModeAndRate(AtomMode mode, float fps) = 0;
-    virtual status_t apply3AProcess(bool read_stats, struct timeval *frame_timestamp, int orientation) = 0;
+
+    // statistics
+    virtual status_t dequeueStatistics() = 0;
+
+    virtual status_t apply3AProcess(bool read_stats, struct timeval *frame_timestamp, int orientation, uint32_t expId = EXPOSURE_ID_NOT_DEFINED) = 0;
     virtual status_t startStillAf() = 0;
     virtual status_t stopStillAf() = 0;
     virtual AfStatus isStillAfComplete() = 0;
-    virtual status_t applyPreFlashProcess(FlashStage stage, struct timeval captureTimestamp, int orientation) = 0;
+    virtual status_t applyPreFlashProcess(FlashStage stage, struct timeval captureTimestamp, int orientation, uint32_t expId = EXPOSURE_ID_NOT_DEFINED) = 0;
 
     // Makernote
     virtual ia_binary_data *get3aMakerNote(ia_mkn_trg mode) = 0;
