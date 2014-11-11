@@ -171,6 +171,8 @@ ControlThread::ControlThread(int cameraId) :
     ,mSaveMirrored(false)
     ,mCurrentOrientation(0)
     ,mRecordingOrientation(0)
+    ,mSaveEvCompensation(0)
+    ,mSaveEVCompensationState(false)
 {
     // DO NOT PUT ANY ALLOCATION CODE IN THIS METHOD!!!
     // Put all init code in the init() method.
@@ -5420,10 +5422,6 @@ status_t ControlThread::processParamSceneMode(CameraParameters *oldParams,
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
                 newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
-                newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION, PlatformData::supportedDefaultEV(mCameraId));
-                newParams->set(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION, PlatformData::supportedMaxEV(mCameraId));
-                newParams->set(CameraParameters::KEY_MIN_EXPOSURE_COMPENSATION, PlatformData::supportedMinEV(mCameraId));
-                newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION_STEP, PlatformData::supportedStepEV(mCameraId));
             }
             if (PlatformData::supportsFlash(mCameraId)) {
                 mSavedFlashSupported = String8("auto,off,on,torch");
@@ -5449,10 +5447,6 @@ status_t ControlThread::processParamSceneMode(CameraParameters *oldParams,
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
                 newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
-                newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION, PlatformData::supportedDefaultEV(mCameraId));
-                newParams->set(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION, PlatformData::supportedMaxEV(mCameraId));
-                newParams->set(CameraParameters::KEY_MIN_EXPOSURE_COMPENSATION, PlatformData::supportedMinEV(mCameraId));
-                newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION_STEP, PlatformData::supportedStepEV(mCameraId));
             }
             if (PlatformData::supportsFlash(mCameraId)) {
                 mSavedFlashSupported = String8("off");
@@ -5477,10 +5471,6 @@ status_t ControlThread::processParamSceneMode(CameraParameters *oldParams,
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
                 newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
-                newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION, PlatformData::supportedDefaultEV(mCameraId));
-                newParams->set(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION, PlatformData::supportedMaxEV(mCameraId));
-                newParams->set(CameraParameters::KEY_MIN_EXPOSURE_COMPENSATION, PlatformData::supportedMinEV(mCameraId));
-                newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION_STEP, PlatformData::supportedStepEV(mCameraId));
             }
             if (PlatformData::supportsFlash(mCameraId)) {
                 mSavedFlashSupported = String8("off");
@@ -5505,10 +5495,6 @@ status_t ControlThread::processParamSceneMode(CameraParameters *oldParams,
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::TRUE);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "true");
                 newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::TRUE);
-                newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION, PlatformData::supportedDefaultEV(mCameraId));
-                newParams->set(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION, PlatformData::supportedMaxEV(mCameraId));
-                newParams->set(CameraParameters::KEY_MIN_EXPOSURE_COMPENSATION, PlatformData::supportedMinEV(mCameraId));
-                newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION_STEP, PlatformData::supportedStepEV(mCameraId));
             }
             if (PlatformData::supportsFlash(mCameraId)) {
                 mSavedFlashSupported = String8("off");
@@ -5533,10 +5519,6 @@ status_t ControlThread::processParamSceneMode(CameraParameters *oldParams,
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::TRUE);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "true");
                 newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::TRUE);
-                newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION, PlatformData::supportedDefaultEV(mCameraId));
-                newParams->set(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION, PlatformData::supportedMaxEV(mCameraId));
-                newParams->set(CameraParameters::KEY_MIN_EXPOSURE_COMPENSATION, PlatformData::supportedMinEV(mCameraId));
-                newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION_STEP, PlatformData::supportedStepEV(mCameraId));
             }
             if (PlatformData::supportsFlash(mCameraId)) {
                 mSavedFlashSupported = String8("on");
@@ -5559,10 +5541,6 @@ status_t ControlThread::processParamSceneMode(CameraParameters *oldParams,
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
                 newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
-                newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION, "0");
-                newParams->set(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION, "0");
-                newParams->set(CameraParameters::KEY_MIN_EXPOSURE_COMPENSATION, "0");
-                newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION_STEP, "0");
             }
             if (PlatformData::supportsFlash(mCameraId)) {
                 mSavedFlashSupported = String8("off");
@@ -5587,10 +5565,6 @@ status_t ControlThread::processParamSceneMode(CameraParameters *oldParams,
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
                 newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
-                newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION, PlatformData::supportedDefaultEV(mCameraId));
-                newParams->set(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION, PlatformData::supportedMaxEV(mCameraId));
-                newParams->set(CameraParameters::KEY_MIN_EXPOSURE_COMPENSATION, PlatformData::supportedMinEV(mCameraId));
-                newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION_STEP, PlatformData::supportedStepEV(mCameraId));
             }
             if (PlatformData::supportsFlash(mCameraId)) {
                 mSavedFlashSupported = String8("off");
@@ -5615,10 +5589,6 @@ status_t ControlThread::processParamSceneMode(CameraParameters *oldParams,
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "false");
                 newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
-                newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION, PlatformData::supportedDefaultEV(mCameraId));
-                newParams->set(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION, PlatformData::supportedMaxEV(mCameraId));
-                newParams->set(CameraParameters::KEY_MIN_EXPOSURE_COMPENSATION, PlatformData::supportedMinEV(mCameraId));
-                newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION_STEP, PlatformData::supportedStepEV(mCameraId));
             }
             if (PlatformData::supportsFlash(mCameraId)) {
                 mSavedFlashSupported = String8("auto,off,on,torch");
@@ -5658,10 +5628,6 @@ status_t ControlThread::processParamSceneMode(CameraParameters *oldParams,
                 newParams->set(IntelCameraParameters::KEY_XNR, CameraParameters::FALSE);
                 newParams->set(IntelCameraParameters::KEY_SUPPORTED_ANR, "true,false");
                 newParams->set(IntelCameraParameters::KEY_ANR, CameraParameters::FALSE);
-                newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION, PlatformData::supportedDefaultEV(mCameraId));
-                newParams->set(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION, PlatformData::supportedMaxEV(mCameraId));
-                newParams->set(CameraParameters::KEY_MIN_EXPOSURE_COMPENSATION, PlatformData::supportedMinEV(mCameraId));
-                newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION_STEP, PlatformData::supportedStepEV(mCameraId));
             }
             if (PlatformData::supportsFlash(mCameraId)) {
                 mSavedFlashSupported = String8("auto,off,on,torch");
@@ -6457,6 +6423,17 @@ status_t ControlThread::processStaticParameters(CameraParameters *oldParams,
     if (mBurstLength != oldBurstLength || mFpsAdaptSkip != oldFpsAdaptSkip) {
         LOG1("Burst configuration changed, restarting preview");
         restartNeeded = true;
+    }
+
+    if(mHdr.enabled){
+        mSaveEVCompensationState = true;
+        mSaveEvCompensation = newParams->getInt(CameraParameters::KEY_EXPOSURE_COMPENSATION);
+        newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION, "0");
+    } else {
+        if (mSaveEVCompensationState) {
+            newParams->set(CameraParameters::KEY_EXPOSURE_COMPENSATION, mSaveEvCompensation);
+            mSaveEVCompensationState = false;
+        }
     }
 
     status = processParamDvs(oldParams,newParams);

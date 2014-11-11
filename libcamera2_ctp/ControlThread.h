@@ -813,7 +813,8 @@ private:
 
     /*----------- Debugging helpers --------------------*/
     static const char* sCaptureSubstateStrings[STATE_CAPTURE_LAST];
-
+    int  mSaveEvCompensation;
+    bool mSaveEVCompensationState;
 }; // class ControlThread
 
 }; // namespace android
