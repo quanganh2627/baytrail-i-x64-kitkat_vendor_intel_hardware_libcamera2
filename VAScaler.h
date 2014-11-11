@@ -43,7 +43,7 @@
 #define BufferID int
 #define NO_ZOOM  1.0
 
-#define HAL_PIXEL_FORMAT_NV12 HAL_PIXEL_FORMAT_NV12_LINEAR_PACKED_INTEL
+#define HAL_PIXEL_FORMAT_NV12 HAL_PIXEL_FORMAT_YUV420PackedSemiPlanar_INTEL
 
 #define ALIGN_WIDTH(x, a) (((x) + ((a)-1)) & ~((a)-1))
 
