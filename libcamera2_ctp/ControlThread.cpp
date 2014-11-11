@@ -5369,11 +5369,7 @@ void ControlThread::preProcessFlashMode(CameraParameters *newParams)
             //Callback to user
             mCallbacksThread->lowBattery();
         }
-        newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, CameraParameters::FLASH_MODE_OFF);
         newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
-    } else if ((mBurstLength == 1 || mBurstLength == 0) && !mHdr.enabled && !lowBattery) {
-        // Restore the supported flash modes to the values prior to forcing to "off":
-        newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, mSavedFlashSupported);
     }
 }
 
@@ -5388,11 +5384,9 @@ void ControlThread::selectFlashModeForScene(CameraParameters *newParams)
     LOG1("@%s", __FUNCTION__);
     // !mBurstLength is only for CTS to pass
     if (mBurstLength == 1 || !mBurstLength) {
-        newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, mSavedFlashSupported.string());
         newParams->set(CameraParameters::KEY_FLASH_MODE, mSavedFlashMode.string());
     } else {
         LOG1("Forcing flash off");
-        newParams->set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "off");
         newParams->set(CameraParameters::KEY_FLASH_MODE, CameraParameters::FLASH_MODE_OFF);
     }
 }
