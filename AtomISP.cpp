@@ -467,6 +467,12 @@ void AtomISP::initFrameConfig()
         mConfig.snapshotLimits.maxWidth = mConfig.recordingLimits.maxWidth;
     if (mConfig.snapshotLimits.maxHeight < mConfig.recordingLimits.maxHeight)
         mConfig.snapshotLimits.maxHeight = mConfig.recordingLimits.maxHeight;
+
+    LOG1("@%s: limits: preview: %dx%d snapshot: %dx%d, recording: %dx%d",
+         __FUNCTION__,
+         mConfig.previewLimits.maxWidth, mConfig.previewLimits.maxHeight,
+         mConfig.snapshotLimits.maxWidth, mConfig.snapshotLimits.maxHeight,
+         mConfig.recordingLimits.maxWidth, mConfig.recordingLimits.maxHeight);
 }
 
 /**
@@ -3263,8 +3269,8 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int fourcc)
  * Workaround 4: In case that preview is too big for VFPP. was removed since
  * it's only valid in CTP
  *
- * Workaround 5: The camera firmware doesn't support video downscaling. For the
- * sensor imx132, it cannot keep the same FOV for different resolutions.
+ * Workaround 5: The camera firmware doesn't support video downscaling for online video.
+ * For the sensor imx132, it cannot keep the same FOV for different resolutions.
  * To keep the same FOV when recording at different resolutions, IMX132 driver has
  * provided a series of resolution settings with fixed full FOV height (1080).
  * To select a proper sensor setting, we need to re-calculate the preview
@@ -3286,7 +3292,7 @@ status_t AtomISP::setVideoFrameFormat(int width, int height, int fourcc)
  * @return false: not need to update preview size
  */
 bool AtomISP::applyISPLimitations(CameraParameters *params,
-        bool dvsEnabled, bool videoMode)
+        bool dvsEnabled, bool videoMode, bool dualMode)
 {
     LOG1("@%s", __FUNCTION__);
     bool ret = false;
@@ -3321,17 +3327,21 @@ bool AtomISP::applyISPLimitations(CameraParameters *params,
                     LOG1("no need change preview size: %dx%d", previewWidth, previewHeight);
                 }
         }
-        //Workaround 5, video recording FOV issue
-        const char manUsensorBName[] = "imx132";
-        if (strncmp(mSensorHW->getSensorName(), manUsensorBName, sizeof(manUsensorBName) - 1) == 0) {
-            // If DVS is not enabled, keep preview height as 1080 which is full FOV height for IMX132.
-            // If DVS is enabled, keep preview height as 900 which is 20% cut off by 1080.
-            // 1080 = 900 * (1 + 20%)
-            // Refer to function description for more details.
-            if (dvsEnabled)
-                params->setPreviewSize(videoWidth*900/videoHeight, 900);
-            else
-                params->setPreviewSize(videoWidth*1080/videoHeight, 1080);
+        // Workaround 5, video recording FOV issue
+        // NOTE: Apply only for dual video mode, when online mode is required.
+        // For offline video the video scaling works.
+        if (dualMode) {
+            const char manUsensorBName[] = "imx132";
+            if (strncmp(mSensorHW->getSensorName(), manUsensorBName, sizeof(manUsensorBName) - 1) == 0) {
+                // If DVS is not enabled, keep preview height as 1080 which is full FOV height for IMX132.
+                // If DVS is enabled, keep preview height as 900 which is 20% cut off by 1080.
+                // 1080 = 900 * (1 + 20%)
+                // Refer to function description for more details.
+                if (dvsEnabled)
+                    params->setPreviewSize(videoWidth*900/videoHeight, 900);
+                else
+                    params->setPreviewSize(videoWidth*1080/videoHeight, 1080);
+            }
         }
 
         //Workaround 2, detail refer to the function description

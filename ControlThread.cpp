@@ -2937,7 +2937,7 @@ status_t ControlThread::handleMessageStartRecording()
         if (vidWidth != width || vidHeight != height) {
             LOG1("video size doesn't match, restartPreview %dx%d => %dx%d", width, height, vidWidth, vidHeight);
             bool videoMode = true;
-            mISP->applyISPLimitations(&mParameters, mDvsEnable, videoMode);
+            mISP->applyISPLimitations(&mParameters, mDvsEnable, videoMode, mDualMode);
             status = restartPreview(videoMode);
             if (status != NO_ERROR) {
                 ALOGE("Error restarting preview in video mode");
@@ -2951,7 +2951,7 @@ status_t ControlThread::handleMessageStartRecording()
          * we first need to stop AtomISP and restart it with MODE_VIDEO
          */
         bool videoMode = true;
-        mISP->applyISPLimitations(&mParameters, mDvsEnable, videoMode);
+        mISP->applyISPLimitations(&mParameters, mDvsEnable, videoMode, mDualMode);
         status = restartPreview(videoMode);
         if (status != NO_ERROR) {
             ALOGE("Error restarting preview in video mode");
@@ -7975,7 +7975,7 @@ status_t ControlThread::processStaticParameters(CameraParameters *oldParams,
      * in AtomISP.cpp to see detailed description of the limitations.
      *
      */
-    if (mISP->applyISPLimitations(newParams, mDvsEnable, videoMode)) {
+    if (mISP->applyISPLimitations(newParams, mDvsEnable, videoMode, mDualMode)) {
         mPreviewForceChanged = true;
         restartNeeded = true;
     }
