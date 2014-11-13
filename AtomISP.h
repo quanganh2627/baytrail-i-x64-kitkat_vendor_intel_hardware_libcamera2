@@ -153,7 +153,7 @@ public:
     void getPostviewFrameFormat(AtomBuffer& formatDescriptor) const;
     status_t setSnapshotFrameFormat(AtomBuffer& formatDescriptor);
     status_t setVideoFrameFormat(int width, int height, int fourcc = 0);
-    bool applyISPLimitations(CameraParameters *params, bool dvsEnabled, bool videoMode);
+    bool applyISPLimitations(CameraParameters *params, bool dvsEnabled, bool videoMode, bool dualMode);
 
     void setPreviewFramerate(int fps);
     int getSnapshotPixelFormat() { return mConfig.snapshot.fourcc; }
