@@ -36,6 +36,7 @@ struct atom_camera {
     int camera_id;
     sp<ControlThread> control_thread;
     bool is_used;
+    bool intel_extensions_enabled;
 };
 
 
@@ -56,9 +57,8 @@ static int ATOM_GetCameraInfo(int camera_id,
 ///////////////////////////////////////////////////////////////////////////////
 //                              MODULE DATA
 ///////////////////////////////////////////////////////////////////////////////
-
-
-static atom_camera atom_cam[MAX_HAL_INSTANCES] = {{-1, NULL, false}, {-1, NULL, false}};
+static const int CAMERA_ID_NOT_DEFINED = -1;
+static atom_camera atom_cam[MAX_HAL_INSTANCES] = {{CAMERA_ID_NOT_DEFINED , NULL, false, false}, {CAMERA_ID_NOT_DEFINED, NULL, false, false}};
 static int atom_instances = 0;
 static Mutex atom_instance_lock; // for locking atom_instances only
 
@@ -312,8 +312,13 @@ static int atom_send_command(struct camera_device * device,
     if (!device)
         return -EINVAL;
     atom_camera *cam = (atom_camera *)(device->priv);
-    if (cam)
+    if (cam) {
         cam->control_thread->sendCommand(cmd, arg1, arg2);
+
+        if (cmd == CAMERA_CMD_ENABLE_INTEL_PARAMETERS) {
+            cam->intel_extensions_enabled = true;
+        }
+    }
     return 0;
 }
 
@@ -398,12 +403,39 @@ static int ATOM_OpenCameraHardware(const hw_module_t* module, const char* name,
     camera_device_t *camera_dev;
     if ((!PlatformData::supportDualMode() && atom_instances == 1) || atom_instances > MAX_HAL_INSTANCES-1) {
         ALOGE("error:only support maximum  %d instances for front/primary sensor", atom_instances);
-        return -EINVAL;
+        return -EUSERS;
     }
 
     int cameraId = atoi(name);
-    if(cameraId < 0 || cameraId >= MAX_HAL_INSTANCES || atom_cam[cameraId].is_used)
+    if(cameraId < 0 || cameraId >= MAX_HAL_INSTANCES || atom_cam[cameraId].is_used) {
         return -EINVAL;
+    }
+
+    // Check that all the cameras prior to this one has Intel extensions enabled,
+    // if we are opening multiple cameras.
+    // NOTE: this assumes that send_command() has been called before opening the next
+    // camera. This should be the case when IntelCamera API is used.
+    if (PlatformData::supportDualMode() && atom_instances >= 1) {
+        bool intel_extensions_enabled = true;
+
+        int i = 0;
+        while (i < MAX_HAL_INSTANCES && intel_extensions_enabled) {
+            // Go through all opened cameras (=which have an ID associated)
+            // And see if they have been Intel-extension enabled
+            if (atom_cam[i].camera_id != CAMERA_ID_NOT_DEFINED)
+                intel_extensions_enabled = atom_cam[i].intel_extensions_enabled;
+
+            ++i;
+        }
+
+        // If any of the cameras in dual/multicamera use-case has been opened via
+        // Android std API -> not supported.
+        if (!intel_extensions_enabled) {
+            ALOGE("Dual mode supported, but Intel extension API not used for camera %d", i);
+            return -EUSERS;
+        }
+    }
+
     atom_cam[cameraId].camera_id = cameraId;
     CpfStore cpf(cameraId);
     PlatformData::AiqConfig[cameraId] = cpf.AiqConfig;
