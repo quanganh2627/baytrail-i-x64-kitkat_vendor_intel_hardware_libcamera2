@@ -894,11 +894,19 @@ bool UltraLowLight::updateTrigger(bool trigger)
     bool change = false;
 
     change = mTrigger == trigger ? false:true;
-    mTrigger = trigger;
 
-    if (change) {
+    if (change && mUserMode == ULL_AUTO) {
+        if (!PlatformData::isGraphicGen()) {
+            if (mWarper->updateStatus(trigger) == NO_ERROR) {
+                mTrigger = trigger;
+            } else {
+                ALOGE("Failed to update warper status.");
+                mTrigger = false;
+            }
+        } else {
+            mTrigger = trigger;
+        }
         LOG1("New trigger: %s", mTrigger?"true":"false");
-        if (!PlatformData::isGraphicGen() && mUserMode == ULL_AUTO) mWarper->updateStatus(mTrigger);
     }
 
     return change;
