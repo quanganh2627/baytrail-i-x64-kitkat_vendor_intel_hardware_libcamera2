@@ -222,11 +222,14 @@ LOCAL_CFLAGS += -Wunused-variable -Werror -Wno-unused-parameter -Wno-error=unuse
 # should be set to "true" in BoardConfig.mk
 LOCAL_MODULE := camera.$(TARGET_DEVICE)
 
-LOCAL_MODULE_RELATIVE_PATH := hw
+LOCAL_MODULE_PATH := $(TARGET_OUT_SHARED_LIBRARIES)/hw
 LOCAL_MODULE_TAGS := optional
-LOCAL_MULTILIB := 32
+LOCAL_REQUIRED_MODULES := camera_profiles.xml
 
 include $(BUILD_SHARED_LIBRARY)
+
+#for camera_profiles.xml
+include $(LOCAL_PATH)/config/Android.mk
 
 endif  #ifeq ($(USE_CAMERA_HAL2),true)
 endif #ifeq ($(USE_CSS_1_5),true)
