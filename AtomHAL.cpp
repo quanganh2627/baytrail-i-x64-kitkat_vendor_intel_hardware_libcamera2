@@ -481,6 +481,7 @@ static int ATOM_CloseCameraHardware(hw_device_t* device)
     cam->control_thread->deinit();
     cam->control_thread.clear();
     cam->is_used = false;
+    cam->intel_extensions_enabled = false;
 
     free(camera_dev);
 
