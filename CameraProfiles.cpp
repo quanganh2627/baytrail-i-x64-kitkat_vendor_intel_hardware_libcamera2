@@ -222,6 +222,16 @@ void CameraProfiles::handleSensor(CameraProfiles *profiles, const char *name, co
         pCurrentCam->facing = ((strcmp(atts[1], "CAMERA_FACING_FRONT") == 0) ? CAMERA_FACING_FRONT : CAMERA_FACING_BACK);
     } else if (strcmp(name, "orientation") == 0) {
         pCurrentCam->orientation = atoi(atts[1]);
+        // fix for IMINAN-2149 begins
+        // The secondary camera module for mofd PRH is in a different orientation
+        // than in the PR2 and other mofd devices. This causes the image to be upside down.
+        // The following piece of code turns the front camera of mofd PRH device to a correct orientation
+        String8 spIdName;
+        PlatformData::createVendorPlatformProductName(spIdName);
+        if ((strcmp(spIdName.string(), "0-0x8-0x1") == 0) && (strcmp(pCurrentCam->sensorName.string(), "imx132") == 0)) {
+            pCurrentCam->orientation = 90;
+        }
+        //fix for IMINAN-2149 ends
     } else if (strcmp(name, "dvs") == 0) {
         pCurrentCam->dvs = ((strcmp(atts[1], "true") == 0) ? true : false);
     } else if (strcmp(name, "narrowGamma") == 0) {
