@@ -791,10 +791,11 @@ status_t PictureThread::handleMessageEncode(MessageEncode *msg)
 
 status_t PictureThread::handleMessageAllocBufs(MessageAllocBufs *msg)
 {
-    LOG1("@%s: width = %d, height = %d, fourcc = %s, numBufs = %d",
+    LOG1("@%s: width = %d, height = %d, bpl = %d, fourcc = %s, numBufs = %d",
             __FUNCTION__,
             msg->formatDesc.width,
             msg->formatDesc.height,
+            msg->formatDesc.bpl,
             v4l2Fmt2Str(msg->formatDesc.fourcc),
             msg->numBufs);
     status_t status = NO_ERROR;
@@ -805,6 +806,7 @@ status_t PictureThread::handleMessageAllocBufs(MessageAllocBufs *msg)
         (mInputBuffers == msg->numBufs) &&
         (mInputBufferArray[0].width == msg->formatDesc.width) &&
         (mInputBufferArray[0].height == msg->formatDesc.height) &&
+        (mInputBufferArray[0].bpl == msg->formatDesc.bpl) &&
         (mInputBufferArray[0].fourcc == msg->formatDesc.fourcc)) {
         LOG1("Trying to allocate same number of buffers with same resolution... skipping");
         goto skip;
@@ -895,15 +897,10 @@ status_t PictureThread::allocateInputBuffers(AtomBuffer& formatDescriptor, int n
 {
     LOG1("@%s size (%dx%d) num %d fourcc %s", __FUNCTION__, formatDescriptor.width,
          formatDescriptor.height, numBufs, v4l2Fmt2Str(formatDescriptor.fourcc));
-    // temporary workaround until CSS supports buffers with different bpls
-    // until then we need to align all buffers to display subsystem bpl
-    // requirements.... even the snapshot buffers that do not go to screen
-    int bpl = SGXandDisplayBpl(formatDescriptor.fourcc, formatDescriptor.width);
-    LOG1("@%s bpl %d", __FUNCTION__, bpl);
 
-    formatDescriptor.bpl = bpl;
     formatDescriptor.size = frameSize(formatDescriptor.fourcc,
-                                      bytesToPixels(formatDescriptor.fourcc, bpl),
+                                      bytesToPixels(formatDescriptor.fourcc,
+                                      formatDescriptor.bpl),
                                       formatDescriptor.height);
 
     if(numBufs == 0)
