@@ -422,7 +422,10 @@ static int ATOM_OpenCameraHardware(const hw_module_t* module, const char* name,
         while (i < MAX_HAL_INSTANCES && intel_extensions_enabled) {
             // Go through all opened cameras (=which have an ID associated)
             // And see if they have been Intel-extension enabled
-            if (atom_cam[i].camera_id != CAMERA_ID_NOT_DEFINED)
+
+            // If one of the previously opened cameras are not using Intel API -> break
+            // NOTE: 'atom_cam[i].is_used' is set in openCameraHardware()
+            if (atom_cam[i].is_used)
                 intel_extensions_enabled = atom_cam[i].intel_extensions_enabled;
 
             ++i;
@@ -430,8 +433,10 @@ static int ATOM_OpenCameraHardware(const hw_module_t* module, const char* name,
 
         // If any of the cameras in dual/multicamera use-case has been opened via
         // Android std API -> not supported.
+        // For the above logic "intel_extensions_enabled" is false, if any
+        // of the opened cameras do not use intel extensions. See: atom_send_command
         if (!intel_extensions_enabled) {
-            ALOGE("Dual mode supported, but Intel extension API not used for camera %d", i);
+            ALOGE("Dual mode support set in camera_profiles, but Intel extension API not used for camera %d", --i);
             return -EUSERS;
         }
     }
@@ -480,6 +485,7 @@ static int ATOM_CloseCameraHardware(hw_device_t* device)
     cam->control_thread->requestExitAndWait();
     cam->control_thread->deinit();
     cam->control_thread.clear();
+    cam->camera_id = CAMERA_ID_NOT_DEFINED;
     cam->is_used = false;
     cam->intel_extensions_enabled = false;
 
