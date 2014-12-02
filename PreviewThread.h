@@ -351,6 +351,10 @@ private:
     GfxAtomBuffer* pickReservedBuffer();
 
     status_t handlePreviewBufferQueue(AtomBuffer *buff);
+
+    void handleBufferLockStatus(int ret);
+    void handleQueueStatus(int ret);
+
 // private data
 private:
     MessageQueue<Message, MessageId> mMessageQueue;
@@ -406,6 +410,16 @@ private:
     bool mPreviewBufferQueueUpdate;
     int mPreviewBufferNum;  /*!< preview buffer number */
     Vector<AtomBuffer> mPreviewBufferQueue;
+
+    // For tracking number of errors in preview buffer/surface operations
+    struct PreviewErrorCounter {
+        int lockErrors;    /*!< Number of errors in buffer lock/unlock */
+        int queueErrors;   /*!< Number of errors in window queue/dequeue operations */
+    };
+
+   PreviewErrorCounter mErrorCounter;
+
+   static const int PREVIEW_ERROR_MAX = 100; // Threshold for errors before taking action (e.g. 1 error per frame @30FPS -> approx 3seconds)
 
 }; // class PreviewThread
 
