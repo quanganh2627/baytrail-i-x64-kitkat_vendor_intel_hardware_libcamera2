@@ -97,7 +97,7 @@ public:
     status_t enterFlashSequence(FlashStage blockForStage = FLASH_STAGE_NA);
     status_t exitFlashSequence();
     status_t newFrame(AtomBuffer* b);
-    status_t newStats(timeval &t, unsigned int seqNo);
+    status_t newStats(timeval &t, unsigned int seqNo, uint32_t expId);
     status_t applyRedEyeRemoval(AtomBuffer *snapshotBuffer, AtomBuffer *postviewBuffer, int width, int height, int fourcc);
     status_t switchModeAndRate(AtomMode mode, float fps);
     status_t setFaces(const ia_face_state& faceState);
@@ -154,6 +154,7 @@ private:
     struct MessageNewStats {
         struct timeval capture_timestamp;
         unsigned int    sequence_number;
+        uint32_t        expId;
     };
 
     // for MESSAGE_ID_NEW_FRAME

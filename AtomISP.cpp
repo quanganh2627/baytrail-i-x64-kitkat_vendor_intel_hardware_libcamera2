@@ -6972,6 +6972,8 @@ status_t AtomISP::AAAStatSource::observe(IAtomIspObserver::Message *msg)
         msg->data.event.sequence = event.sequence;
         msg->data.event.timestamp.tv_sec  = event.timestamp.tv_sec;
         msg->data.event.timestamp.tv_usec = event.timestamp.tv_nsec / 1000;
+        // the frame_sequence domain is assigned to exposure ID in driver
+        msg->data.event.expId = event.u.frame_sync.frame_sequence;
         if (mISP->mStatisticSkips > event.sequence) {
             LOG2("Skipping statistics num: %d", event.sequence);
             msg->data.event.type = IAtomIspObserver::EVENT_TYPE_STATISTICS_SKIPPED;

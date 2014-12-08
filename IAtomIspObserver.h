@@ -54,6 +54,7 @@ public:
         struct timeval  timestamp;
         unsigned int    handle;
         unsigned int    sequence;   // for debugging, not reliable as frame indentifier
+        uint32_t        expId;
     };
 
     union MessageData {

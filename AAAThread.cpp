@@ -195,7 +195,7 @@ bool AAAThread::atomIspNotify(IAtomIspObserver::Message *msg, const ObserverStat
                 mTrigger3A |= EVENT_TYPE_METADATA_READY;
                 if (mTrigger3A & EVENT_TYPE_STATISTICS_READY) {
                     mTrigger3A = 0;
-                    newStats(mCachedStatsEventMsg.data.event.timestamp, mCachedStatsEventMsg.data.event.sequence);
+                    newStats(mCachedStatsEventMsg.data.event.timestamp, mCachedStatsEventMsg.data.event.sequence, msg->data.event.expId);
                     CLEAR(mCachedStatsEventMsg);
                 }
                 return false;
@@ -204,7 +204,7 @@ bool AAAThread::atomIspNotify(IAtomIspObserver::Message *msg, const ObserverStat
                 mTrigger3A |= EVENT_TYPE_STATISTICS_READY;
                 if (mTrigger3A & EVENT_TYPE_METADATA_READY) {
                     mTrigger3A = 0;
-                    newStats(msg->data.event.timestamp, msg->data.event.sequence);
+                    newStats(msg->data.event.timestamp, msg->data.event.sequence, msg->data.event.expId);
                 } else {
                     mCachedStatsEventMsg = *msg;
                 }
@@ -216,7 +216,7 @@ bool AAAThread::atomIspNotify(IAtomIspObserver::Message *msg, const ObserverStat
                                      nsecs_t(msg->data.event.timestamp.tv_sec)*1000000LL
                                    + nsecs_t(msg->data.event.timestamp.tv_usec),
                                    systemTime()/1000/1000);
-            newStats(msg->data.event.timestamp, msg->data.event.sequence);
+            newStats(msg->data.event.timestamp, msg->data.event.sequence, msg->data.event.expId);
         }
     } else if (msg && msg->id == IAtomIspObserver::MESSAGE_ID_FRAME) {
         LOG2("--- FRAME, seq %d, ts %lldms, systemTime %lldms ---",
@@ -229,7 +229,7 @@ bool AAAThread::atomIspNotify(IAtomIspObserver::Message *msg, const ObserverStat
     return false;
 }
 
-status_t AAAThread::newStats(timeval &t, unsigned int seqNo)
+status_t AAAThread::newStats(timeval &t, unsigned int seqNo, uint32_t expId)
 {
     LOG2("@%s", __FUNCTION__);
     Message msg;
@@ -237,6 +237,7 @@ status_t AAAThread::newStats(timeval &t, unsigned int seqNo)
     msg.id = MESSAGE_ID_NEW_STATS_READY;
     msg.data.stats.capture_timestamp = t;
     msg.data.stats.sequence_number = seqNo;
+    msg.data.stats.expId = expId;
 
     return mMessageQueue.send(&msg);
 }
@@ -829,7 +830,7 @@ status_t AAAThread::handleMessageNewStats(MessageNewStats *msgFrame)
 
     if(m3ARunning){
         // Run 3A statistics
-        status = m3AControls->apply3AProcess(true, &capture_timestamp, mOrientation);
+        status = m3AControls->apply3AProcess(true, &capture_timestamp, mOrientation, msgFrame->expId);
 
         // Flag for not sendig CAF move callbacks during AF sequence.
         // This is needed as AF sequence may be run, even when AF mode is CAF

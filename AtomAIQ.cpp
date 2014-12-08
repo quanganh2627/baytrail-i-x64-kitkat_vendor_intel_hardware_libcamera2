@@ -1915,6 +1915,7 @@ status_t AtomAIQ::getStatistics(const struct timeval *frame_timestamp_struct, in
             ALOGE("Statistics dequeued; returned NULL statistics, ret: %d, requested expId: %u.", ret, expId);
         } else if (ret != NO_ERROR) {
             ALOGW("Error dequeuing requested statistics with expId %u. We have %u", expId, m3aState.stats->exp_id);
+            break;
         } else {
             LOG2("Finding matching stats: requested expId: %u, stats expId: %u - %s",
                  expId,  m3aState.stats->exp_id, (expId == m3aState.stats->exp_id) ? "MATCH": "");
